@@ -4,6 +4,8 @@
 **Confidence:** HIGH
 **Reviewed:** 2026-08-11
 
+> 범위 주의: 이 판정은 1단계 프로토타입의 토큰 사용과 구현 일관성에 대한 코드 감사다. 사용자 디자인 승인이나 최종 시각 방향 확정을 의미하지 않는다.
+
 ## Evidence inspected
 
 - `docs/qa/evidence/phase-1/dashboard-desktop.png` — SHA-256 `17ffc6665721169967b72b2d3d64a0fdc65018d71018c29b7b285a0da27ab25c`

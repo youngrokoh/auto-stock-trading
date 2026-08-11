@@ -4,6 +4,8 @@
 
 ![자동매매 운영 대시보드](qa/evidence/phase-1/dashboard-desktop.png)
 
+> 현재 화면은 기능성 프로토타입이며 사용자가 시각 디자인을 승인한 상태가 아니다. 다음 작업과 승인 상태는 [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)를 기준으로 한다.
+
 ## 현재 구현 범위
 
 - FastAPI 생존·준비 상태 API
@@ -75,6 +77,7 @@ Taskiq worker ── Valkey
 
 #### Plan
 
+- [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)
 - [구현 로드맵](plan/implementation-roadmap.md)
 
 #### Spec
