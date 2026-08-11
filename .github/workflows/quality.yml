@@ -1,0 +1,142 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: auto_stock_trading
+          POSTGRES_PASSWORD: auto_stock
+          POSTGRES_USER: auto_stock
+        options: >-
+          --health-cmd "pg_isready -U auto_stock -d auto_stock_trading"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+        ports:
+          - 5432:5432
+      valkey:
+        image: valkey/valkey:9.1.1-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+        ports:
+          - 6379:6379
+    env:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@localhost:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: test
+      AUTO_STOCK_VALKEY_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          version: 0.12.3
+      - run: bash tests/infra-compose-test.sh
+      - run: uv sync --frozen --all-groups
+        working-directory: backend
+      - run: uv run ruff check src tests migrations
+        working-directory: backend
+      - run: uv run ruff format --check src tests migrations
+        working-directory: backend
+      - run: uv run basedpyright
+        working-directory: backend
+      - run: uv run alembic upgrade head
+        working-directory: backend
+      - run: uv run pytest
+        working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+        working-directory: frontend
+      - run: bun run lint
+        working-directory: frontend
+      - run: bun run typecheck
+        working-directory: frontend
+      - run: bun run test
+        working-directory: frontend
+      - run: bun run build
+        working-directory: frontend
+
+  browser:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: auto_stock_trading
+          POSTGRES_PASSWORD: auto_stock
+          POSTGRES_USER: auto_stock
+        options: >-
+          --health-cmd "pg_isready -U auto_stock -d auto_stock_trading"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+        ports:
+          - 5432:5432
+      valkey:
+        image: valkey/valkey:9.1.1-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+        ports:
+          - 6379:6379
+    env:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@localhost:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: test
+      AUTO_STOCK_VALKEY_URL: redis://localhost:6379/0
+      VITE_DISABLE_REACT_DEVTOOLS: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          version: 0.12.3
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: uv sync --frozen --all-groups
+        working-directory: backend
+      - run: bun install --frozen-lockfile
+        working-directory: frontend
+      - run: bunx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: uv run alembic upgrade head
+        working-directory: backend
+      - run: uv run uvicorn auto_stock_trading.api.app:app --host 127.0.0.1 --port 8000 > /tmp/auto-stock-api.log 2>&1 &
+        working-directory: backend
+      - run: bun run dev -- --host 127.0.0.1 > /tmp/auto-stock-web.log 2>&1 &
+        working-directory: frontend
+      - run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/health/ready >/dev/null && curl --fail --silent http://127.0.0.1:5173 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/auto-stock-api.log
+          cat /tmp/auto-stock-web.log
+          exit 1
+      - run: bun run e2e
+        working-directory: frontend

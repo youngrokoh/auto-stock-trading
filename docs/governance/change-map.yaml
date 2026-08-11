@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "order-and-risk",
+      "code": ["backend/src/auto_stock_trading/api/trading/**", "backend/src/auto_stock_trading/worker/execution/**", "backend/src/auto_stock_trading/domain/orders/**", "backend/src/auto_stock_trading/domain/risk/**", "backend/src/auto_stock_trading/application/trading/**", "backend/tests/trading/**", "backend/tests/risk/**"],
+      "docs": ["docs/spec/trading-safety-policy.md", "docs/spec/paper-to-live-gate.md", "docs/spec/product-scope.md", "docs/decisions/0004-ai-execution-separation.md"]
+    },
+    {
+      "name": "broker-and-market-data",
+      "code": ["backend/src/auto_stock_trading/adapters/brokers/**", "backend/src/auto_stock_trading/domain/market_data/**", "backend/src/auto_stock_trading/application/market_data/**", "backend/tests/brokers/**", "backend/tests/market_data/**"],
+      "docs": ["docs/spec/market-data-policy.md", "docs/spec/product-scope.md", "docs/architecture/tech-stack.md"]
+    },
+    {
+      "name": "strategy-features-and-ml",
+      "code": ["backend/src/auto_stock_trading/domain/strategies/**", "backend/src/auto_stock_trading/application/backtests/**", "backend/src/auto_stock_trading/features/**", "backend/src/auto_stock_trading/ml/**", "backend/tests/strategies/**", "backend/tests/features/**", "backend/tests/ml/**"],
+      "docs": ["docs/plan/implementation-roadmap.md", "docs/spec/product-scope.md", "docs/spec/paper-to-live-gate.md", "docs/decisions/0004-ai-execution-separation.md"]
+    },
+    {
+      "name": "frontend-design-and-qa",
+      "code": ["frontend/src/**", "frontend/tests/**", "frontend/package.json", "frontend/vite.config.ts", "frontend/vitest.config.ts", "frontend/playwright.config.ts"],
+      "docs": ["docs/design/design-system.md", "docs/qa/phase-1-verification.md", "docs/api/health-api.md"]
+    },
+    {
+      "name": "platform-architecture",
+      "code": ["backend/src/auto_stock_trading/settings/**", "backend/src/auto_stock_trading/api/**", "backend/src/auto_stock_trading/worker/**", "backend/pyproject.toml", "frontend/**", "infra/**"],
+      "docs": ["docs/architecture/tech-stack.md", "docs/decisions/0001-modular-monolith.md", "docs/decisions/0002-technology-baseline.md", "docs/decisions/0003-data-architecture.md"]
+    },
+    {
+      "name": "documentation-automation",
+      "code": ["AGENTS.md", "scripts/docs_guard.py", "tests/docs-guard-test.sh", ".github/workflows/documentation.yml", ".github/pull_request_template.md"],
+      "docs": ["docs/governance/documentation-policy.md", "docs/governance/change-map.yaml"]
+    }
+  ]
+}
