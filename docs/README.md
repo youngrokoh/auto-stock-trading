@@ -95,6 +95,8 @@ Taskiq worker ── Valkey
 #### Design
 
 - [자동매매 운영 UI 디자인 시스템](design/design-system.md)
+- [자동매매 웹 디자인 방향 제안](design/design-direction-proposals.md)
+- [디자인 시안 생성 프롬프트](design/proposal-generation-prompts.md)
 
 #### API
 
@@ -108,6 +110,7 @@ Taskiq worker ── Valkey
 
 - [1단계 검증 기록](qa/phase-1-verification.md)
 - [1단계 시각 QA 감사 기록](qa/phase-1-visual-review.md)
+- [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions
 
