@@ -1,9 +1,10 @@
 # 디자인 방향 시안 시각 QA
 
-- 상태: 통과 · 사용자 선택 대기
+- 상태: 통과 · 방향 승인 완료
 - 검증일: 2026-08-11
 - 범위: 이미지 전용 디자인 시안과 비교 문서
 - 주의: 이 검증은 정적 시안의 품질만 확인하며 이후 실제 UI 구현의 브라우저 QA를 대체하지 않는다.
+- 승인 기록: 사용자는 2026-08-12에 Research Grid와 Night Watch 안전 표현을 결합한 클로드 화면 사양을 승인했다.
 
 **Goal:** Independently review the three image-only UI direction boards for a Korean automated stock / ETF / company-analysis / quant-research product.
 

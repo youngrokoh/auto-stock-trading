@@ -4,7 +4,7 @@
 
 ![자동매매 운영 대시보드](qa/evidence/phase-1/dashboard-desktop.png)
 
-> 현재 화면은 기능성 프로토타입이며 사용자가 시각 디자인을 승인한 상태가 아니다. 다음 작업과 승인 상태는 [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)를 기준으로 한다.
+> 현재 실행 화면은 기능성 프로토타입이다. 사용자는 [클로드 화면 디자인 사양](design/claude-design/screen-design-spec.md)을 최종 방향으로 승인했지만 React 화면에는 아직 적용되지 않았다. 다음 작업과 구현 상태는 [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)를 기준으로 한다.
 
 ## 현재 구현 범위
 
