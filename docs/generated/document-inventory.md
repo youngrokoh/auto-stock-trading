@@ -12,6 +12,8 @@
 | [ADR-0002: Python·React 기술 기준선 채택](../decisions/0002-technology-baseline.md) | `docs/decisions/0002-technology-baseline.md` | 승인 |
 | [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](../decisions/0003-data-architecture.md) | `docs/decisions/0003-data-architecture.md` | 승인 |
 | [ADR-0004: AI 신호와 주문 실행 분리](../decisions/0004-ai-execution-separation.md) | `docs/decisions/0004-ai-execution-separation.md` | 승인 |
+| [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 미지정 |
+| [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 초안 · 사용자 검토 대기 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 시안 · 사용자 선택 대기 |
 | [자동매매 운영 UI 디자인 시스템](../design/design-system.md) | `docs/design/design-system.md` | 초안 · 사용자 미승인 |
 | [디자인 시안 생성 프롬프트](../design/proposal-generation-prompts.md) | `docs/design/proposal-generation-prompts.md` | 기록 |

@@ -97,6 +97,8 @@ Taskiq worker ── Valkey
 - [자동매매 운영 UI 디자인 시스템](design/design-system.md)
 - [자동매매 웹 디자인 방향 제안](design/design-direction-proposals.md)
 - [디자인 시안 생성 프롬프트](design/proposal-generation-prompts.md)
+- [화면 디자인 사양](design/claude-design/screen-design-spec.md)
+- [화면 구현 요청 안내](design/claude-design/README.md)
 
 #### API
 
