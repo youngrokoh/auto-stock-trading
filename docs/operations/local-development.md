@@ -14,6 +14,16 @@
 
 Python과 JavaScript 패키지는 lockfile로 고정한다. API 키나 계좌번호를 `.env.example`에 기록하지 않는다.
 
+KIS 시장 데이터 수집은 서버 프로세스에만 다음 환경변수를 설정한다. 값을 셸 이력, 문서, Git, 프론트엔드 환경변수와 로그에 남기지 않는다.
+
+```text
+AUTO_STOCK_KIS_ENVIRONMENT=paper
+AUTO_STOCK_KIS_APP_KEY=<server-only>
+AUTO_STOCK_KIS_APP_SECRET=<server-only>
+```
+
+`AUTO_STOCK_KIS_ENVIRONMENT`의 기본값은 `paper`이며 실제 주문 기능과는 연결되지 않는다.
+
 macOS에서는 Homebrew로 컨테이너와 개발 도구를 준비한다.
 
 ```bash
@@ -63,8 +73,19 @@ PostgreSQL이나 Valkey를 실행하지 않은 경우 `/live`는 `200`, `/ready`
 
 ```bash
 cd backend
-uv run taskiq worker auto_stock_trading.worker.broker:broker
+uv run taskiq worker auto_stock_trading.worker.market_data:broker
 ```
+
+대표 주식·ETF 시장 데이터는 CLI로 한 번 수집할 수 있다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.market_data \
+  --start-date 2026-08-01 \
+  --end-date 2026-08-14
+```
+
+현재 대상은 삼성전자 `005930`과 KODEX 200 `069500`이다. 자격증명이 없으면 비밀 값을 출력하지 않고 명시적인 설정 오류로 종료한다.
 
 ## 프론트엔드만 실행
 
@@ -88,6 +109,7 @@ uv run ruff check src tests migrations
 uv run ruff format --check src tests migrations
 uv run basedpyright
 uv run pytest
+uv run alembic upgrade head
 
 cd ../frontend
 bun run lint

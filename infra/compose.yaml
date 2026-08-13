@@ -71,7 +71,7 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
-    command: ["taskiq", "worker", "auto_stock_trading.worker.broker:broker"]
+    command: ["taskiq", "worker", "auto_stock_trading.worker.market_data:broker"]
     environment: *backend-environment
     depends_on:
       migrate:

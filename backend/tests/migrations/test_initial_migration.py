@@ -16,3 +16,8 @@ def test_initial_migration_renders_reproducible_postgres_sql(
     assert "CREATE SCHEMA IF NOT EXISTS reference" in migration_sql
     assert "CREATE SCHEMA IF NOT EXISTS market" in migration_sql
     assert "CREATE SCHEMA IF NOT EXISTS operations" in migration_sql
+    assert "CREATE TABLE reference.instrument" in migration_sql
+    assert "CREATE TABLE operations.raw_api_response" in migration_sql
+    assert "CREATE TABLE market.quote" in migration_sql
+    assert "CREATE TABLE market.market_bar" in migration_sql
+    assert "CONSTRAINT uq_market_bar_identity UNIQUE" in migration_sql

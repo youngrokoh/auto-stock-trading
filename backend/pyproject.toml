@@ -7,6 +7,7 @@ dependencies = [
   "alembic==1.19.1",
   "asyncpg==0.31.0",
   "fastapi==0.141.1",
+  "httpx2[http2,brotli,zstd]==2.10.0",
   "pydantic==2.13.4",
   "pydantic-settings==2.15.0",
   "redis==8.1.0",
@@ -20,7 +21,6 @@ dependencies = [
 [dependency-groups]
 dev = [
   "basedpyright==1.39.9",
-  "httpx2==2.10.0",
   "pytest==9.1.1",
   "ruff==0.16.2",
 ]
@@ -60,7 +60,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "migrations/**/*.py" = ["INP001"]
+"src/auto_stock_trading/adapters/database/market_data_rows.py" = ["TC003"]
+"src/auto_stock_trading/api/market_data.py" = ["TC003"]
 "src/auto_stock_trading/api/models.py" = ["TC001"]
+"src/auto_stock_trading/api/*_models.py" = ["TC001", "TC003"]
 "tests/**/*.py" = ["PLR2004"]
 
 [tool.basedpyright]

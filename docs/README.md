@@ -1,6 +1,6 @@
 # Auto Stock Trading
 
-국내 주식·ETF 데이터 수집, 기업 분석, 퀀트 전략 연구와 안전한 자동매매 실행을 단계적으로 구축하는 웹 프로젝트다. 현재 1단계에서는 PostgreSQL·Valkey·FastAPI·Taskiq·React를 연결하고 실전거래가 비활성화된 운영 상태 화면을 제공한다.
+국내 주식·ETF 데이터 수집, 기업 분석, 퀀트 전략 연구와 안전한 자동매매 실행을 단계적으로 구축하는 웹 프로젝트다. 현재 2단계에서는 KIS 국내주식·ETF 종목정보, 현재가와 비수정 일봉의 수집·저장·읽기 수직 슬라이스를 제공한다.
 
 ![자동매매 운영 대시보드](qa/evidence/phase-1/dashboard-desktop.png)
 
@@ -10,12 +10,14 @@
 
 - FastAPI 생존·준비 상태 API
 - PostgreSQL 18 마이그레이션과 Valkey 작업 큐
-- 유휴 상태에서도 유지되는 Taskiq worker
+- KIS 토큰 관리와 대표 주식·ETF 시장 데이터 수집 Taskiq worker
+- 원본 응답과 정규화 데이터를 분리한 PostgreSQL 저장소
+- 종목정보·최신 현재가·비수정 일봉 읽기 API
 - Caddy가 제공하는 React 운영 대시보드와 API 프록시
 - 모바일·태블릿·데스크톱 Playwright 검증
 - 코드와 문서 변경을 함께 검사하는 문서 동기화 게이트
 
-주문, 증권사 API, 실제 시장 데이터, 전략과 AI 모델은 아직 구현하지 않았다. 실전거래는 승인된 [전환 게이트](spec/paper-to-live-gate.md)를 통과하기 전까지 비활성 상태를 유지한다.
+주문, 계좌, 분봉·시장 달력·기업행사, 전략과 AI 모델은 아직 구현하지 않았다. 실제 KIS 모의환경 호출은 서버 자격증명이 준비되면 검증하며 실전거래는 승인된 [전환 게이트](spec/paper-to-live-gate.md)를 통과하기 전까지 비활성 상태를 유지한다.
 
 ## 실행
 
@@ -103,6 +105,7 @@ Taskiq worker ── Valkey
 #### API
 
 - [내부 상태 확인 API](api/health-api.md)
+- [시장 데이터 읽기 API](api/market-data-api.md)
 
 #### Operations
 
@@ -112,6 +115,7 @@ Taskiq worker ── Valkey
 
 - [1단계 검증 기록](qa/phase-1-verification.md)
 - [1단계 시각 QA 감사 기록](qa/phase-1-visual-review.md)
+- [2단계 시장 데이터 수직 슬라이스 검증](qa/phase-2-market-data-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions

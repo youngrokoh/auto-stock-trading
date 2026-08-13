@@ -4,18 +4,25 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from auto_stock_trading.adapters.database.market_data_repository import (
+    PostgresMarketDataRepository,
+)
 from auto_stock_trading.adapters.health import PostgresHealthProbe, ValkeyHealthProbe
 from auto_stock_trading.api.health import create_health_router
+from auto_stock_trading.api.market_data import create_market_data_router
 from auto_stock_trading.application.health import HealthProbe, HealthService
+from auto_stock_trading.application.market_data import MarketDataReader
 from auto_stock_trading.settings.runtime import Settings
 
 ProbeFactory = Callable[[], HealthProbe]
+MarketDataReaderFactory = Callable[[], MarketDataReader]
 
 
 def create_app(
     settings: Settings | None = None,
     database_probe_factory: ProbeFactory | None = None,
     cache_probe_factory: ProbeFactory | None = None,
+    market_data_reader_factory: MarketDataReaderFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -25,6 +32,12 @@ def create_app(
         lambda: ValkeyHealthProbe.from_url(runtime_settings.valkey_url.get_secret_value())
     )
     health_service = HealthService(database=database_factory(), cache=cache_factory())
+    reader_factory = market_data_reader_factory or (
+        lambda: PostgresMarketDataRepository.from_url(
+            runtime_settings.database_url.get_secret_value()
+        )
+    )
+    market_data_reader = reader_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -32,6 +45,7 @@ def create_app(
             yield
         finally:
             await health_service.close()
+            await market_data_reader.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -46,6 +60,7 @@ def create_app(
         allow_headers=["Accept", "Content-Type"],
     )
     app.include_router(create_health_router(health_service, runtime_settings))
+    app.include_router(create_market_data_router(market_data_reader))
     return app
 
 

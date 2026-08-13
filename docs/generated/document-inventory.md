@@ -6,6 +6,7 @@
 |---|---|---|
 | [Auto Stock Trading](../README.md) | `docs/README.md` | 미지정 |
 | [내부 상태 확인 API](../api/health-api.md) | `docs/api/health-api.md` | 구현됨 |
+| [시장 데이터 읽기 API](../api/market-data-api.md) | `docs/api/market-data-api.md` | 구현됨 |
 | [프로젝트 실행 구조](../architecture/project-structure.md) | `docs/architecture/project-structure.md` | 구현됨 |
 | [상세 기술 스택](../architecture/tech-stack.md) | `docs/architecture/tech-stack.md` | 승인 |
 | [ADR-0001: 모듈형 모놀리스 채택](../decisions/0001-modular-monolith.md) | `docs/decisions/0001-modular-monolith.md` | 승인 |
@@ -25,6 +26,7 @@
 | [Phase 1 Clone / Design-System Fidelity Gate](../qa/evidence/phase-1/design-system-fidelity-gate.md) | `docs/qa/evidence/phase-1/design-system-fidelity-gate.md` | 미지정 |
 | [1단계 검증 기록](../qa/phase-1-verification.md) | `docs/qa/phase-1-verification.md` | 기술 검증 통과 · 시각 디자인 사용자 미승인 |
 | [1단계 시각 QA 감사 기록](../qa/phase-1-visual-review.md) | `docs/qa/phase-1-visual-review.md` | 프로토타입 품질 통과 · 시각 디자인 사용자 미승인 |
+| [2단계 시장 데이터 수직 슬라이스 검증](../qa/phase-2-market-data-verification.md) | `docs/qa/phase-2-market-data-verification.md` | 자동·로컬 통합 검증 완료, KIS 모의환경 검증 대기 |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

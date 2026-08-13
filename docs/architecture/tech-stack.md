@@ -42,6 +42,7 @@ Infrastructure
 | 운영 DB | PostgreSQL | 18.4 |
 | 작업 브로커 | Valkey | 9.1.1 |
 | 작업 실행 | Taskiq | 0.12.4 |
+| 외부 HTTP | httpx2 | 2.10.0 |
 | 프론트엔드 | React | 19.2.8 |
 | 프론트엔드 빌드 | Vite | 8.1.5 |
 | TypeScript 도구 | Bun | 1.3.14 |
@@ -70,6 +71,8 @@ Infrastructure
 | 구조화 로그 | structlog |
 
 증권사·공시 API의 JSON은 어댑터에서 Pydantic 모델로 한 번만 파싱한 뒤 내부 도메인 타입으로 변환한다. 외부 원본 `dict`를 애플리케이션 내부로 전달하지 않는다.
+
+KIS 어댑터의 `httpx2` 클라이언트는 HTTP/2, 연결 풀, Brotli·Zstandard 응답, 연결·읽기·쓰기·풀 타임아웃과 전송 재시도를 사용한다. 인증과 시세 요청은 최소 호출 간격으로 직렬화하고, 로그에는 HTTP 메서드·경로·상태·소요시간만 남겨 인증 헤더와 요청 본문을 제외한다.
 
 주요 의미 타입은 일반 문자열이나 숫자와 구분한다.
 
@@ -113,6 +116,8 @@ EtfReferenceDataAdapter
 
 처음에는 한국투자증권만 구현한다. 다중 증권사를 예상한 거대한 공통 인터페이스를 만들지 않고 실제 사용 기능만 작은 포트로 정의한다.
 
+2026-08-14 구현 범위의 `KisMarketDataAdapter`는 모의·실전 호스트를 설정으로 분리하고 접근 토큰을 만료 전까지 메모리에 캐시한다. 종목정보 `CTPF1002R`, 현재가 `FHKST01010100`, 기간별 일봉 `FHKST03010100`을 지원하며 일봉은 비수정 원본 가격으로 요청한다.
+
 ### 3.4 작업 처리와 스케줄링
 
 | 역할 | 기술 |
@@ -127,6 +132,7 @@ EtfReferenceDataAdapter
 - PostgreSQL 주문 상태를 기준으로 재시작과 메시지 유실을 복구한다.
 - 모델 학습처럼 CPU 사용량이 큰 작업은 별도 프로세스로 격리한다.
 - ListQueueBroker의 블로킹 대기가 유휴 상태에서도 유지되도록 Valkey 연결의 `socket_timeout`을 `None`으로 지정한다.
+- 첫 등록 작업 `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. 스케줄러 자동 등록은 시장 달력 구현 후 추가한다.
 
 ## 4. 데이터 저장과 분석
 
@@ -171,13 +177,16 @@ trading
 └─ reconciliation_run
 
 operations
-├─ sync_status
+├─ raw_api_response
+├─ api_sync_status
 ├─ job_run
 ├─ alert
 └─ audit_event
 ```
 
 `market_bar`는 데이터 규모가 확인된 뒤 종목 또는 시간 기준 파티셔닝을 적용한다. 초기부터 TimescaleDB에 의존하지 않는다.
+
+2단계 첫 리비전은 `instrument`, 최신 `quote`, 일봉 `market_bar`, append-only `raw_api_response`, 수집 상태 `api_sync_status`를 생성했다. 나머지 표의 엔터티는 해당 단계에서 추가한다.
 
 ### 4.2 분석 및 학습 데이터
 

@@ -1,0 +1,35 @@
+{
+  "rt_cd": "0",
+  "msg_cd": "MCA00000",
+  "msg1": "정상처리 되었습니다.",
+  "output1": {
+    "stck_shrn_iscd": "069500",
+    "hts_kor_isnm": "KODEX 200"
+  },
+  "output2": [
+    {
+      "stck_bsop_date": "20260813",
+      "stck_oprc": "38010",
+      "stck_hgpr": "38400",
+      "stck_lwpr": "37950",
+      "stck_clpr": "38250",
+      "acml_vol": "5210000",
+      "acml_tr_pbmn": "199000000000",
+      "mod_yn": "N",
+      "prtt_rate": "",
+      "revl_issu_reas": ""
+    },
+    {
+      "stck_bsop_date": "20260812",
+      "stck_oprc": "37750",
+      "stck_hgpr": "38100",
+      "stck_lwpr": "37680",
+      "stck_clpr": "38000",
+      "acml_vol": "4900000",
+      "acml_tr_pbmn": "185000000000",
+      "mod_yn": "N",
+      "prtt_rate": "",
+      "revl_issu_reas": ""
+    }
+  ]
+}

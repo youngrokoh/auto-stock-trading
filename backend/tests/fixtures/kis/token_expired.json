@@ -1,0 +1,6 @@
+{
+  "access_token": "expired-fixture-token",
+  "token_type": "Bearer",
+  "expires_in": 0,
+  "access_token_token_expired": "2020-08-14 12:00:00"
+}

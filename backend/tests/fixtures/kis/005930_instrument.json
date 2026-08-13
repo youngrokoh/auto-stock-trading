@@ -1,0 +1,19 @@
+{
+  "rt_cd": "0",
+  "msg_cd": "MCA00000",
+  "msg1": "정상처리 되었습니다.",
+  "output": {
+    "pdno": "005930",
+    "prdt_type_cd": "300",
+    "prdt_name": "삼성전자",
+    "prdt_eng_name": "Samsung Electronics",
+    "mket_id_cd": "STK",
+    "etf_dvsn_cd": "",
+    "scts_mket_lstg_dt": "19750611",
+    "scts_mket_lstg_abol_dt": "",
+    "kosdaq_mket_lstg_dt": "",
+    "kosdaq_mket_lstg_abol_dt": "",
+    "lstg_abol_dt": "",
+    "tr_stop_yn": "N"
+  }
+}

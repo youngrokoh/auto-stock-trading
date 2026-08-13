@@ -1,0 +1,103 @@
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import TYPE_CHECKING, NewType
+from uuid import UUID
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+    from decimal import Decimal
+
+InstrumentId = NewType("InstrumentId", UUID)
+
+
+class ProductType(StrEnum):
+    STOCK = "stock"
+    ETF = "etf"
+
+
+class SyncState(StrEnum):
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class BrokerOperation(StrEnum):
+    INSTRUMENT = "instrument"
+    QUOTE = "quote"
+    DAILY_BARS = "daily_bars"
+
+
+@dataclass(frozen=True, slots=True)
+class InstrumentTarget:
+    symbol: str
+    product_type: ProductType
+
+
+@dataclass(frozen=True, slots=True)
+class RawBrokerResponse:
+    operation: BrokerOperation
+    endpoint: str
+    request_fingerprint: str
+    received_at: datetime
+    payload_json: str
+
+
+@dataclass(frozen=True, slots=True)
+class Instrument:
+    country: str
+    exchange: str
+    symbol: str
+    product_type: ProductType
+    currency: str
+    name: str
+    english_name: str | None
+    listed_on: date | None
+    delisted_on: date | None
+    trading_status: str
+    source: str
+    source_as_of: date
+
+
+@dataclass(frozen=True, slots=True)
+class Quote:
+    symbol: str
+    price: Decimal
+    open_price: Decimal
+    high_price: Decimal
+    low_price: Decimal
+    previous_close: Decimal
+    change: Decimal
+    change_percent: Decimal
+    volume: int
+    trading_value: Decimal
+    currency: str
+    source: str
+    as_of: datetime
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class DailyBar:
+    symbol: str
+    trading_date: date
+    open_price: Decimal
+    high_price: Decimal
+    low_price: Decimal
+    close_price: Decimal
+    volume: int
+    trading_value: Decimal
+    adjusted: bool
+    correction_code: str | None
+    split_ratio: Decimal | None
+    source: str
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class MarketDataBundle:
+    target: InstrumentTarget
+    instrument: Instrument
+    quote: Quote
+    daily_bars: tuple[DailyBar, ...]
+    raw_responses: tuple[RawBrokerResponse, ...]
+    collected_at: datetime

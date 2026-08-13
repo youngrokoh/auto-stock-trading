@@ -1,0 +1,65 @@
+from datetime import date, datetime
+from decimal import Decimal
+from typing import ClassVar
+
+from pydantic import BaseModel, ConfigDict
+
+
+class MarketDataResponse(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class InstrumentResponse(MarketDataResponse):
+    country: str
+    exchange: str
+    symbol: str
+    product_type: str
+    currency: str
+    name: str
+    english_name: str | None
+    listed_on: date | None
+    delisted_on: date | None
+    trading_status: str
+    source: str
+    source_as_of: date
+
+
+class QuoteResponse(MarketDataResponse):
+    symbol: str
+    price: Decimal
+    open_price: Decimal
+    high_price: Decimal
+    low_price: Decimal
+    previous_close: Decimal
+    change: Decimal
+    change_percent: Decimal
+    volume: int
+    trading_value: Decimal
+    currency: str
+    source: str
+    as_of: datetime
+    received_at: datetime
+
+
+class DailyBarResponse(MarketDataResponse):
+    trading_date: date
+    open_price: Decimal
+    high_price: Decimal
+    low_price: Decimal
+    close_price: Decimal
+    volume: int
+    trading_value: Decimal
+    adjusted: bool
+    correction_code: str | None
+    split_ratio: Decimal | None
+    source: str
+    received_at: datetime
+
+
+class DailyBarsResponse(MarketDataResponse):
+    symbol: str
+    interval: str = "1d"
+    start_date: date | None
+    end_date: date | None
+    source: str | None
+    bars: tuple[DailyBarResponse, ...]
