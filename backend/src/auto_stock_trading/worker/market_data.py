@@ -6,6 +6,10 @@ from zoneinfo import ZoneInfo
 import anyio
 from pydantic import SecretStr
 
+from auto_stock_trading.adapters.brokers.kis_coordination import (
+    ValkeyKisRequestCoordinator,
+    kis_coordination_scope,
+)
 from auto_stock_trading.adapters.brokers.kis_http import (
     KisConfigurationError,
     KisCredentials,
@@ -81,6 +85,14 @@ async def collect_seed_market_data(
     http_client = KisHttpClient(
         create_kis_http_client(settings.kis_base_url),
         credentials,
+        ValkeyKisRequestCoordinator.from_url(
+            settings.valkey_url.get_secret_value(),
+            kis_coordination_scope(
+                settings.kis_environment.value,
+                credentials.app_key,
+                credentials.app_secret,
+            ),
+        ),
     )
     instrument_details_available = settings.kis_environment is KisEnvironment.LIVE
     source = KisMarketDataAdapter(

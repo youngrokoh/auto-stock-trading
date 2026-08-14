@@ -13,13 +13,14 @@
 | [ADR-0002: Python·React 기술 기준선 채택](../decisions/0002-technology-baseline.md) | `docs/decisions/0002-technology-baseline.md` | 승인 |
 | [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](../decisions/0003-data-architecture.md) | `docs/decisions/0003-data-architecture.md` | 승인 |
 | [ADR-0004: AI 신호와 주문 실행 분리](../decisions/0004-ai-execution-separation.md) | `docs/decisions/0004-ai-execution-separation.md` | 승인 |
+| [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](../decisions/0005-kis-token-and-rate-coordination.md) | `docs/decisions/0005-kis-token-and-rate-coordination.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |
 | [자동매매 운영 UI 디자인 시스템](../design/design-system.md) | `docs/design/design-system.md` | 승인 |
 | [디자인 시안 생성 프롬프트](../design/proposal-generation-prompts.md) | `docs/design/proposal-generation-prompts.md` | 기록 |
 | [문서 동기화 정책](../governance/documentation-policy.md) | `docs/governance/documentation-policy.md` | 승인 |
-| [KIS 모의환경 검증 런북](../operations/kis-paper-verification.md) | `docs/operations/kis-paper-verification.md` | 실제 모의 API 반복 수집 검증 완료 |
+| [KIS 모의환경 검증 런북](../operations/kis-paper-verification.md) | `docs/operations/kis-paper-verification.md` | 실제 모의 API 반복 수집·프로세스 간 토큰 재사용 검증 완료 |
 | [로컬 개발과 실행](../operations/local-development.md) | `docs/operations/local-development.md` | 구현됨 |
 | [현재 프로젝트 상태와 다음 세션 인계](../plan/current-status.md) | `docs/plan/current-status.md` | 진행 중 |
 | [자동매매 웹 프로그램 구현 로드맵](../plan/implementation-roadmap.md) | `docs/plan/implementation-roadmap.md` | 승인 |

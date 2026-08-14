@@ -10,10 +10,14 @@ require "yaml"
 compose = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
 paper_compose = YAML.safe_load(File.read(ARGV.fetch(1)), aliases: true)
 postgres = compose.fetch("services").fetch("postgres")
+valkey = compose.fetch("services").fetch("valkey")
 volume_targets = postgres.fetch("volumes").map { |volume| volume.split(":", 2).fetch(1) }
 
 unless volume_targets.include?("/var/lib/postgresql")
   abort "PostgreSQL 18 data volume must target /var/lib/postgresql"
+end
+unless valkey.fetch("ports") == ["127.0.0.1:6379:6379"]
+  abort "Valkey host port must bind to 127.0.0.1 only"
 end
 
 paper_worker = paper_compose.fetch("services").fetch("worker")

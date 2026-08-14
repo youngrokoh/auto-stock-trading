@@ -72,6 +72,8 @@ infra/
 
 기본 `infra/compose.yaml`에는 KIS 키를 전달하지 않는다. 실제 모의검증에서만 `infra/compose.kis-paper.yaml`을 함께 적용해 Git과 Docker 빌드 컨텍스트에서 제외된 `.secrets/` 파일을 worker의 `/run/secrets`에 마운트한다. 이 override는 실전 환경 값을 받을 수 없도록 `paper`를 고정한다.
 
+프로세스 간 KIS 토큰과 REST 호출 간격은 승인된 [ADR-0005](../decisions/0005-kis-token-and-rate-coordination.md)에 따라 Valkey에서 조정한다. 모의·실전 환경과 자격증명 지문마다 키 공간을 나누고, 토큰이 필요할 때 한 worker만 분산 잠금을 획득한다. Valkey를 사용할 수 없으면 개별 worker가 토큰 발급이나 KIS 요청으로 우회하지 않는다. 로컬 Valkey 호스트 포트는 `127.0.0.1`에만 바인딩한다.
+
 ## 데이터베이스 초기 상태
 
 첫 Alembic 리비전 `20260811_0001`은 다음 PostgreSQL 스키마를 만든다.

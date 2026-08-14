@@ -4,6 +4,10 @@ from urllib.parse import parse_qs
 import httpx2
 from pydantic import SecretStr
 
+from auto_stock_trading.adapters.brokers.kis_coordination import (
+    InMemoryKisRequestCoordinator,
+    KisCoordinationConfig,
+)
 from auto_stock_trading.adapters.brokers.kis_http import KisCredentials, KisHttpClient
 from auto_stock_trading.adapters.brokers.kis_market_data import (
     DAILY_BARS_ENDPOINT,
@@ -71,7 +75,7 @@ def create_fixture_adapter(
     http_client = KisHttpClient(
         client,
         KisCredentials(SecretStr("fixture-app-key"), SecretStr("fixture-app-secret")),
-        minimum_interval_seconds=0,
+        InMemoryKisRequestCoordinator(KisCoordinationConfig(minimum_interval_seconds=0)),
     )
     return KisMarketDataAdapter(
         http_client,

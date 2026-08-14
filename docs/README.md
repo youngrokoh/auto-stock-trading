@@ -10,7 +10,7 @@
 
 - FastAPI 생존·준비 상태 API
 - PostgreSQL 18 마이그레이션과 Valkey 작업 큐
-- KIS 토큰 관리와 대표 주식·ETF 시장 데이터 수집 Taskiq worker
+- Valkey 공유 KIS 토큰·호출 게이트와 대표 주식·ETF 시장 데이터 수집 Taskiq worker
 - 원본 응답과 정규화 데이터를 분리한 PostgreSQL 저장소
 - 종목정보·최신 현재가·비수정 일봉 읽기 API
 - Caddy가 제공하는 React 운영 대시보드와 API 프록시
@@ -125,6 +125,7 @@ Taskiq worker ── Valkey
 - [ADR-0002: Python·React 기술 기준선 채택](decisions/0002-technology-baseline.md)
 - [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](decisions/0003-data-architecture.md)
 - [ADR-0004: AI 신호와 주문 실행 분리](decisions/0004-ai-execution-separation.md)
+- [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](decisions/0005-kis-token-and-rate-coordination.md)
 
 #### Governance
 

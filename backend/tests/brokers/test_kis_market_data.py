@@ -7,6 +7,7 @@ import httpx2
 from pydantic import SecretStr
 
 from auto_stock_trading.adapters.brokers.kis_contracts import KisInstrumentResponse
+from auto_stock_trading.adapters.brokers.kis_coordination import InMemoryKisRequestCoordinator
 from auto_stock_trading.adapters.brokers.kis_http import KisCredentials, KisHttpClient
 from auto_stock_trading.adapters.brokers.kis_mapping import instrument_from
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
@@ -150,10 +151,14 @@ def test_kis_client_default_interval_respects_the_paper_rate_limit() -> None:
     http_client = KisHttpClient(
         client,
         KisCredentials(SecretStr("fixture-app-key"), SecretStr("fixture-app-secret")),
+        InMemoryKisRequestCoordinator(),
     )
 
     async def run() -> None:
-        with patch("auto_stock_trading.adapters.brokers.kis_http.anyio.sleep", record_wait):
+        with patch(
+            "auto_stock_trading.adapters.brokers.kis_coordination.anyio.sleep",
+            record_wait,
+        ):
             for fingerprint in ("first", "second"):
                 _ = await http_client.get(
                     endpoint="/uapi/example",

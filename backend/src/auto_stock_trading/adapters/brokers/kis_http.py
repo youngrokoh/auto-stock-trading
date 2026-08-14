@@ -2,20 +2,22 @@ import logging
 import socket
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import ClassVar, Final, final, override
+from datetime import UTC, datetime
+from typing import ClassVar, final, override
 from zoneinfo import ZoneInfo
 
-import anyio
 import httpx2
 from pydantic import SecretStr, ValidationError
 
 from auto_stock_trading.adapters.brokers.kis_contracts import KisTokenResponse
+from auto_stock_trading.adapters.brokers.kis_coordination import (
+    KisAccessToken,
+    KisRequestCoordinator,
+)
 
 logger = logging.getLogger(__name__)
 _AUTH_ENDPOINT = "/oauth2/tokenP"
 _HTTP_ERROR_STATUS = 400
-_DEFAULT_MINIMUM_INTERVAL_SECONDS: Final = 1.05
 
 _LIMITS = httpx2.Limits(
     max_connections=200,
@@ -40,12 +42,6 @@ class KisRawResponse:
     request_fingerprint: str
     received_at: datetime
     payload_json: str
-
-
-@dataclass(frozen=True, slots=True)
-class _CachedToken:
-    value: SecretStr
-    expires_at: datetime
 
 
 @final
@@ -111,16 +107,11 @@ class KisHttpClient:
         self,
         client: httpx2.AsyncClient,
         credentials: KisCredentials,
-        *,
-        minimum_interval_seconds: float = _DEFAULT_MINIMUM_INTERVAL_SECONDS,
+        coordinator: KisRequestCoordinator,
     ) -> None:
         self._client = client
         self._credentials = credentials
-        self._minimum_interval_seconds = minimum_interval_seconds
-        self._token: _CachedToken | None = None
-        self._token_lock = anyio.Lock()
-        self._request_lock = anyio.Lock()
-        self._last_request_at: float | None = None
+        self._coordinator = coordinator
 
     async def get(
         self,
@@ -151,40 +142,38 @@ class KisHttpClient:
         )
 
     async def close(self) -> None:
-        await self._client.aclose()
+        try:
+            await self._client.aclose()
+        finally:
+            await self._coordinator.close()
 
     async def _access_token(self) -> SecretStr:
-        now = datetime.now(UTC)
-        if self._token is not None and self._token.expires_at > now + timedelta(minutes=1):
-            return self._token.value
-        async with self._token_lock:
-            now = datetime.now(UTC)
-            if self._token is not None and self._token.expires_at > now + timedelta(minutes=1):
-                return self._token.value
-            response = await self._request(
-                "POST",
-                _AUTH_ENDPOINT,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "grant_type": "client_credentials",
-                    "appkey": self._credentials.app_key.get_secret_value(),
-                    "appsecret": self._credentials.app_secret.get_secret_value(),
-                },
-            )
-            try:
-                token_response = KisTokenResponse.model_validate_json(response.text)
-                expires_at = (
-                    datetime.strptime(
-                        token_response.access_token_token_expired,
-                        "%Y-%m-%d %H:%M:%S",
-                    )
-                    .replace(tzinfo=self._SEOUL)
-                    .astimezone(UTC)
+        return await self._coordinator.token(self._issue_token)
+
+    async def _issue_token(self) -> KisAccessToken:
+        response = await self._request(
+            "POST",
+            _AUTH_ENDPOINT,
+            headers={"Content-Type": "application/json"},
+            json={
+                "grant_type": "client_credentials",
+                "appkey": self._credentials.app_key.get_secret_value(),
+                "appsecret": self._credentials.app_secret.get_secret_value(),
+            },
+        )
+        try:
+            token_response = KisTokenResponse.model_validate_json(response.text)
+            expires_at = (
+                datetime.strptime(
+                    token_response.access_token_token_expired,
+                    "%Y-%m-%d %H:%M:%S",
                 )
-            except (ValidationError, ValueError) as error:
-                raise KisTransportError(_AUTH_ENDPOINT, response.status_code) from error
-            self._token = _CachedToken(token_response.access_token, expires_at)
-            return self._token.value
+                .replace(tzinfo=self._SEOUL)
+                .astimezone(UTC)
+            )
+        except (ValidationError, ValueError) as error:
+            raise KisTransportError(_AUTH_ENDPOINT, response.status_code) from error
+        return KisAccessToken(token_response.access_token, expires_at)
 
     async def _request(
         self,
@@ -195,24 +184,17 @@ class KisHttpClient:
         params: dict[str, str] | None = None,
         json: dict[str, str] | None = None,
     ) -> httpx2.Response:
-        async with self._request_lock:
-            now = anyio.current_time()
-            if self._last_request_at is not None:
-                wait_seconds = self._minimum_interval_seconds - (now - self._last_request_at)
-                if wait_seconds > 0:
-                    await anyio.sleep(wait_seconds)
-            try:
-                response = await self._client.request(
-                    method,
-                    endpoint,
-                    headers=headers,
-                    params=params,
-                    json=json,
-                )
-            except httpx2.HTTPError as error:
-                raise KisTransportError(endpoint, None) from error
-            finally:
-                self._last_request_at = anyio.current_time()
+        await self._coordinator.wait_for_request_slot()
+        try:
+            response = await self._client.request(
+                method,
+                endpoint,
+                headers=headers,
+                params=params,
+                json=json,
+            )
+        except httpx2.HTTPError as error:
+            raise KisTransportError(endpoint, None) from error
         if response.status_code >= _HTTP_ERROR_STATUS:
             raise KisTransportError(endpoint, response.status_code)
         return response
