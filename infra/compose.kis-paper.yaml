@@ -1,0 +1,15 @@
+services:
+  worker:
+    environment:
+      AUTO_STOCK_KIS_ENVIRONMENT: paper
+      AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_app_key
+      AUTO_STOCK_KIS_APP_SECRET_FILE: /run/secrets/kis_app_secret
+    secrets:
+      - kis_app_key
+      - kis_app_secret
+
+secrets:
+  kis_app_key:
+    file: ${KIS_PAPER_APP_KEY_FILE:-../.secrets/kis-paper-app-key}
+  kis_app_secret:
+    file: ${KIS_PAPER_APP_SECRET_FILE:-../.secrets/kis-paper-app-secret}

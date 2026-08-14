@@ -20,7 +20,7 @@
 ## 출처와 시각
 
 - 모든 응답은 `source` 또는 개별 bar의 `source`로 `KIS`를 노출한다.
-- 종목정보의 `source_as_of`는 KIS 종목정보 응답을 수신한 한국 거래일이다.
+- 종목정보의 `source_as_of`는 종목 식별정보의 근거 응답을 수신한 한국 거래일이다. 실전환경은 종목 상세 응답, 모의환경은 일봉 요약 응답을 사용한다.
 - 현재가 REST 응답에는 거래소 체결시각이 없으므로 `as_of`와 `received_at`은 서버가 응답을 수신한 UTC 시각이다.
 - 일봉의 `trading_date`는 거래일, `received_at`은 서버 수신 UTC 시각이다.
 - `adjusted=false`는 KIS 요청의 `FID_ORG_ADJ_PRC=1`, 즉 비수정 원본 가격임을 뜻한다.
@@ -49,10 +49,12 @@ uv run python -m auto_stock_trading.worker.market_data \
   --end-date 2026-08-14
 ```
 
-Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO_STOCK_KIS_APP_KEY`, `AUTO_STOCK_KIS_APP_SECRET`이 필요하며 기본 환경은 모의투자다. 값은 문서·Git·브라우저 번들·로그에 기록하지 않는다.
+Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO_STOCK_KIS_APP_KEY`·`AUTO_STOCK_KIS_APP_SECRET` 직접 값 또는 대응하는 `_FILE` 경로가 필요하며 기본 환경은 모의투자다. 값은 문서·Git·브라우저 번들·로그에 기록하지 않는다. Docker 실행은 [KIS 모의환경 검증 런북](../operations/kis-paper-verification.md)을 따른다.
 
 ## 현재 제한
 
-- 실제 KIS 모의투자 자격증명이 없는 개발 환경에서는 공식 응답 형태 fixture로 계약을 검증한다.
+- KIS 모의환경은 종목 상세 `CTPF1002R`을 지원하지 않아 종목명·상품유형만 구성한다. 상장·상장폐지일과 영문명은 후속 종목 마스터 수집 전까지 제공하지 않는다.
+- 모의투자 REST 요청은 현재 초당 1건 제한에 맞춰 최소 1.05초 간격으로 실행한다.
+- 접근 토큰 캐시는 현재 프로세스 범위다. 독립 프로세스의 빈번한 재실행을 지원하기 위한 Valkey 기반 토큰 재사용은 주기 수집 스케줄러와 함께 구현한다.
 - 현재가 `as_of`는 체결시각이 아니라 수신시각이다. 향후 실시간 스트림에서는 거래소 시각을 별도 저장한다.
 - 수정주가, 분봉, 시장 달력, 기업행사와 수집 스케줄러는 아직 구현하지 않았다.

@@ -22,7 +22,7 @@ Taskiq worker ─┬─ Valkey 작업 큐
                └─ PostgreSQL
 ```
 
-작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data` 작업을 등록했다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
+작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data` 작업을 등록했다. 모의환경은 지원되지 않는 종목 상세 TR을 호출하지 않고 일봉 요약에서 최소 종목정보를 구성한다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
 
 ## 저장소 구조
 
@@ -48,6 +48,7 @@ frontend/
 
 infra/
 ├─ compose.yaml       PostgreSQL, Valkey, migration, API, worker, web
+├─ compose.kis-paper.yaml  모의환경 강제와 worker 전용 Docker secret
 └─ Caddyfile          같은 출처 라우팅과 보안 헤더
 ```
 
@@ -64,8 +65,12 @@ infra/
 | `AUTO_STOCK_KIS_ENVIRONMENT` | `paper` 또는 `live` KIS 호스트 선택 | 금지 |
 | `AUTO_STOCK_KIS_APP_KEY` | KIS 서버 앱 키 | 금지 |
 | `AUTO_STOCK_KIS_APP_SECRET` | KIS 서버 앱 시크릿 | 금지 |
+| `AUTO_STOCK_KIS_APP_KEY_FILE` | Docker secret 앱 키 파일 경로 | 금지 |
+| `AUTO_STOCK_KIS_APP_SECRET_FILE` | Docker secret 앱 시크릿 파일 경로 | 금지 |
 
 프론트엔드는 빌드 시 비밀 환경변수를 사용하지 않는다. 개발 전용 React 진단 도구는 `import.meta.env.DEV`에서만 동적 로드하며 `VITE_DISABLE_REACT_DEVTOOLS=1`로 QA 캡처에서 비활성화한다.
+
+기본 `infra/compose.yaml`에는 KIS 키를 전달하지 않는다. 실제 모의검증에서만 `infra/compose.kis-paper.yaml`을 함께 적용해 Git과 Docker 빌드 컨텍스트에서 제외된 `.secrets/` 파일을 worker의 `/run/secrets`에 마운트한다. 이 override는 실전 환경 값을 받을 수 없도록 `paper`를 고정한다.
 
 ## 데이터베이스 초기 상태
 

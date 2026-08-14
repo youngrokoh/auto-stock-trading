@@ -1,6 +1,7 @@
 .git
 .github
 .tools
+.secrets
 .venv
 **/.venv
 **/__pycache__

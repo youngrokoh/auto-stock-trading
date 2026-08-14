@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 
 import anyio
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from auto_stock_trading.adapters.brokers.kis_http import KisTransportError
@@ -34,6 +34,17 @@ def test_collection_recovers_and_upserts_normalized_market_data() -> None:
             target = InstrumentTarget("005930", ProductType.STOCK)
             started_at = datetime(2026, 8, 14, 1, tzinfo=UTC)
             try:
+                _ = await connection.execute(
+                    delete(InstrumentRow).where(InstrumentRow.symbol == target.symbol)
+                )
+                _ = await connection.execute(
+                    delete(RawApiResponseRow).where(
+                        RawApiResponseRow.request_fingerprint.like(f"%:{target.symbol}%")
+                    )
+                )
+                _ = await connection.execute(
+                    delete(SyncStatusRow).where(SyncStatusRow.symbol == target.symbol)
+                )
                 await repository.mark_started(target, started_at)
                 await repository.mark_failed(
                     target,

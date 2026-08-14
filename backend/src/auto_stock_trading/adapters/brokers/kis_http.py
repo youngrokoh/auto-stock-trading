@@ -3,7 +3,7 @@ import socket
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar, final, override
+from typing import ClassVar, Final, final, override
 from zoneinfo import ZoneInfo
 
 import anyio
@@ -15,6 +15,7 @@ from auto_stock_trading.adapters.brokers.kis_contracts import KisTokenResponse
 logger = logging.getLogger(__name__)
 _AUTH_ENDPOINT = "/oauth2/tokenP"
 _HTTP_ERROR_STATUS = 400
+_DEFAULT_MINIMUM_INTERVAL_SECONDS: Final = 1.05
 
 _LIMITS = httpx2.Limits(
     max_connections=200,
@@ -111,7 +112,7 @@ class KisHttpClient:
         client: httpx2.AsyncClient,
         credentials: KisCredentials,
         *,
-        minimum_interval_seconds: float = 0.5,
+        minimum_interval_seconds: float = _DEFAULT_MINIMUM_INTERVAL_SECONDS,
     ) -> None:
         self._client = client
         self._credentials = credentials

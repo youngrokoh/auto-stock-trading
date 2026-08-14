@@ -58,6 +58,8 @@ class KisFixtureHandler:
 
 def create_fixture_adapter(
     token_filenames: tuple[str, ...] = ("token.json",),
+    *,
+    instrument_details_available: bool = True,
 ) -> tuple[KisMarketDataAdapter, KisFixtureHandler]:
     handler = KisFixtureHandler(token_filenames)
     client = httpx2.AsyncClient(
@@ -71,4 +73,7 @@ def create_fixture_adapter(
         KisCredentials(SecretStr("fixture-app-key"), SecretStr("fixture-app-secret")),
         minimum_interval_seconds=0,
     )
-    return KisMarketDataAdapter(http_client), handler
+    return KisMarketDataAdapter(
+        http_client,
+        instrument_details_available=instrument_details_available,
+    ), handler

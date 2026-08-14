@@ -110,6 +110,7 @@ Taskiq worker ── Valkey
 #### Operations
 
 - [로컬 개발과 실행](operations/local-development.md)
+- [KIS 모의환경 검증 런북](operations/kis-paper-verification.md)
 
 #### QA
 

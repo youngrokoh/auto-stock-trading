@@ -1,6 +1,7 @@
 .DS_Store
 .codegraph
 .env
+.secrets/
 .tools/
 .venv/
 __pycache__/

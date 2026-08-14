@@ -1,4 +1,5 @@
 from enum import StrEnum
+from pathlib import Path
 from typing import ClassVar
 
 from pydantic import SecretStr
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     kis_environment: KisEnvironment = KisEnvironment.PAPER
     kis_app_key: SecretStr | None = None
     kis_app_secret: SecretStr | None = None
+    kis_app_key_file: Path | None = None
+    kis_app_secret_file: Path | None = None
 
     @property
     def kis_base_url(self) -> str:

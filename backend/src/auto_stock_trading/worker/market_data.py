@@ -1,9 +1,10 @@
 import argparse
 from datetime import UTC, date, datetime, timedelta
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
 import anyio
+from pydantic import SecretStr
 
 from auto_stock_trading.adapters.brokers.kis_http import (
     KisConfigurationError,
@@ -17,8 +18,11 @@ from auto_stock_trading.adapters.database.market_data_repository import (
 )
 from auto_stock_trading.application.market_data import MarketDataCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
-from auto_stock_trading.settings.runtime import Settings
+from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.broker import broker
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _TARGETS: Final = (
@@ -32,16 +36,38 @@ class Arguments(argparse.Namespace):
     end_date: str | None = None
 
 
+def load_kis_credentials(settings: Settings) -> KisCredentials:
+    return KisCredentials(
+        _secret_from(settings.kis_app_key, settings.kis_app_key_file, "AUTO_STOCK_KIS_APP_KEY"),
+        _secret_from(
+            settings.kis_app_secret,
+            settings.kis_app_secret_file,
+            "AUTO_STOCK_KIS_APP_SECRET",
+        ),
+    )
+
+
+def _secret_from(direct: SecretStr | None, file_path: Path | None, setting_name: str) -> SecretStr:
+    if direct is not None and direct.get_secret_value():
+        return direct
+    if file_path is not None:
+        try:
+            value = file_path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError) as error:
+            message = f"{setting_name} or {setting_name}_FILE is required"
+            raise KisConfigurationError(message) from error
+        if value:
+            return SecretStr(value)
+    message = f"{setting_name} or {setting_name}_FILE is required"
+    raise KisConfigurationError(message)
+
+
 async def collect_seed_market_data(
     start_date_text: str | None = None,
     end_date_text: str | None = None,
 ) -> tuple[str, ...]:
     settings = Settings()
-    app_key = settings.kis_app_key
-    app_secret = settings.kis_app_secret
-    if app_key is None or app_secret is None:
-        message = "AUTO_STOCK_KIS_APP_KEY and AUTO_STOCK_KIS_APP_SECRET are required"
-        raise KisConfigurationError(message)
+    credentials = load_kis_credentials(settings)
     end_date = (
         date.fromisoformat(end_date_text)
         if end_date_text is not None
@@ -54,9 +80,13 @@ async def collect_seed_market_data(
     )
     http_client = KisHttpClient(
         create_kis_http_client(settings.kis_base_url),
-        KisCredentials(app_key, app_secret),
+        credentials,
     )
-    source = KisMarketDataAdapter(http_client)
+    instrument_details_available = settings.kis_environment is KisEnvironment.LIVE
+    source = KisMarketDataAdapter(
+        http_client,
+        instrument_details_available=instrument_details_available,
+    )
     store = PostgresMarketDataRepository.from_url(settings.database_url.get_secret_value())
     collector = MarketDataCollector(source, store)
     try:

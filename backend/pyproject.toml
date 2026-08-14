@@ -64,6 +64,7 @@ ignore = [
 "src/auto_stock_trading/api/market_data.py" = ["TC003"]
 "src/auto_stock_trading/api/models.py" = ["TC001"]
 "src/auto_stock_trading/api/*_models.py" = ["TC001", "TC003"]
+"src/auto_stock_trading/settings/runtime.py" = ["TC003"]
 "tests/**/*.py" = ["PLR2004"]
 
 [tool.basedpyright]

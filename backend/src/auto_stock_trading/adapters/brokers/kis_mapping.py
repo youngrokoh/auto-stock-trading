@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from auto_stock_trading.adapters.brokers.kis_contracts import (
         KisDailyBarOutput,
+        KisDailyBarsResponse,
         KisInstrumentResponse,
         KisQuoteResponse,
     )
@@ -89,6 +90,27 @@ def instrument_from(
         listed_on=listed_on,
         delisted_on=delisted_on,
         trading_status="suspended" if output.tr_stop_yn == "Y" else "active",
+        source=KIS_SOURCE,
+        source_as_of=received_at.astimezone(_SEOUL).date(),
+    )
+
+
+def instrument_from_daily_summary(
+    target: InstrumentTarget,
+    response: KisDailyBarsResponse,
+    received_at: datetime,
+) -> Instrument:
+    return Instrument(
+        country="KR",
+        exchange="XKRX",
+        symbol=target.symbol,
+        product_type=target.product_type,
+        currency="KRW",
+        name=response.output1.hts_kor_isnm or target.symbol,
+        english_name=None,
+        listed_on=None,
+        delisted_on=None,
+        trading_status="active",
         source=KIS_SOURCE,
         source_as_of=received_at.astimezone(_SEOUL).date(),
     )

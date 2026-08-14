@@ -14,15 +14,19 @@
 
 Python과 JavaScript 패키지는 lockfile로 고정한다. API 키나 계좌번호를 `.env.example`에 기록하지 않는다.
 
-KIS 시장 데이터 수집은 서버 프로세스에만 다음 환경변수를 설정한다. 값을 셸 이력, 문서, Git, 프론트엔드 환경변수와 로그에 남기지 않는다.
+KIS 시장 데이터 수집은 서버 프로세스에서 직접 환경변수를 사용하거나 Docker secret 파일 경로를 사용한다. 값을 셸 이력, 문서, Git, 프론트엔드 환경변수와 로그에 남기지 않는다.
 
 ```text
 AUTO_STOCK_KIS_ENVIRONMENT=paper
 AUTO_STOCK_KIS_APP_KEY=<server-only>
 AUTO_STOCK_KIS_APP_SECRET=<server-only>
+AUTO_STOCK_KIS_APP_KEY_FILE=/run/secrets/kis_app_key
+AUTO_STOCK_KIS_APP_SECRET_FILE=/run/secrets/kis_app_secret
 ```
 
-`AUTO_STOCK_KIS_ENVIRONMENT`의 기본값은 `paper`이며 실제 주문 기능과는 연결되지 않는다.
+직접 값과 파일 경로 중 하나만 사용한다. 직접 값이 있으면 파일보다 우선한다. `AUTO_STOCK_KIS_ENVIRONMENT`의 기본값은 `paper`이며 실제 주문 기능과는 연결되지 않는다.
+
+실제 모의투자 키로 반복 수집을 검증할 때는 [KIS 모의환경 검증 런북](kis-paper-verification.md)을 따른다. `infra/compose.kis-paper.yaml`은 모의 환경을 강제하고 `.secrets/`의 키를 Docker secret으로 worker에만 마운트한다.
 
 macOS에서는 Homebrew로 컨테이너와 개발 도구를 준비한다.
 
@@ -86,6 +90,8 @@ uv run python -m auto_stock_trading.worker.market_data \
 ```
 
 현재 대상은 삼성전자 `005930`과 KODEX 200 `069500`이다. 자격증명이 없으면 비밀 값을 출력하지 않고 명시적인 설정 오류로 종료한다.
+
+KIS 모의투자 REST API는 초당 1건 제한을 적용하므로 기본 클라이언트는 인증과 시세 요청 사이에 최소 1.05초 간격을 둔다. 토큰은 프로세스 안에서 재사용하지만 일회성 컨테이너를 다시 실행하면 새 프로세스가 토큰 발급을 시도한다. 즉시 재실행이 `/oauth2/tokenP` HTTP `403`으로 거절되면 반복 호출하지 않고 [모의환경 검증 런북](kis-paper-verification.md)의 재실행 절차를 따른다.
 
 ## 프론트엔드만 실행
 

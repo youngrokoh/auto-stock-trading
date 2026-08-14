@@ -8,6 +8,7 @@ from auto_stock_trading.adapters.brokers.kis_contracts import (
 from auto_stock_trading.adapters.brokers.kis_mapping import (
     bar_from,
     instrument_from,
+    instrument_from_daily_summary,
     parse_response,
     quote_from,
     raw_from,
@@ -41,8 +42,14 @@ class MarketDataSource(Protocol):
 
 @final
 class KisMarketDataAdapter:
-    def __init__(self, client: KisHttpClient) -> None:
+    def __init__(
+        self,
+        client: KisHttpClient,
+        *,
+        instrument_details_available: bool,
+    ) -> None:
         self._client = client
+        self._instrument_details_available = instrument_details_available
 
     async def fetch_bundle(
         self,
@@ -53,11 +60,15 @@ class KisMarketDataAdapter:
         if start_date > end_date:
             msg = "start_date must not be after end_date"
             raise ValueError(msg)
-        instrument_raw = await self._client.get(
-            endpoint=INSTRUMENT_ENDPOINT,
-            transaction_id="CTPF1002R",
-            params={"PRDT_TYPE_CD": "300", "PDNO": target.symbol},
-            request_fingerprint=f"instrument:{target.symbol}",
+        instrument_raw = (
+            await self._client.get(
+                endpoint=INSTRUMENT_ENDPOINT,
+                transaction_id="CTPF1002R",
+                params={"PRDT_TYPE_CD": "300", "PDNO": target.symbol},
+                request_fingerprint=f"instrument:{target.symbol}",
+            )
+            if self._instrument_details_available
+            else None
         )
         quote_raw = await self._client.get(
             endpoint=QUOTE_ENDPOINT,
@@ -78,18 +89,34 @@ class KisMarketDataAdapter:
             },
             request_fingerprint=f"daily_bars:{target.symbol}:{start_date}:{end_date}:original",
         )
-        instrument_response = parse_response(
-            instrument_raw,
-            KisInstrumentResponse,
-            BrokerOperation.INSTRUMENT,
-        )
         quote_response = parse_response(quote_raw, KisQuoteResponse, BrokerOperation.QUOTE)
         bars_response = parse_response(
             bars_raw,
             KisDailyBarsResponse,
             BrokerOperation.DAILY_BARS,
         )
-        instrument = instrument_from(target, instrument_response, instrument_raw.received_at)
+        if instrument_raw is None:
+            instrument = instrument_from_daily_summary(
+                target,
+                bars_response,
+                bars_raw.received_at,
+            )
+            raw_responses = (
+                raw_from(BrokerOperation.QUOTE, quote_raw),
+                raw_from(BrokerOperation.DAILY_BARS, bars_raw),
+            )
+        else:
+            instrument_response = parse_response(
+                instrument_raw,
+                KisInstrumentResponse,
+                BrokerOperation.INSTRUMENT,
+            )
+            instrument = instrument_from(target, instrument_response, instrument_raw.received_at)
+            raw_responses = (
+                raw_from(BrokerOperation.INSTRUMENT, instrument_raw),
+                raw_from(BrokerOperation.QUOTE, quote_raw),
+                raw_from(BrokerOperation.DAILY_BARS, bars_raw),
+            )
         quote = quote_from(target, quote_response, quote_raw.received_at)
         bars = tuple(bar_from(target, item, bars_raw.received_at) for item in bars_response.output2)
         return MarketDataBundle(
@@ -97,12 +124,8 @@ class KisMarketDataAdapter:
             instrument=instrument,
             quote=quote,
             daily_bars=bars,
-            raw_responses=(
-                raw_from(BrokerOperation.INSTRUMENT, instrument_raw),
-                raw_from(BrokerOperation.QUOTE, quote_raw),
-                raw_from(BrokerOperation.DAILY_BARS, bars_raw),
-            ),
-            collected_at=max(raw.received_at for raw in (instrument_raw, quote_raw, bars_raw)),
+            raw_responses=raw_responses,
+            collected_at=max(raw.received_at for raw in raw_responses),
         )
 
     async def close(self) -> None:
