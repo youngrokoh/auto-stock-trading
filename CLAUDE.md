@@ -90,7 +90,7 @@ The health endpoints are the reference vertical slice for everything added later
 
 `/api/health/ready` returns 503 when degraded (for probes); `/api/health/status` returns the same body always 200 (for the browser, so TanStack Query does not treat degradation as a fetch error). Never leak connection URLs into responses or logs — the e2e test asserts `postgresql://` and `redis://` are absent from the rendered page.
 
-Alembic revision `20260811_0001` creates PostgreSQL schemas (`reference`, `market`, `fundamental`, `strategy`, `trading`, `operations`). Revision `20260814_0002` adds the first market-data tables for instruments, quotes, daily bars, raw responses, and collection runs. The migration test renders offline SQL (`--sql`) rather than requiring a live database.
+Alembic revision `20260811_0001` creates PostgreSQL schemas (`reference`, `market`, `fundamental`, `strategy`, `trading`, `operations`). Revision `20260814_0002` adds the first market-data tables for instruments, quotes, daily bars, raw responses, and collection runs. Revision `20260816_0003` adds the versioned `reference.market_calendar` table. The migration test renders offline SQL (`--sql`), while repository integration tests exercise the applied schema on PostgreSQL.
 
 ADR-0005 is the binding KIS coordination decision. Workers sharing an environment and credential scope reuse a Valkey-cached access token and reserve KIS request slots through a distributed gate. Valkey failure is fail-closed: do not bypass coordination with a local token or independent requests. Keep the Compose Valkey host binding on `127.0.0.1`, and never expose the token cache or include token values in diagnostics.
 
@@ -110,4 +110,4 @@ Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` sw
 
 ## Next implementation work
 
-Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The Korean market-calendar contract now lives in `docs/data/market-calendar-data-contract.md`; implement its Alembic migration, domain types, and PostgreSQL repository next. The KRX collection adapter and same-day confirmation follow, then minute bars and corporate actions/adjusted prices. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.
+Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The Korean market-calendar migration, domain types, and PostgreSQL repository are implemented against `docs/data/market-calendar-data-contract.md`. Implement the KRX collection adapter and KIS same-day confirmation next, then minute bars and corporate actions/adjusted prices. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.

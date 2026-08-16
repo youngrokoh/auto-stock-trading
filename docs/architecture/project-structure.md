@@ -24,6 +24,8 @@ Taskiq worker ─┬─ Valkey 작업 큐
 
 작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data` 작업을 등록했다. 모의환경은 지원되지 않는 종목 상세 TR을 호출하지 않고 일봉 요약에서 최소 종목정보를 구성한다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
 
+시장 달력은 `domain/market_data/calendar_models.py`의 불변 도메인 타입, `calendar_logic.py`의 스케줄 판정, `adapters/database/market_calendar_*`의 행·매핑·SQL·저장소로 분리했다. 기존 호출자는 `domain/market_data/calendar.py` 호환 모듈을 통해 같은 공개 타입을 사용한다.
+
 ## 저장소 구조
 
 ```text
@@ -86,3 +88,5 @@ infra/
 - `operations`
 
 두 번째 리비전 `20260814_0002`는 `reference.instrument`, `operations.raw_api_response`, `operations.api_sync_status`, `market.quote`, `market.market_bar`를 추가한다. Alembic 버전 테이블은 기본 `public` 스키마에 둔다.
+
+세 번째 리비전 `20260816_0003`은 `reference.market_calendar`를 추가한다. 논리 세션별 사실 버전과 현재 행 하나를 보장하고, 정상 거래일·휴장일·단축장의 시각 조합과 확인 상태를 DB 제약조건으로 검증한다.

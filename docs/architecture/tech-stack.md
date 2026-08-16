@@ -135,6 +135,7 @@ EtfReferenceDataAdapter
 - 모델 학습처럼 CPU 사용량이 큰 작업은 별도 프로세스로 격리한다.
 - ListQueueBroker의 블로킹 대기가 유휴 상태에서도 유지되도록 Valkey 연결의 `socket_timeout`을 `None`으로 지정한다.
 - 첫 등록 작업 `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. 스케줄러 자동 등록은 시장 달력 구현 후 추가한다.
+- 시장 달력 저장소는 누락·미확인·충돌·오래된 확인을 fail-closed로 판정한다. 현재 단계에는 KRX 외부 수집 어댑터가 없으므로 자동 스케줄러 연결은 계속 보류한다.
 - 기본 Compose는 자격증명 없이 실행한다. 실제 모의검증은 `compose.kis-paper.yaml`에서 `.secrets/` 파일을 Docker secret으로 worker에만 마운트하며 환경을 `paper`로 강제한다.
 - Valkey 호스트 포트는 로컬 루프백 `127.0.0.1`에만 바인딩한다. 운영 배포에서는 Valkey 포트를 공개하지 않는다.
 
@@ -190,7 +191,7 @@ operations
 
 `market_bar`는 데이터 규모가 확인된 뒤 종목 또는 시간 기준 파티셔닝을 적용한다. 초기부터 TimescaleDB에 의존하지 않는다.
 
-2단계 첫 리비전은 `instrument`, 최신 `quote`, 일봉 `market_bar`, append-only `raw_api_response`, 수집 상태 `api_sync_status`를 생성했다. 나머지 표의 엔터티는 해당 단계에서 추가한다.
+2단계 첫 리비전은 `instrument`, 최신 `quote`, 일봉 `market_bar`, append-only `raw_api_response`, 수집 상태 `api_sync_status`를 생성했다. 후속 리비전은 버전된 `market_calendar`를 생성하고 현재 세션·기간·다음·이전 거래일 조회와 출처 충돌 기록을 구현했다. 나머지 표의 엔터티는 해당 단계에서 추가한다.
 
 ### 4.2 분석 및 학습 데이터
 

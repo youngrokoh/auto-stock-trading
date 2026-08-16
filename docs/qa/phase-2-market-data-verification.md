@@ -1,8 +1,8 @@
 # 2단계 시장 데이터 수직 슬라이스 검증
 
-- 상태: 자동·로컬 통합·실제 KIS 모의환경 검증 완료, 사용자 화면 대조 대기
-- 기준일: 2026-08-14
-- 대상: KIS 인증·종목정보·현재가·비수정 일봉·PostgreSQL·읽기 API
+- 상태: 자동·로컬 통합·실제 KIS 모의환경·시장 달력 저장 검증 완료, 사용자 화면 대조 대기
+- 기준일: 2026-08-16
+- 대상: KIS 인증·종목정보·현재가·비수정 일봉·시장 달력·PostgreSQL·읽기 API
 - 관련 API: [시장 데이터 읽기 API](../api/market-data-api.md)
 
 ## 검증 범위
@@ -25,6 +25,11 @@
 | 모의투자 호출 제한 | 기본 요청 간격 1.05초 검사 | 통과 |
 | 모의환경 미지원 종목 상세 TR 우회 | 일봉 요약으로 최소 종목정보 구성 | 통과 |
 | 실제 KIS 모의환경 | 로컬 모의 키 반복 수집, 공유 토큰 재사용과 DB·API 확인 | 통과 |
+| 시장 달력 스키마와 불변조건 | Alembic offline SQL과 PostgreSQL 적용 | 통과 |
+| 정상·휴장·단축장과 fail-closed 판정 | 도메인 테스트 | 통과 |
+| 동일 사실 재수신과 정정 버전 보존 | PostgreSQL 통합 테스트 | 통과 |
+| KRX 우선순위와 KIS 충돌 차단·오류 기록 | PostgreSQL 통합 테스트 | 통과 |
+| 현재 범위와 다음·이전 거래일 조회 | PostgreSQL 통합 테스트 | 통과 |
 | KIS 앱 화면 값 대조 | 사용자의 모의투자 화면과 육안 비교 | 대기 |
 
 ## 테스트 데이터 근거
@@ -63,6 +68,18 @@ python3 scripts/docs_guard.py check
 - Docker Compose 현재 이미지 빌드와 기동: PostgreSQL·Valkey·API·worker 정상, migration 종료 코드 0
 - 모의전용 worker 이미지 빌드와 Docker secret one-off 실행: 통과
 - 문서 생성·링크·변경 매핑 검사: 통과
+
+2026-08-16 시장 달력 저장 계층 실행 결과:
+
+- Ruff 검사·포맷: 통과
+- basedpyright: 오류 0건, 경고 0건
+- pytest: 37건 통과
+- Alembic `20260816_0003` PostgreSQL 적용: 통과
+- 시장 달력 PostgreSQL 통합 시나리오: 3건 통과
+- Python sdist·wheel 빌드: 통과
+- Compose·문서 계약 검사: 통과
+
+저장소 통합 테스트는 현재 로컬 Compose의 PostgreSQL 18에 실제 리비전을 적용한 뒤 테스트 트랜잭션을 롤백하는 기존 프로젝트 방식을 따른다. 기술 스택에 정의된 Testcontainers 기반 테스트별 격리는 아직 도입하지 않았다.
 
 2026-08-14 모의검증 준비 런타임 관찰:
 
