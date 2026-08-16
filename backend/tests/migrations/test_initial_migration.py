@@ -24,3 +24,6 @@ def test_initial_migration_renders_reproducible_postgres_sql(
     assert "CREATE TABLE reference.market_calendar" in migration_sql
     assert "CONSTRAINT ck_market_calendar_session_window" in migration_sql
     assert "CREATE UNIQUE INDEX uq_market_calendar_current" in migration_sql
+    assert "CREATE TABLE operations.scheduled_job_run" in migration_sql
+    assert "CONSTRAINT uq_scheduled_job_execution UNIQUE" in migration_sql
+    assert "CONSTRAINT ck_scheduled_job_state" in migration_sql

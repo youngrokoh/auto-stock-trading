@@ -133,11 +133,12 @@ AI나 실전 주문부터 시작하지 않는다. 데이터의 시점 정확성�
 - `XKRX` 거래일·휴장일·단축장과 당일 확인 상태를 정의한 시장 달력 데이터 계약
 - `reference.market_calendar` 마이그레이션, 도메인 판정, 버전 저장·현재/범위/다음/이전 조회와 출처 충돌 기록
 - KRX 연간 휴장 일정·임시 거래시간 공지 합성 수집과 KIS 당일 보완 확인 경계
+- 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)의 Taskiq 예약, PostgreSQL 실행 claim과 KRX 전용 Compose 활성화 프로필
 
 남은 범위:
 
 - 분봉, 기업행사와 수정주가 데이터셋
-- 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따른 시장 달력 scheduler, PostgreSQL 실행 claim과 단계별 활성화
+- KIS `CTCA0903R` 실전 읽기 검증 후 별도 자동 확인 플래그 활성화
 
 구현 내용:
 

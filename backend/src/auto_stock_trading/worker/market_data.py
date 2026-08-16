@@ -1,59 +1,33 @@
 import argparse
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from zoneinfo import ZoneInfo
 
 import anyio
-from pydantic import SecretStr
 
 from auto_stock_trading.adapters.brokers.kis_coordination import (
     ValkeyKisRequestCoordinator,
     kis_coordination_scope,
 )
 from auto_stock_trading.adapters.brokers.kis_http import (
-    KisConfigurationError,
     KisCredentials,
     KisHttpClient,
     create_kis_http_client,
 )
-from auto_stock_trading.adapters.brokers.kis_market_calendar import (
-    KisMarketCalendarVerifier,
-)
 from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAdapter
-from auto_stock_trading.adapters.database.market_calendar_repository import (
-    PostgresMarketCalendarRepository,
-)
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
-from auto_stock_trading.adapters.exchanges.krx_composite_calendar import (
-    KrxCompositeCalendarSource,
-)
-from auto_stock_trading.adapters.exchanges.krx_market_calendar import (
-    KrxHttpClient,
-    KrxMarketCalendarAdapter,
-    create_krx_http_client,
-)
-from auto_stock_trading.adapters.exchanges.krx_trading_hours_notices import (
-    KrxTradingHoursHttpClient,
-    KrxTradingHoursNoticeAdapter,
-)
-from auto_stock_trading.application.market_calendar import (
-    KisCalendarConfirmer,
-    KrxCalendarCollector,
-)
 from auto_stock_trading.application.market_data import MarketDataCollector
-from auto_stock_trading.domain.market_data.calendar import (
-    CalendarSessionKey,
-    CalendarSessionRange,
-    MarketSessionType,
-)
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
+from auto_stock_trading.worker import market_calendar
 from auto_stock_trading.worker.broker import broker
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from auto_stock_trading.worker.kis_credentials import load_kis_credentials as _load_kis_credentials
+from auto_stock_trading.worker.market_calendar_schedule import (
+    run_claimed_kis_market_calendar_confirmation,
+    run_claimed_krx_market_calendar,
+)
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _TARGETS: Final = (
@@ -70,29 +44,7 @@ class Arguments(argparse.Namespace):
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
-    return KisCredentials(
-        _secret_from(settings.kis_app_key, settings.kis_app_key_file, "AUTO_STOCK_KIS_APP_KEY"),
-        _secret_from(
-            settings.kis_app_secret,
-            settings.kis_app_secret_file,
-            "AUTO_STOCK_KIS_APP_SECRET",
-        ),
-    )
-
-
-def _secret_from(direct: SecretStr | None, file_path: Path | None, setting_name: str) -> SecretStr:
-    if direct is not None and direct.get_secret_value():
-        return direct
-    if file_path is not None:
-        try:
-            value = file_path.read_text(encoding="utf-8").strip()
-        except (OSError, UnicodeError) as error:
-            message = f"{setting_name} or {setting_name}_FILE is required"
-            raise KisConfigurationError(message) from error
-        if value:
-            return SecretStr(value)
-    message = f"{setting_name} or {setting_name}_FILE is required"
-    raise KisConfigurationError(message)
+    return _load_kis_credentials(settings)
 
 
 async def collect_seed_market_data(
@@ -145,73 +97,11 @@ collect_seed_market_data_task = broker.task(task_name="collect_seed_market_data"
 
 
 async def collect_krx_market_calendar(year: int | None = None) -> int:
-    settings = Settings()
-    selected_year = year if year is not None else datetime.now(_SEOUL).year
-    query = CalendarSessionRange(
-        "KR",
-        "XKRX",
-        date(selected_year, 1, 1),
-        date(selected_year, 12, 31),
-    )
-    annual_source = KrxMarketCalendarAdapter(
-        KrxHttpClient(create_krx_http_client(settings.krx_base_url))
-    )
-    notice_source = KrxTradingHoursNoticeAdapter(
-        KrxTradingHoursHttpClient(
-            create_krx_http_client(settings.krx_open_base_url),
-            create_krx_http_client(settings.krx_attachment_base_url),
-        )
-    )
-    source = KrxCompositeCalendarSource(annual_source, notice_source)
-    store = PostgresMarketCalendarRepository.from_url(settings.database_url.get_secret_value())
-    collector = KrxCalendarCollector(source, store)
-    try:
-        records = await collector.collect(query, datetime.now(UTC))
-    finally:
-        await source.close()
-        await store.close()
-    return len(records)
-
-
-collect_krx_market_calendar_task = broker.task(task_name="collect_krx_market_calendar")(
-    collect_krx_market_calendar
-)
+    return await market_calendar.collect_krx_market_calendar(year, Settings())
 
 
 async def confirm_today_market_calendar() -> str:
-    settings = Settings()
-    if settings.kis_environment is not KisEnvironment.LIVE:
-        message = "KIS market calendar confirmation requires the live environment"
-        raise KisConfigurationError(message)
-    credentials = load_kis_credentials(settings)
-    trading_date = datetime.now(_SEOUL).date()
-    http_client = KisHttpClient(
-        create_kis_http_client(settings.kis_base_url),
-        credentials,
-        ValkeyKisRequestCoordinator.from_url(
-            settings.valkey_url.get_secret_value(),
-            kis_coordination_scope(
-                settings.kis_environment.value,
-                credentials.app_key,
-                credentials.app_secret,
-            ),
-        ),
-    )
-    verifier = KisMarketCalendarVerifier(http_client)
-    store = PostgresMarketCalendarRepository.from_url(settings.database_url.get_secret_value())
-    confirmer = KisCalendarConfirmer(verifier, store)
-    key = CalendarSessionKey("KR", "XKRX", trading_date, MarketSessionType.REGULAR)
-    try:
-        _record = await confirmer.confirm(key, datetime.now(UTC))
-    finally:
-        await verifier.close()
-        await store.close()
-    return trading_date.isoformat()
-
-
-confirm_today_market_calendar_task = broker.task(task_name="confirm_today_market_calendar")(
-    confirm_today_market_calendar
-)
+    return await market_calendar.confirm_today_market_calendar(Settings())
 
 
 def main() -> None:
@@ -222,9 +112,9 @@ def main() -> None:
     _ = parser.add_argument("--confirm-calendar-today", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.confirm_calendar_today:
-        _ = anyio.run(confirm_today_market_calendar)
+        _ = anyio.run(run_claimed_kis_market_calendar_confirmation)
     elif arguments.calendar_year is not None:
-        _ = anyio.run(collect_krx_market_calendar, arguments.calendar_year)
+        _ = anyio.run(run_claimed_krx_market_calendar, arguments.calendar_year)
     else:
         _ = anyio.run(collect_seed_market_data, arguments.start_date, arguments.end_date)
 

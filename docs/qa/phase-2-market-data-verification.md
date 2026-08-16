@@ -1,6 +1,6 @@
 # 2단계 시장 데이터 수직 슬라이스 검증
 
-- 상태: 자동·로컬 통합·실제 KIS 모의환경·실제 KRX 일정 검증 완료, KIS 실전 달력 확인·사용자 화면 대조 대기
+- 상태: 자동·로컬 통합·실제 KIS 모의환경·실제 KRX 일정·scheduler 검증 완료, KIS 실전 달력 확인·사용자 화면 대조 대기
 - 기준일: 2026-08-16
 - 대상: KIS 인증·종목정보·현재가·비수정 일봉·시장 달력·PostgreSQL·읽기 API
 - 관련 API: [시장 데이터 읽기 API](../api/market-data-api.md)
@@ -37,6 +37,9 @@
 | 실제 KRX 임시 거래시간 공지 | 2025 수능일·2026 연초 개장일 공식 PDF 직접 호출 | 통과 |
 | KIS `CTCA0903R` 당일 `opnd_yn` 확인 | 공식 응답 형태 fixture와 HTTP fake | 통과 |
 | KIS 달력 확인의 모의환경 차단 | worker 설정 경계 테스트 | 통과 |
+| 서울 기준 Taskiq 예약과 기본 비활성 | 예약 라벨·설정 경계 테스트 | 통과 |
+| scheduler 중복 실행·실패 회수 | PostgreSQL claim 통합 테스트 | 통과 |
+| 단일 scheduler와 KRX 전용 활성화 | Compose 프로필·비밀정보 계약과 실제 컨테이너 기동 | 통과 |
 | 실제 KIS 실전 달력 확인 | 실전 키 미연결 | 대기 |
 | KIS 앱 화면 값 대조 | 사용자의 모의투자 화면과 육안 비교 | 대기 |
 
@@ -97,7 +100,7 @@ python3 scripts/docs_guard.py check
 - pytest: 44건 통과
 - 시장 달력 PostgreSQL 통합 시나리오: 5건 통과
 - Python sdist·wheel과 프론트엔드 프로덕션 빌드: 통과
-- Taskiq 작업 `collect_krx_market_calendar`, `confirm_today_market_calendar` 등록 확인: 통과
+- KRX 수동 수집과 KIS 실전 전용 확인 함수 조립·모의환경 차단: 통과
 - 실제 KRX 2026 일정: 현재 세션 365건, 휴장 121건, 공유 원본 1건
 - 실제 KRX 동기화 상태: `success`, 오류 코드 없음, 마지막 성공시각 기록
 - `2026-08-14` 정상장, `08-15~16` 주말 휴장, `08-17` 대체휴일, `08-18` 정상장 직접 조회: 통과
@@ -115,6 +118,17 @@ python3 scripts/docs_guard.py check
 - PDF 원문 Base64, 공지 번호와 첨부 메타데이터 원본 계약: 통과
 - 미지원 임시 주식시장 공지와 주식·ETF 범위 누락의 fail-closed 처리: 통과
 - 실제 2025·2026 worker 적재 후 세 날짜의 `shortened` 상태·서울 시각·공지 출처 DB 조회: 통과
+
+2026-08-16 시장 달력 scheduler 실행 결과:
+
+- Alembic `20260816_0004` PostgreSQL 적용: 통과
+- PostgreSQL claim의 유효 lease 중복 차단, 실패 재시도, 만료 lease 회수, 소유권 상실과 성공 종결 시나리오: 통과
+- Taskiq KRX 예약 2개가 `Asia/Seoul`과 고정 schedule ID로 등록되고 KIS 예약은 기본 비활성: 통과
+- Compose `calendar-scheduler` 프로필 빌드·기동 후 단일 scheduler 프로세스 확인: 통과
+- 수동 KRX CLI 첫 실행에서 시장 달력 원본 2건 추가, claim `succeeded`·시도 1회 기록: 통과
+- 같은 날짜·연도의 두 번째 CLI에서 원본 건수와 시도 횟수가 유지되어 외부 호출 건너뛰기 확인: 통과
+- Ruff 검사·포맷, basedpyright, pytest 65건, Python sdist·wheel, Compose·문서 계약 검사: 통과
+- KIS 자동 확인은 실전 읽기 전용 검증과 사용자 활성화 전까지 비활성: 대기
 
 저장소 통합 테스트는 현재 로컬 Compose의 PostgreSQL 18에 실제 리비전을 적용한 뒤 테스트 트랜잭션을 롤백하는 기존 프로젝트 방식을 따른다. 기술 스택에 정의된 Testcontainers 기반 테스트별 격리는 아직 도입하지 않았다.
 

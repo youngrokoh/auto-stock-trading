@@ -71,8 +71,34 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
-    command: ["taskiq", "worker", "auto_stock_trading.worker.market_data:broker"]
+    command:
+      [
+        "taskiq",
+        "worker",
+        "auto_stock_trading.worker.market_data:broker",
+        "auto_stock_trading.worker.market_calendar_schedule",
+      ]
     environment: *backend-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+  calendar-scheduler:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "scheduler",
+        "auto_stock_trading.worker.market_calendar_schedule:scheduler",
+      ]
+    environment:
+      <<: *backend-environment
+      AUTO_STOCK_KRX_CALENDAR_SCHEDULE_ENABLED: "true"
+    profiles: ["calendar-scheduler"]
     depends_on:
       migrate:
         condition: service_completed_successfully

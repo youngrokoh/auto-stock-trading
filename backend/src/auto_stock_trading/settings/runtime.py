@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     krx_base_url: str = "https://global.krx.co.kr"
     krx_open_base_url: str = "https://open.krx.co.kr"
     krx_attachment_base_url: str = "https://inc.krx.co.kr/attach/"
+    krx_calendar_schedule_enabled: bool = False
+    kis_calendar_schedule_enabled: bool = False
 
     @property
     def kis_base_url(self) -> str:

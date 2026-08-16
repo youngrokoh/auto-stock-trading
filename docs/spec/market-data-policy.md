@@ -21,6 +21,7 @@
 - 같은 날 `reference.market_calendar` 리비전과 도메인·PostgreSQL 저장소를 구현했다. 동일 사실은 현재 버전을 재사용하고, 정정은 이전 버전을 보존하며, KIS가 KRX 현재 사실과 충돌하면 버전을 바꾸지 않고 `conflict`와 비밀정보 없는 동기화 오류를 기록한다.
 - 같은 날 KRX 공식 `[01023] 휴장일` 연간 응답을 정상장·주말·공식 휴장일 세션으로 정규화하는 어댑터와 KIS 실전 전용 국내휴장일조회 `CTCA0903R`의 당일 `opnd_yn` 보완 확인을 연결했다. KRX 범위는 한 트랜잭션으로 저장하고 KIS가 다르면 `conflict`로 차단한다.
 - 같은 날 [KRX 보도자료](https://open.krx.co.kr/contents/OPN/05/05000000/OPN05000000.jsp)의 임시 거래시간 공지와 공식 PDF를 수집해 연간 일정에 합성했다. 수능일과 연초 개장일의 주식·ETF 정규장 변경만 지원하며, PDF 원문·공지 번호·첨부 메타데이터를 근거로 보존하고 알 수 없는 임시 변경 형식은 전체 수집을 실패시킨다.
+- 같은 날 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따라 서울 기준 KRX·KIS Taskiq 예약, PostgreSQL 영속 실행 claim과 Compose 단일 scheduler 프로필을 구현했다. 기본 실행은 scheduler가 꺼져 있고 프로필 활성화 시에도 KRX만 켜지며, KIS 자동 확인은 실전 읽기 검증과 별도 활성화 전까지 차단한다.
 
 ## 1. 시간 기준
 
@@ -33,7 +34,7 @@ KRX 주식·ETF 정규장은 09:00~15:30이고 호가 접수는 08:30부터 시�
 
 거래일은 평일 여부로 추정하지 않는다. KRX 공식 휴장일과 증권사 거래 가능 응답을 함께 사용하며, 임시 휴장이나 개장시간 변경은 `market_calendar`의 버전된 세션으로 반영한다.
 
-연간 기준 일정은 [KRX 휴장일 화면](https://global.krx.co.kr/contents/GLB/05/0501/0501110000/GLB0501110000.jsp)의 공식 목록과 [KRX 거래일·휴장 규칙](https://global.krx.co.kr/contents/GLB/06/0602/0602010201/GLB0602010201T1.jsp)을 함께 사용한다. 이 응답에 없는 수능일·연초 개장일의 임시 정규장 시간은 KRX 보도자료 목록과 공식 PDF에서 대상일, 주식·ETF 범위, 변경 전 `09:00~15:30`, 변경 후 시간을 모두 확인한 뒤 같은 연간 범위에 합성한다. 공지 형식, 대상 범위, 기준 시간이 계약과 다르면 기존 정책을 추정으로 완화하지 않고 수집을 실패시킨다. 자동 스케줄러는 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따라 KRX 선행 수집, KIS 당일 확인과 PostgreSQL 영속 중복 방지를 구현·검증한 뒤 활성화한다.
+연간 기준 일정은 [KRX 휴장일 화면](https://global.krx.co.kr/contents/GLB/05/0501/0501110000/GLB0501110000.jsp)의 공식 목록과 [KRX 거래일·휴장 규칙](https://global.krx.co.kr/contents/GLB/06/0602/0602010201/GLB0602010201T1.jsp)을 함께 사용한다. 이 응답에 없는 수능일·연초 개장일의 임시 정규장 시간은 KRX 보도자료 목록과 공식 PDF에서 대상일, 주식·ETF 범위, 변경 전 `09:00~15:30`, 변경 후 시간을 모두 확인한 뒤 같은 연간 범위에 합성한다. 공지 형식, 대상 범위, 기준 시간이 계약과 다르면 기존 정책을 추정으로 완화하지 않고 수집을 실패시킨다. 자동 스케줄러는 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따라 KRX 선행 수집, KIS 당일 확인과 PostgreSQL 영속 중복 방지를 적용한다.
 
 ## 2. 데이터 계층
 

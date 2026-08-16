@@ -21,9 +21,11 @@ Taskiq worker ─┬─ Valkey 작업 큐
                ├─ KIS 시장 데이터·당일 달력 확인 어댑터
                ├─ KRX 공식 휴장일·임시 거래시간 공지 어댑터
                └─ PostgreSQL
+
+Taskiq scheduler ── Valkey 작업 큐
 ```
 
-작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data`, KRX 연간 휴장일과 임시 거래시간 공지를 합성하는 `collect_krx_market_calendar`, 실전 KIS로 오늘 개장 여부를 확인하는 `confirm_today_market_calendar`를 등록했다. 모의환경은 지원되지 않는 종목 상세·휴장일 TR을 호출하지 않는다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
+작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data`와 시장 달력 예약 작업을 등록했다. `market_calendar.py`는 KRX 연간 휴장일·임시 거래시간 합성과 실전 KIS 당일 확인 조립을, `market_calendar_schedule.py`는 이를 PostgreSQL 실행 claim으로 감싼 예약·수동 공통 경계와 Taskiq scheduler를 제공한다. 모의환경은 지원되지 않는 종목 상세·휴장일 TR을 호출하지 않는다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
 
 시장 달력은 `domain/market_data/calendar_models.py`의 불변 도메인 타입, `calendar_logic.py`의 스케줄 판정, `adapters/exchanges/krx_market_calendar.py`의 연간 일정, `krx_trading_hours_notices.py`와 `krx_trading_hours_contracts.py`의 보도자료·PDF 경계, `krx_composite_calendar.py`의 합성, `adapters/brokers/kis_market_calendar.py`의 당일 확인, `application/market_calendar.py`의 범위 수집·확인, `adapters/database/market_calendar_*`의 행·매핑·SQL·저장소로 분리했다. 기존 호출자는 `domain/market_data/calendar.py` 호환 모듈을 통해 같은 공개 타입을 사용한다.
 
@@ -50,7 +52,7 @@ frontend/
 └─ tests/             단위·브라우저 테스트
 
 infra/
-├─ compose.yaml       PostgreSQL, Valkey, migration, API, worker, web
+├─ compose.yaml       PostgreSQL, Valkey, migration, API, worker, 선택적 scheduler, web
 ├─ compose.kis-paper.yaml  모의환경 강제와 worker 전용 Docker secret
 └─ Caddyfile          같은 출처 라우팅과 보안 헤더
 ```
@@ -73,6 +75,8 @@ infra/
 | `AUTO_STOCK_KRX_BASE_URL` | KRX 공식 사이트 기준 URL | 서버 설정 전용 |
 | `AUTO_STOCK_KRX_OPEN_BASE_URL` | KRX 보도자료 사이트 기준 URL | 서버 설정 전용 |
 | `AUTO_STOCK_KRX_ATTACHMENT_BASE_URL` | KRX 공식 첨부파일 기준 URL | 서버 설정 전용 |
+| `AUTO_STOCK_KRX_CALENDAR_SCHEDULE_ENABLED` | KRX 달력 예약 등록 | 금지 |
+| `AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED` | 실전 KIS 당일 확인 예약 등록 | 금지 |
 
 프론트엔드는 빌드 시 비밀 환경변수를 사용하지 않는다. 개발 전용 React 진단 도구는 `import.meta.env.DEV`에서만 동적 로드하며 `VITE_DISABLE_REACT_DEVTOOLS=1`로 QA 캡처에서 비활성화한다.
 
@@ -94,3 +98,5 @@ infra/
 두 번째 리비전 `20260814_0002`는 `reference.instrument`, `operations.raw_api_response`, `operations.api_sync_status`, `market.quote`, `market.market_bar`를 추가한다. Alembic 버전 테이블은 기본 `public` 스키마에 둔다.
 
 세 번째 리비전 `20260816_0003`은 `reference.market_calendar`를 추가한다. 논리 세션별 사실 버전과 현재 행 하나를 보장하고, 정상 거래일·휴장일·단축장의 시각 조합과 확인 상태를 DB 제약조건으로 검증한다.
+
+네 번째 리비전 `20260816_0004`는 `operations.scheduled_job_run`을 추가한다. 작업 이름과 논리 실행 키의 유일성, 상태·lease·소유자 토큰·시도 횟수로 중복 메시지와 worker 종료 후 회수를 제어한다.

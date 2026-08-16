@@ -80,6 +80,24 @@ cd backend
 uv run taskiq worker auto_stock_trading.worker.market_data:broker
 ```
 
+예약 작업 메시지도 처리하려면 worker에 예약 모듈을 함께 불러온다.
+
+```bash
+cd backend
+uv run taskiq worker \
+  auto_stock_trading.worker.market_data:broker \
+  auto_stock_trading.worker.market_calendar_schedule
+```
+
+기본 Compose는 scheduler를 시작하지 않는다. KRX 자동 수집을 명시적으로 활성화할 때만 다음 프로필을 사용한다.
+
+```bash
+docker compose -f infra/compose.yaml \
+  --profile calendar-scheduler up --build -d --wait --wait-timeout 300
+```
+
+이 프로필의 단일 scheduler는 `Asia/Seoul` 기준 KRX 예약만 발행하고 KIS 자격증명을 받지 않는다. 중복 메시지는 worker의 PostgreSQL claim이 차단한다. KIS 예약은 실전 `CTCA0903R` 읽기 검증과 사용자 활성화 전까지 켜지 않으며 기본 Compose 파일에는 실전 비밀정보를 연결하지 않는다.
+
 대표 주식·ETF 시장 데이터는 CLI로 한 번 수집할 수 있다.
 
 ```bash

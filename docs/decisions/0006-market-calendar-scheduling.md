@@ -92,8 +92,12 @@ PostgreSQL `operations` 스키마에 scheduler 실행 claim을 저장한다. 최
 - KRX 수집이 KIS 확인보다 먼저 실행되고 07:00 확인 목표가 명시된다.
 - scheduler와 worker가 재시작되거나 메시지가 중복돼도 같은 논리 작업의 외부 호출이 겹치지 않는다.
 - 일시 실패는 제한된 구간에서 복구할 수 있고 성공·충돌 후에는 불필요한 KIS 호출을 보내지 않는다.
-- 실행 claim을 위한 PostgreSQL 마이그레이션과 저장소, scheduler 프로세스 설정과 운영 상태 조회가 추가로 필요하다.
+- 실행 claim을 위한 PostgreSQL 마이그레이션과 저장소, scheduler 프로세스 설정이 추가된다.
 - scheduler가 정상이어도 시장 달력 판정이 안전하지 않으면 후속 작업은 실행되지 않는다.
+
+## 구현 기록
+
+2026-08-16에 `operations.scheduled_job_run`, 9분 lease와 소유자 토큰 기반 claim 저장소, 서울 기준 Taskiq 예약과 단일 Compose scheduler 프로필을 구현했다. 기본 Compose에서는 scheduler가 시작되지 않으며 `calendar-scheduler` 프로필은 KRX 예약만 명시적으로 활성화하고 KIS 비밀정보를 받지 않는다. KIS 예약은 `live` 환경과 별도 활성화 플래그가 모두 필요하므로 실제 읽기 전용 검증 전까지 꺼져 있다.
 
 ## 완료 기준
 

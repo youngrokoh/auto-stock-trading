@@ -11,6 +11,7 @@ compose = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
 paper_compose = YAML.safe_load(File.read(ARGV.fetch(1)), aliases: true)
 postgres = compose.fetch("services").fetch("postgres")
 valkey = compose.fetch("services").fetch("valkey")
+scheduler = compose.fetch("services").fetch("calendar-scheduler")
 volume_targets = postgres.fetch("volumes").map { |volume| volume.split(":", 2).fetch(1) }
 
 unless volume_targets.include?("/var/lib/postgresql")
@@ -18,6 +19,24 @@ unless volume_targets.include?("/var/lib/postgresql")
 end
 unless valkey.fetch("ports") == ["127.0.0.1:6379:6379"]
   abort "Valkey host port must bind to 127.0.0.1 only"
+end
+unless scheduler.fetch("profiles") == ["calendar-scheduler"]
+  abort "Market calendar scheduler must be disabled outside its explicit Compose profile"
+end
+unless scheduler.fetch("command").first(2) == ["taskiq", "scheduler"]
+  abort "Market calendar scheduler must run through Taskiq"
+end
+unless scheduler.fetch("environment").fetch("AUTO_STOCK_KRX_CALENDAR_SCHEDULE_ENABLED") == "true"
+  abort "The scheduler profile must explicitly enable KRX calendar collection"
+end
+unless scheduler.fetch("secrets", []).empty?
+  abort "The scheduler process must not receive KIS credentials"
+end
+scheduler_count = compose.fetch("services").values.count do |service|
+  service.fetch("command", []).first(2) == ["taskiq", "scheduler"]
+end
+unless scheduler_count == 1
+  abort "Compose must define exactly one Taskiq scheduler service"
 end
 
 paper_worker = paper_compose.fetch("services").fetch("worker")
