@@ -110,4 +110,4 @@ Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` sw
 
 ## Next implementation work
 
-Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The next backend dataset is the Korean market calendar and exchange holidays needed by scheduled collection; minute bars and corporate actions/adjusted prices follow. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.
+Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The Korean market-calendar contract now lives in `docs/data/market-calendar-data-contract.md`; implement its Alembic migration, domain types, and PostgreSQL repository next. The KRX collection adapter and same-day confirmation follow, then minute bars and corporate actions/adjusted prices. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.
