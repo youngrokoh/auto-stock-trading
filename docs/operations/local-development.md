@@ -96,7 +96,19 @@ docker compose -f infra/compose.yaml \
   --profile calendar-scheduler up --build -d --wait --wait-timeout 300
 ```
 
-이 프로필의 단일 scheduler는 `Asia/Seoul` 기준 KRX 예약만 발행하고 KIS 자격증명을 받지 않는다. 중복 메시지는 worker의 PostgreSQL claim이 차단한다. KIS 예약은 실전 `CTCA0903R` 읽기 검증과 사용자 활성화 전까지 켜지 않으며 기본 Compose 파일에는 실전 비밀정보를 연결하지 않는다.
+이 KRX 전용 실행의 단일 scheduler는 `Asia/Seoul` 기준 KRX 예약만 발행하고 KIS 자격증명을 받지 않는다. 중복 메시지는 worker의 PostgreSQL claim이 차단한다. 아래 실전 달력 전용 override를 함께 적용하지 않으면 KIS 예약은 등록되지 않으며 기본 Compose 파일에는 실전 비밀정보를 연결하지 않는다.
+
+실전 읽기 전용 KIS 당일 확인을 함께 자동 실행하려면 사용자가 승인한 전용 override를 추가한다.
+
+```bash
+docker compose \
+  -f infra/compose.yaml \
+  -f infra/compose.kis-live-calendar.yaml \
+  --profile calendar-scheduler \
+  up --build -d --wait --wait-timeout 300 worker calendar-scheduler
+```
+
+`compose.kis-live-calendar.yaml`은 `.secrets/kis-live-app-key`와 `.secrets/kis-live-app-secret`을 worker에만 Docker secret으로 마운트한다. scheduler에는 자격증명을 전달하지 않고 `live` 환경과 KRX·KIS 예약 플래그만 설정한다. 두 프로세스는 명시적으로 중지하기 전까지 Docker 재시작 후 복구되도록 `restart: unless-stopped`를 사용한다. 이 override는 주문 작업을 등록하거나 활성화하지 않는다. 자동 확인을 중지하려면 같은 두 Compose 파일과 프로필로 `stop calendar-scheduler worker`를 실행한다.
 
 대표 주식·ETF 시장 데이터는 CLI로 한 번 수집할 수 있다.
 

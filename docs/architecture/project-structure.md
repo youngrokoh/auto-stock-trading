@@ -54,6 +54,7 @@ frontend/
 infra/
 ├─ compose.yaml       PostgreSQL, Valkey, migration, API, worker, 선택적 scheduler, web
 ├─ compose.kis-paper.yaml  모의환경 강제와 worker 전용 Docker secret
+├─ compose.kis-live-calendar.yaml  실전 읽기 전용 달력 확인과 worker 전용 secret
 └─ Caddyfile          같은 출처 라우팅과 보안 헤더
 ```
 
@@ -81,6 +82,8 @@ infra/
 프론트엔드는 빌드 시 비밀 환경변수를 사용하지 않는다. 개발 전용 React 진단 도구는 `import.meta.env.DEV`에서만 동적 로드하며 `VITE_DISABLE_REACT_DEVTOOLS=1`로 QA 캡처에서 비활성화한다.
 
 기본 `infra/compose.yaml`에는 KIS 키를 전달하지 않는다. 실제 모의검증에서만 `infra/compose.kis-paper.yaml`을 함께 적용해 Git과 Docker 빌드 컨텍스트에서 제외된 `.secrets/` 파일을 worker의 `/run/secrets`에 마운트한다. 이 override는 실전 환경 값을 받을 수 없도록 `paper`를 고정한다.
+
+사용자가 2026-08-16 승인한 `infra/compose.kis-live-calendar.yaml`은 실전 읽기 전용 시장 달력 확인에만 사용한다. 실전 키 파일은 worker에만 마운트하고 scheduler에는 `live` 환경과 KIS 예약 활성화 플래그만 전달한다. 두 프로세스는 `unless-stopped` 재시작 정책을 사용하며 기본 Compose와 모의 override는 계속 KIS 자동 확인이 꺼진 상태다.
 
 프로세스 간 KIS 토큰과 REST 호출 간격은 승인된 [ADR-0005](../decisions/0005-kis-token-and-rate-coordination.md)에 따라 Valkey에서 조정한다. 모의·실전 환경과 자격증명 지문마다 키 공간을 나누고, 토큰이 필요할 때 한 worker만 분산 잠금을 획득한다. Valkey를 사용할 수 없으면 개별 worker가 토큰 발급이나 KIS 요청으로 우회하지 않는다. 로컬 Valkey 호스트 포트는 `127.0.0.1`에만 바인딩한다.
 

@@ -1,0 +1,23 @@
+services:
+  worker:
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_KIS_ENVIRONMENT: live
+      AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED: "true"
+      AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_live_app_key
+      AUTO_STOCK_KIS_APP_SECRET_FILE: /run/secrets/kis_live_app_secret
+    secrets:
+      - kis_live_app_key
+      - kis_live_app_secret
+
+  calendar-scheduler:
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_KIS_ENVIRONMENT: live
+      AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED: "true"
+
+secrets:
+  kis_live_app_key:
+    file: ${KIS_LIVE_APP_KEY_FILE:-../.secrets/kis-live-app-key}
+  kis_live_app_secret:
+    file: ${KIS_LIVE_APP_SECRET_FILE:-../.secrets/kis-live-app-secret}

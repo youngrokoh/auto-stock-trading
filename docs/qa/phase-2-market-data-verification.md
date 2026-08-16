@@ -41,6 +41,7 @@
 | scheduler 중복 실행·실패 회수 | PostgreSQL claim 통합 테스트 | 통과 |
 | 단일 scheduler와 KRX 전용 활성화 | Compose 프로필·비밀정보 계약과 실제 컨테이너 기동 | 통과 |
 | 실제 KIS 실전 달력 확인 | 분리된 실전 키로 읽기 전용 1회 호출과 DB 상태 확인 | 통과 |
+| KIS 자동 확인 활성화 경계 | 전용 Compose override의 worker secret·scheduler 플래그 분리 | 통과 |
 | KIS 앱 화면 값 대조 | 사용자의 모의투자 화면과 육안 비교 | 대기 |
 
 ## 테스트 데이터 근거
@@ -140,6 +141,19 @@ python3 scripts/docs_guard.py check
 - 영속 claim은 `succeeded`, 시도 1회, 논리 키 `kis-calendar:XKRX:2026-08-16:v1`: 통과
 - 저장 원본의 `access_token`, `appkey`, `appsecret` 최상위 필드: 0건
 - 같은 CLI 재실행 후 KIS 원본 1건과 claim 시도 1회가 유지되어 외부 중복 호출 차단: 통과
+
+2026-08-16 KIS 자동 확인 활성화 결과:
+
+- 사용자가 실전 읽기 전용 검증 결과를 확인한 뒤 자동 확인 플래그 활성화를 명시적으로 승인
+- `compose.kis-live-calendar.yaml` 병합 시 worker 환경은 `live`, KIS 예약 활성화, 실전 secret 파일 경로 사용: 통과
+- worker에 마운트되는 secret은 `kis_live_app_key`, `kis_live_app_secret` 두 개뿐임: 통과
+- scheduler는 KRX·KIS 예약 활성화와 `live` 환경을 받고 secret 마운트는 0개: 통과
+- worker와 scheduler의 `restart: unless-stopped` 복구 정책: 통과
+- 기본 Compose와 모의 override는 KIS 자동 확인 비활성 상태 유지: 통과
+- 전용 override로 worker·scheduler 이미지를 실제 빌드·기동하고 두 컨테이너 `running` 확인: 통과
+- worker 내부 실전 secret 두 파일의 권한 `0600`, scheduler 내부 실전 secret 파일 0개: 통과
+- 실제 scheduler 모듈에서 서울 기준 KIS 예약 3개와 KRX 예약 2개 등록 확인: 통과
+- 두 컨테이너의 Docker 재시작 정책 `unless-stopped` 적용 확인: 통과
 
 저장소 통합 테스트는 현재 로컬 Compose의 PostgreSQL 18에 실제 리비전을 적용한 뒤 테스트 트랜잭션을 롤백하는 기존 프로젝트 방식을 따른다. 기술 스택에 정의된 Testcontainers 기반 테스트별 격리는 아직 도입하지 않았다.
 

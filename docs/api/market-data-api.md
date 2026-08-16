@@ -55,6 +55,8 @@ Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO
 
 자동 실행 등록 이름은 `scheduled_krx_market_calendar`와 `scheduled_kis_market_calendar_confirmation`이다. 예약 메시지는 외부 호출 전에 `operations.scheduled_job_run`을 claim하며 동일 날짜·대상·버전의 성공 또는 충돌 결과는 이후 tick에서 건너뛴다. KRX 예약은 `calendar-scheduler` Compose 프로필에서 켜고, KIS 예약은 실전 환경과 `AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED=true`가 모두 필요하다.
 
+사용자가 승인한 자동 KIS 확인은 `infra/compose.kis-live-calendar.yaml`을 기본 Compose와 함께 적용할 때만 활성화된다. scheduler는 예약 플래그만 받고, 실제 자격증명과 읽기 전용 외부 호출은 worker 경계에만 존재한다.
+
 ## 현재 제한
 
 - KIS 모의환경은 종목 상세 `CTPF1002R`을 지원하지 않아 종목명·상품유형만 구성한다. 상장·상장폐지일과 영문명은 후속 종목 마스터 수집 전까지 제공하지 않는다.
