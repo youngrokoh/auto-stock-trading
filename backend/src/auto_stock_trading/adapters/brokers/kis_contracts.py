@@ -1,6 +1,6 @@
-from typing import ClassVar
+from typing import Annotated, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class KisContract(BaseModel):
@@ -79,3 +79,21 @@ class KisDailyBarsResponse(KisContract):
     msg1: str
     output1: KisDailySummary
     output2: tuple[KisDailyBarOutput, ...]
+
+
+class KisHolidayOutput(KisContract):
+    bass_dt: Annotated[str, Field(pattern=r"^\d{8}$")]
+    wday_dvsn_cd: str
+    bzdy_yn: Literal["Y", "N"]
+    tr_day_yn: Literal["Y", "N"]
+    opnd_yn: Literal["Y", "N"]
+    sttl_day_yn: Literal["Y", "N"]
+
+
+class KisHolidayResponse(KisContract):
+    rt_cd: str
+    msg_cd: str
+    msg1: str
+    ctx_area_fk: str = ""
+    ctx_area_nk: str = ""
+    output: Annotated[tuple[KisHolidayOutput, ...], Field(min_length=1)]

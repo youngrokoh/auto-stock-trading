@@ -59,3 +59,17 @@ def test_kis_secret_file_error_does_not_expose_the_file_path(tmp_path: Path) -> 
         _ = market_data.load_kis_credentials(settings)
 
     assert str(missing_file) not in str(error.value)
+
+
+def test_kis_calendar_confirmation_rejects_the_paper_environment() -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        kis_app_key=None,
+        kis_app_secret=None,
+    )
+
+    with (
+        patch("auto_stock_trading.worker.market_data.Settings", return_value=settings),
+        pytest.raises(KisConfigurationError, match="live environment"),
+    ):
+        _ = anyio.run(market_data.confirm_today_market_calendar)

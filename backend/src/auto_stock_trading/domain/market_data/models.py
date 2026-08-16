@@ -25,6 +25,7 @@ class BrokerOperation(StrEnum):
     INSTRUMENT = "instrument"
     QUOTE = "quote"
     DAILY_BARS = "daily_bars"
+    MARKET_CALENDAR = "market_calendar"
 
 
 @dataclass(frozen=True, slots=True)

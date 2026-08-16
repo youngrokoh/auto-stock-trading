@@ -1,6 +1,6 @@
 # 2단계 시장 데이터 수직 슬라이스 검증
 
-- 상태: 자동·로컬 통합·실제 KIS 모의환경·시장 달력 저장 검증 완료, 사용자 화면 대조 대기
+- 상태: 자동·로컬 통합·실제 KIS 모의환경·실제 KRX 일정 검증 완료, KIS 실전 달력 확인·사용자 화면 대조 대기
 - 기준일: 2026-08-16
 - 대상: KIS 인증·종목정보·현재가·비수정 일봉·시장 달력·PostgreSQL·읽기 API
 - 관련 API: [시장 데이터 읽기 API](../api/market-data-api.md)
@@ -30,6 +30,12 @@
 | 동일 사실 재수신과 정정 버전 보존 | PostgreSQL 통합 테스트 | 통과 |
 | KRX 우선순위와 KIS 충돌 차단·오류 기록 | PostgreSQL 통합 테스트 | 통과 |
 | 현재 범위와 다음·이전 거래일 조회 | PostgreSQL 통합 테스트 | 통과 |
+| KRX OTP·연간 휴장일 응답 계약 | 공식 응답 형태 fixture와 HTTP fake | 통과 |
+| KRX 전체 날짜 정규화·범위 원자 저장 | fixture와 PostgreSQL 배치 통합 테스트 | 통과 |
+| 실제 KRX 2026 연간 일정 | 공식 `[01023]` 외부 응답·PostgreSQL 직접 조회 | 통과 |
+| KIS `CTCA0903R` 당일 `opnd_yn` 확인 | 공식 응답 형태 fixture와 HTTP fake | 통과 |
+| KIS 달력 확인의 모의환경 차단 | worker 설정 경계 테스트 | 통과 |
+| 실제 KIS 실전 달력 확인 | 실전 키 미연결 | 대기 |
 | KIS 앱 화면 값 대조 | 사용자의 모의투자 화면과 육안 비교 | 대기 |
 
 ## 테스트 데이터 근거
@@ -40,8 +46,11 @@ fixture는 한국투자증권 공식 `open-trading-api` 저장소의 2026-08-14 
 - 종목정보: `CTPF1002R`
 - 현재가: `FHKST01010100`
 - 기간별 일봉: `FHKST03010100`
+- 국내휴장일조회: `CTCA0903R`, `/uapi/domestic-stock/v1/quotations/chk-holiday`
 
 fixture 값은 계약 테스트용 예시이며 실제 현재 시세로 해석하지 않는다.
+
+KRX fixture는 [KRX 공식 휴장일 화면](https://global.krx.co.kr/contents/GLB/05/0501/0501110000/GLB0501110000.jsp)의 2026년 응답 필드 `block1`, `calnd_dd`, `calnd_dd_dy`, `dy_tp_cd`, `kr_dy_tp`, `holdy_eng_nm`을 기준으로 했다.
 
 ## 자동 검증 명령
 
@@ -78,6 +87,19 @@ python3 scripts/docs_guard.py check
 - 시장 달력 PostgreSQL 통합 시나리오: 3건 통과
 - Python sdist·wheel 빌드: 통과
 - Compose·문서 계약 검사: 통과
+
+2026-08-16 KRX·KIS 시장 달력 어댑터 실행 결과:
+
+- Ruff 검사·포맷: 통과
+- basedpyright: 오류 0건, 경고 0건
+- pytest: 44건 통과
+- 시장 달력 PostgreSQL 통합 시나리오: 5건 통과
+- Python sdist·wheel과 프론트엔드 프로덕션 빌드: 통과
+- Taskiq 작업 `collect_krx_market_calendar`, `confirm_today_market_calendar` 등록 확인: 통과
+- 실제 KRX 2026 일정: 현재 세션 365건, 휴장 121건, 공유 원본 1건
+- 실제 KRX 동기화 상태: `success`, 오류 코드 없음, 마지막 성공시각 기록
+- `2026-08-14` 정상장, `08-15~16` 주말 휴장, `08-17` 대체휴일, `08-18` 정상장 직접 조회: 통과
+- KIS 실전 달력 호출: 실전 자격증명을 검증 경로에 연결하지 않아 미실행
 
 저장소 통합 테스트는 현재 로컬 Compose의 PostgreSQL 18에 실제 리비전을 적용한 뒤 테스트 트랜잭션을 롤백하는 기존 프로젝트 방식을 따른다. 기술 스택에 정의된 Testcontainers 기반 테스트별 격리는 아직 도입하지 않았다.
 

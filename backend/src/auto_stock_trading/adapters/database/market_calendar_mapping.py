@@ -112,7 +112,10 @@ def refresh_calendar_from_primary(
     row.source = observation.source.name
     row.source_reference = observation.source.reference
     row.source_as_of = observation.source.as_of
-    _refresh_calendar_evidence(row, observation, raw_response_id)
+    if isinstance(observation.verification, PendingVerification):
+        _refresh_raw_evidence(row, observation, raw_response_id)
+    else:
+        _refresh_calendar_evidence(row, observation, raw_response_id)
 
 
 def refresh_calendar_from_secondary(
@@ -146,10 +149,18 @@ def _refresh_calendar_evidence(
     observation: CalendarObservation,
     raw_response_id: UUID,
 ) -> None:
-    received_at = observation.raw_response.received_at
-    row.received_at = received_at
+    _refresh_raw_evidence(row, observation, raw_response_id)
     row.verification_state = calendar_verification_state(observation.verification).value
     row.confirmed_at = calendar_confirmed_at(observation.verification)
+
+
+def _refresh_raw_evidence(
+    row: MarketCalendarRow,
+    observation: CalendarObservation,
+    raw_response_id: UUID,
+) -> None:
+    received_at = observation.raw_response.received_at
+    row.received_at = received_at
     row.raw_response_id = raw_response_id
     row.updated_at = received_at
 

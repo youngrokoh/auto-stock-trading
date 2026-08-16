@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     kis_app_secret: SecretStr | None = None
     kis_app_key_file: Path | None = None
     kis_app_secret_file: Path | None = None
+    krx_base_url: str = "https://global.krx.co.kr"
 
     @property
     def kis_base_url(self) -> str:

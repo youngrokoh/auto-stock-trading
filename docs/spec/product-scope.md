@@ -32,7 +32,7 @@
 
 ## 3. 기능 요구사항
 
-구현 상태: 2026-08-14 기준 2단계 첫 수직 슬라이스에서 국내 대표 주식·ETF의 종목정보, 최신 현재가, 비수정 일봉 수집·저장·읽기 API를 구현하고 실제 KIS 모의환경 반복 수집을 검증했다. 모의환경의 종목명은 일봉 요약에서 구성하며 상세 종목 마스터, 검색·분봉·보조지표·ETF 순위·주문 기능은 각 후속 단계에서 구현한다.
+구현 상태: 2026-08-16 기준 2단계에서 국내 대표 주식·ETF의 종목정보, 최신 현재가, 비수정 일봉 수집·저장·읽기 API와 KRX 연간 시장 달력 수집·KIS 당일 보완 확인 경계를 구현했다. 실제 KIS 모의환경 반복 수집과 실제 KRX 일정 수집을 검증했으며 상세 종목 마스터, 검색·분봉·보조지표·ETF 순위·주문 기능은 각 후속 단계에서 구현한다.
 
 ### 3.1 시장 데이터
 
@@ -115,7 +115,7 @@
 |---|---|---|
 | [한국투자증권 KIS Developers](https://apiportal.koreainvestment.com/apiservice-category) | 시세, 주문, 계좌, 국내·해외주식, ETF, 수급 | 첫 증권사 |
 | [금융감독원 OpenDART](https://opendart.fss.or.kr/guide/main.do) | 기업 개황, 재무제표, 공시, 주주 정보 | 기업 분석의 공식 근거 |
-| [KRX Open API](https://openapi.krx.co.kr/contents/OPP/MAIN/main/index.cmd) | 국내 시장 및 증권상품 통계 | 제공 범위와 이용조건 확인 필요 |
+| [KRX Open API](https://openapi.krx.co.kr/contents/OPP/MAIN/main/index.cmd)·[KRX 휴장일](https://global.krx.co.kr/contents/GLB/05/0501/0501110000/GLB0501110000.jsp) | 국내 시장 및 증권상품 통계, 공식 휴장 일정 | 휴장일은 KRX 공식 화면 응답 사용 |
 | [KRX KIND](https://kind.krx.co.kr/) | ETF 분배금 및 주요 공시 | 자동수집·재배포 조건 확인 필요 |
 | [키움 REST API](https://openapi.kiwoom.com/guide/apiguide) | ETF 목록·순위 등 보완 후보 | 데이터 공백 확인 후 추가 |
 

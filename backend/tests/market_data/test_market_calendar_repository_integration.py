@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
@@ -26,6 +27,7 @@ from auto_stock_trading.domain.market_data.calendar import (
     MarketSessionStatus,
     MarketSessionType,
     OpenMarketSession,
+    PendingVerification,
     SessionWindow,
     ShortenedMarketSession,
     calendar_session_status,
@@ -130,6 +132,47 @@ def test_repository_queries_range_and_neighboring_open_dates() -> None:
     anyio.run(_run_scenario, scenario)
 
 
+def test_repository_saves_a_calendar_batch_atomically_with_one_shared_raw_response() -> None:
+    async def scenario(
+        repository: PostgresMarketCalendarRepository,
+        connection: AsyncConnection,
+    ) -> None:
+        first_date = date(2026, 8, 19)
+        second_date = date(2026, 8, 20)
+        first = _observation(_open_session(first_date), hour=5)
+        second = replace(
+            _observation(_open_session(second_date), hour=5),
+            raw_response=first.raw_response,
+        )
+
+        records = await repository.save_all((first, second))
+        received_at = first.raw_response.received_at
+        await repository.mark_sync_started("KRX", "XKRX:2026-2026", received_at)
+        await repository.mark_sync_succeeded("KRX", "XKRX:2026-2026", received_at)
+
+        raw_count = await connection.scalar(
+            select(func.count(RawApiResponseRow.id)).where(
+                RawApiResponseRow.request_fingerprint == first.raw_response.request_fingerprint
+            )
+        )
+        status = await connection.execute(
+            select(SyncStatusRow.state, SyncStatusRow.last_success_at).where(
+                SyncStatusRow.source == "KRX",
+                SyncStatusRow.operation == "market_calendar",
+                SyncStatusRow.symbol == "XKRX:2026-2026",
+            )
+        )
+
+        assert tuple(record.session.key.trading_date for record in records) == (
+            first_date,
+            second_date,
+        )
+        assert raw_count == 1
+        assert status.one() == ("success", received_at)
+
+    anyio.run(_run_scenario, scenario)
+
+
 def test_lower_priority_conflict_preserves_krx_fact_and_blocks_schedule() -> None:
     async def scenario(
         repository: PostgresMarketCalendarRepository,
@@ -192,6 +235,34 @@ def test_lower_priority_conflict_preserves_krx_fact_and_blocks_schedule() -> Non
         assert decision is CalendarScheduleDecision.CONFLICT
         assert sync_state == "failed"
         assert sync_error_code == "calendar_source_conflict"
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_primary_refresh_does_not_erase_same_day_kis_confirmation() -> None:
+    async def scenario(
+        repository: PostgresMarketCalendarRepository,
+        _: AsyncConnection,
+    ) -> None:
+        trading_date = date(2026, 8, 21)
+        session = _open_session(trading_date)
+        initial = replace(
+            _observation(session, hour=5),
+            verification=PendingVerification(),
+        )
+        kis_confirmation = _observation(session, hour=6, source="KIS")
+        refreshed_krx = replace(
+            _observation(session, hour=7),
+            verification=PendingVerification(),
+        )
+
+        _initial_record = await repository.save(initial)
+        confirmed = await repository.save(kis_confirmation)
+        refreshed = await repository.save(refreshed_krx)
+
+        assert isinstance(confirmed.verification, ConfirmedVerification)
+        assert isinstance(refreshed.verification, ConfirmedVerification)
+        assert refreshed.verification.confirmed_at == confirmed.verification.confirmed_at
 
     anyio.run(_run_scenario, scenario)
 

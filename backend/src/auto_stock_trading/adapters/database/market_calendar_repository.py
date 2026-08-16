@@ -22,11 +22,15 @@ from auto_stock_trading.adapters.database.market_calendar_mapping import (
 from auto_stock_trading.adapters.database.market_calendar_rows import MarketCalendarRow
 from auto_stock_trading.adapters.database.market_calendar_statements import (
     calendar_conflict_upsert,
+    calendar_sync_failed,
+    calendar_sync_started,
+    calendar_sync_succeeded,
 )
 from auto_stock_trading.adapters.database.market_data_rows import RawApiResponseRow
 from auto_stock_trading.domain.market_data.calendar import (
     CalendarInvariant,
     CalendarObservation,
+    CalendarRawResponse,
     CalendarScheduleDecision,
     CalendarSessionKey,
     CalendarSessionRange,
@@ -69,30 +73,84 @@ class PostgresMarketCalendarRepository:
         return cls(None, sessions)
 
     async def save(self, observation: CalendarObservation) -> MarketCalendarRecord:
-        key = calendar_session_key(observation.session)
+        records = await self.save_all((observation,))
+        return records[0]
+
+    async def save_all(
+        self,
+        observations: tuple[CalendarObservation, ...],
+    ) -> tuple[MarketCalendarRecord, ...]:
+        if not observations:
+            return ()
         async with self._sessions.begin() as session:
-            raw_response_id = uuid4()
-            raw = observation.raw_response
-            session.add(
-                RawApiResponseRow(
-                    id=raw_response_id,
-                    source=observation.source.name,
-                    operation="market_calendar",
-                    endpoint=raw.endpoint,
-                    request_fingerprint=raw.request_fingerprint,
-                    received_at=raw.received_at,
-                    payload_json=raw.payload_json,
+            raw_ids: dict[tuple[str, CalendarRawResponse], UUID] = {}
+            rows: list[MarketCalendarRow] = []
+            for observation in observations:
+                raw_key = (observation.source.name, observation.raw_response)
+                raw_response_id = raw_ids.get(raw_key)
+                if raw_response_id is None:
+                    raw_response_id = uuid4()
+                    raw_ids[raw_key] = raw_response_id
+                    raw = observation.raw_response
+                    session.add(
+                        RawApiResponseRow(
+                            id=raw_response_id,
+                            source=observation.source.name,
+                            operation="market_calendar",
+                            endpoint=raw.endpoint,
+                            request_fingerprint=raw.request_fingerprint,
+                            received_at=raw.received_at,
+                            payload_json=raw.payload_json,
+                        )
+                    )
+                key = calendar_session_key(observation.session)
+                current = await session.scalar(_current_session_statement(key).with_for_update())
+                lower_priority_conflict = _is_lower_priority_conflict(current, observation)
+                row = self._merge_observation(current, observation, raw_response_id)
+                if current is None or row is not current:
+                    session.add(row)
+                if lower_priority_conflict:
+                    _ = await session.execute(calendar_conflict_upsert(observation))
+                rows.append(row)
+            await session.flush()
+            return tuple(calendar_record(row) for row in rows)
+
+    async def mark_sync_started(
+        self,
+        source: str,
+        target: str,
+        started_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            _ = await session.execute(calendar_sync_started(source, target, started_at))
+
+    async def mark_sync_succeeded(
+        self,
+        source: str,
+        target: str,
+        completed_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            _ = await session.execute(calendar_sync_succeeded(source, target, completed_at))
+
+    async def mark_sync_failed(
+        self,
+        source: str,
+        target: str,
+        failed_at: datetime,
+        error_code: str,
+        error_message: str,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            _ = await session.execute(
+                calendar_sync_failed(
+                    source,
+                    target,
+                    failed_at,
+                    error_code,
+                    error_message,
                 )
             )
-            current = await session.scalar(_current_session_statement(key).with_for_update())
-            lower_priority_conflict = _is_lower_priority_conflict(current, observation)
-            row = self._merge_observation(current, observation, raw_response_id)
-            if current is None or row is not current:
-                session.add(row)
-            if lower_priority_conflict:
-                _ = await session.execute(calendar_conflict_upsert(observation))
-            await session.flush()
-            return calendar_record(row)
 
     async def session(self, key: CalendarSessionKey) -> MarketCalendarRecord | None:
         async with self._sessions() as session:

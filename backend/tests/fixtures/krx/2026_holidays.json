@@ -1,0 +1,25 @@
+{
+  "block1": [
+    {
+      "calnd_dd": "2026-01-01",
+      "dy_tp_cd": "THU",
+      "calnd_dd_dy": "2026-01-01",
+      "kr_dy_tp": "Thursday",
+      "holdy_eng_nm": "New Year's Day"
+    },
+    {
+      "calnd_dd": "2026-08-17",
+      "dy_tp_cd": "MON",
+      "calnd_dd_dy": "2026-08-17",
+      "kr_dy_tp": "Monday",
+      "holdy_eng_nm": "Substitution Holiday"
+    },
+    {
+      "calnd_dd": "2026-12-31",
+      "dy_tp_cd": "THU",
+      "calnd_dd_dy": "2026-12-31",
+      "kr_dy_tp": "Thursday",
+      "holdy_eng_nm": "End of Year Holiday"
+    }
+  ]
+}
