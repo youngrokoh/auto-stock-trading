@@ -121,10 +121,12 @@ uv run python -m auto_stock_trading.worker.market_data --calendar-year 2026
 ```bash
 cd backend
 AUTO_STOCK_KIS_ENVIRONMENT=live \
+AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-live-app-key \
+AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-live-app-secret \
 uv run python -m auto_stock_trading.worker.market_data --confirm-calendar-today
 ```
 
-KIS 국내휴장일조회 `CTCA0903R`은 실전 전용이며 공식 예제가 1일 1회 호출을 권고한다. 위 명령에는 기존 모의 키가 아니라 별도로 격리한 실전 키 파일 경로가 필요하다. 모의환경에서는 외부 호출 없이 설정 오류로 끝나며 시장 달력은 `pending`을 유지한다. 실전 키를 채팅, 명령행 직접 값, Git 또는 문서에 기록하지 않는다.
+KIS 국내휴장일조회 `CTCA0903R`은 실전 전용이며 공식 예제가 1일 1회 호출을 권고한다. 위 두 파일은 `.secrets/` 아래에서 각각 권한 `0600`으로 보관하고 기존 모의 키와 분리한다. 모의환경에서는 외부 호출 없이 설정 오류로 끝나며 시장 달력은 `pending`을 유지한다. 실전 키를 채팅, 명령행 직접 값, Git 또는 문서에 기록하지 않는다. 2026-08-16 수동 검증은 주문·계좌 API를 사용하지 않고 이 읽기 전용 TR만 호출했다.
 
 KIS 모의투자 REST API는 초당 1건 제한을 적용하므로 Valkey 호출 게이트가 같은 환경과 자격증명을 사용하는 모든 worker의 인증·시세 요청을 최소 1.05초 간격으로 예약한다. 접근 토큰은 만료 1분 전까지 Valkey에서 재사용하며 동시에 토큰이 필요해도 분산 잠금을 획득한 worker 하나만 발급한다. Valkey를 사용할 수 없으면 호출 제한 위반을 막기 위해 새 KIS 요청을 보내지 않고 수집을 실패 처리한다. 자세한 반복 실행은 [모의환경 검증 런북](kis-paper-verification.md)을 따른다.
 

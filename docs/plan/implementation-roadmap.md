@@ -134,11 +134,12 @@ AI나 실전 주문부터 시작하지 않는다. 데이터의 시점 정확성�
 - `reference.market_calendar` 마이그레이션, 도메인 판정, 버전 저장·현재/범위/다음/이전 조회와 출처 충돌 기록
 - KRX 연간 휴장 일정·임시 거래시간 공지 합성 수집과 KIS 당일 보완 확인 경계
 - 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)의 Taskiq 예약, PostgreSQL 실행 claim과 KRX 전용 Compose 활성화 프로필
+- 실전 읽기 전용 `CTCA0903R` 수동 응답과 같은 실행 키의 중복 호출 차단 검증
 
 남은 범위:
 
 - 분봉, 기업행사와 수정주가 데이터셋
-- KIS `CTCA0903R` 실전 읽기 검증 후 별도 자동 확인 플래그 활성화
+- KIS 자동 확인 플래그의 사용자 활성화 결정
 
 구현 내용:
 

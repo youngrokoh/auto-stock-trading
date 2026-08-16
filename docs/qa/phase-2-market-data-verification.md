@@ -1,6 +1,6 @@
 # 2단계 시장 데이터 수직 슬라이스 검증
 
-- 상태: 자동·로컬 통합·실제 KIS 모의환경·실제 KRX 일정·scheduler 검증 완료, KIS 실전 달력 확인·사용자 화면 대조 대기
+- 상태: 자동·로컬 통합·실제 KIS 모의환경·실전 달력 읽기·실제 KRX 일정·scheduler 검증 완료, 사용자 화면 대조 대기
 - 기준일: 2026-08-16
 - 대상: KIS 인증·종목정보·현재가·비수정 일봉·시장 달력·PostgreSQL·읽기 API
 - 관련 API: [시장 데이터 읽기 API](../api/market-data-api.md)
@@ -40,7 +40,7 @@
 | 서울 기준 Taskiq 예약과 기본 비활성 | 예약 라벨·설정 경계 테스트 | 통과 |
 | scheduler 중복 실행·실패 회수 | PostgreSQL claim 통합 테스트 | 통과 |
 | 단일 scheduler와 KRX 전용 활성화 | Compose 프로필·비밀정보 계약과 실제 컨테이너 기동 | 통과 |
-| 실제 KIS 실전 달력 확인 | 실전 키 미연결 | 대기 |
+| 실제 KIS 실전 달력 확인 | 분리된 실전 키로 읽기 전용 1회 호출과 DB 상태 확인 | 통과 |
 | KIS 앱 화면 값 대조 | 사용자의 모의투자 화면과 육안 비교 | 대기 |
 
 ## 테스트 데이터 근거
@@ -128,7 +128,18 @@ python3 scripts/docs_guard.py check
 - 수동 KRX CLI 첫 실행에서 시장 달력 원본 2건 추가, claim `succeeded`·시도 1회 기록: 통과
 - 같은 날짜·연도의 두 번째 CLI에서 원본 건수와 시도 횟수가 유지되어 외부 호출 건너뛰기 확인: 통과
 - Ruff 검사·포맷, basedpyright, pytest 65건, Python sdist·wheel, Compose·문서 계약 검사: 통과
-- KIS 자동 확인은 실전 읽기 전용 검증과 사용자 활성화 전까지 비활성: 대기
+- KIS 자동 확인은 사용자 활성화 전까지 비활성: 대기
+
+2026-08-16 KIS 실전 읽기 전용 달력 확인 결과:
+
+- 실전 App Key·Secret은 모의 키와 다른 `.secrets/` 파일에 저장하고 두 파일 모두 권한 `0600` 확인
+- 주문·계좌 API 없이 `CTCA0903R` `/uapi/domestic-stock/v1/quotations/chk-holiday`만 1회 호출: 통과
+- 응답 `rt_cd=0`, 요청일 `20260816`, `opnd_yn=N`, `bzdy_yn=N`, `tr_day_yn=Y`: 계약 통과
+- KRX `closed|pending|v1`과 일치해 `closed|confirmed|v1`로 전환: 통과
+- `operations.api_sync_status`는 `success`, 오류 코드 없음: 통과
+- 영속 claim은 `succeeded`, 시도 1회, 논리 키 `kis-calendar:XKRX:2026-08-16:v1`: 통과
+- 저장 원본의 `access_token`, `appkey`, `appsecret` 최상위 필드: 0건
+- 같은 CLI 재실행 후 KIS 원본 1건과 claim 시도 1회가 유지되어 외부 중복 호출 차단: 통과
 
 저장소 통합 테스트는 현재 로컬 Compose의 PostgreSQL 18에 실제 리비전을 적용한 뒤 테스트 트랜잭션을 롤백하는 기존 프로젝트 방식을 따른다. 기술 스택에 정의된 Testcontainers 기반 테스트별 격리는 아직 도입하지 않았다.
 

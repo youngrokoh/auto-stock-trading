@@ -166,4 +166,6 @@ KRX 휴장일 응답에 없는 임시 정규장 시간은 [KRX 보도자료](htt
 
 KIS 공식 저장소의 국내휴장일조회 `CTCA0903R`에서 요청일 행 하나의 `opnd_yn`만 당일 보완 근거로 사용한다. KRX 사실과 같으면 `confirmed`, 다르면 사실 버전을 바꾸지 않고 `conflict`로 만든다. 이 TR은 실전 전용이며 모의환경에서는 호출하지 않는다.
 
+2026-08-16 실전 읽기 전용 검증에서 요청일 행은 `opnd_yn=N`, `bzdy_yn=N`이었고 KRX의 `closed` 세션과 일치해 버전 1을 `confirmed`로 전환했다. 원본 응답에는 인증 필드가 없었으며 같은 실행 키의 재호출은 새 원본 없이 종료됐다.
+
 `20260816_0004` 리비전은 `operations.scheduled_job_run`을 생성한다. `(task_name, execution_key)` 유일 키, `running`·`succeeded`·`conflict`·`failed` 상태, 소유자 토큰, lease 만료시각과 시도 횟수로 중복 외부 호출을 차단한다. 성공과 충돌은 같은 키의 종결 상태이며 실패 또는 만료된 lease만 다음 10분 tick에서 다시 claim할 수 있다. KIS 논리 키에는 현재 `market_calendar.version`을 포함한다.
