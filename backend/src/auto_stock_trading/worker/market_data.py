@@ -26,10 +26,17 @@ from auto_stock_trading.adapters.database.market_calendar_repository import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.exchanges.krx_composite_calendar import (
+    KrxCompositeCalendarSource,
+)
 from auto_stock_trading.adapters.exchanges.krx_market_calendar import (
     KrxHttpClient,
     KrxMarketCalendarAdapter,
     create_krx_http_client,
+)
+from auto_stock_trading.adapters.exchanges.krx_trading_hours_notices import (
+    KrxTradingHoursHttpClient,
+    KrxTradingHoursNoticeAdapter,
 )
 from auto_stock_trading.application.market_calendar import (
     KisCalendarConfirmer,
@@ -146,7 +153,16 @@ async def collect_krx_market_calendar(year: int | None = None) -> int:
         date(selected_year, 1, 1),
         date(selected_year, 12, 31),
     )
-    source = KrxMarketCalendarAdapter(KrxHttpClient(create_krx_http_client(settings.krx_base_url)))
+    annual_source = KrxMarketCalendarAdapter(
+        KrxHttpClient(create_krx_http_client(settings.krx_base_url))
+    )
+    notice_source = KrxTradingHoursNoticeAdapter(
+        KrxTradingHoursHttpClient(
+            create_krx_http_client(settings.krx_open_base_url),
+            create_krx_http_client(settings.krx_attachment_base_url),
+        )
+    )
+    source = KrxCompositeCalendarSource(annual_source, notice_source)
     store = PostgresMarketCalendarRepository.from_url(settings.database_url.get_secret_value())
     collector = KrxCalendarCollector(source, store)
     try:

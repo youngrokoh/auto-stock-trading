@@ -33,6 +33,8 @@
 | KRX OTP·연간 휴장일 응답 계약 | 공식 응답 형태 fixture와 HTTP fake | 통과 |
 | KRX 전체 날짜 정규화·범위 원자 저장 | fixture와 PostgreSQL 배치 통합 테스트 | 통과 |
 | 실제 KRX 2026 연간 일정 | 공식 `[01023]` 외부 응답·PostgreSQL 직접 조회 | 통과 |
+| KRX 임시 거래시간 공지·PDF 계약 | 수능일·연초 개장일 fixture, HTTP fake와 미지원 형식 실패 | 통과 |
+| 실제 KRX 임시 거래시간 공지 | 2025 수능일·2026 연초 개장일 공식 PDF 직접 호출 | 통과 |
 | KIS `CTCA0903R` 당일 `opnd_yn` 확인 | 공식 응답 형태 fixture와 HTTP fake | 통과 |
 | KIS 달력 확인의 모의환경 차단 | worker 설정 경계 테스트 | 통과 |
 | 실제 KIS 실전 달력 확인 | 실전 키 미연결 | 대기 |
@@ -50,7 +52,7 @@ fixture는 한국투자증권 공식 `open-trading-api` 저장소의 2026-08-14 
 
 fixture 값은 계약 테스트용 예시이며 실제 현재 시세로 해석하지 않는다.
 
-KRX fixture는 [KRX 공식 휴장일 화면](https://global.krx.co.kr/contents/GLB/05/0501/0501110000/GLB0501110000.jsp)의 2026년 응답 필드 `block1`, `calnd_dd`, `calnd_dd_dy`, `dy_tp_cd`, `kr_dy_tp`, `holdy_eng_nm`을 기준으로 했다.
+KRX 연간 fixture는 [KRX 공식 휴장일 화면](https://global.krx.co.kr/contents/GLB/05/0501/0501110000/GLB0501110000.jsp)의 2026년 응답 필드 `block1`, `calnd_dd`, `calnd_dd_dy`, `dy_tp_cd`, `kr_dy_tp`, `holdy_eng_nm`을 기준으로 했다. 임시 거래시간 fixture는 [KRX 보도자료](https://open.krx.co.kr/contents/OPN/05/05000000/OPN05000000.jsp)의 2025년 수능일과 2026년 연초 개장일 공식 PDF에서 주식·ETF 정규장 대상일과 변경 전·후 시간 부분을 축약해 작성했다.
 
 ## 자동 검증 명령
 
@@ -100,6 +102,19 @@ python3 scripts/docs_guard.py check
 - 실제 KRX 동기화 상태: `success`, 오류 코드 없음, 마지막 성공시각 기록
 - `2026-08-14` 정상장, `08-15~16` 주말 휴장, `08-17` 대체휴일, `08-18` 정상장 직접 조회: 통과
 - KIS 실전 달력 호출: 실전 자격증명을 검증 경로에 연결하지 않아 미실행
+
+2026-08-16 KRX 임시 거래시간 공지 실행 결과:
+
+- Ruff 검사·포맷과 basedpyright: 통과, 오류·경고 0건
+- pytest: 52건 통과
+- Python sdist·wheel, Compose·문서 계약 검사: 통과
+- 실제 KRX 보도자료 목록·첨부 PDF 호출: 통과
+- `2025-11-13` 수능일 정규장 `10:00~16:30` 추출: 통과
+- `2025-01-02` 과거 연초 PDF의 벡터 범위 글자 누락과 증권상품 구조 보완 판정: 통과
+- `2026-01-02` 연초 개장일 정규장 `10:00~15:30` 추출: 통과
+- PDF 원문 Base64, 공지 번호와 첨부 메타데이터 원본 계약: 통과
+- 미지원 임시 주식시장 공지와 주식·ETF 범위 누락의 fail-closed 처리: 통과
+- 실제 2025·2026 worker 적재 후 세 날짜의 `shortened` 상태·서울 시각·공지 출처 DB 조회: 통과
 
 저장소 통합 테스트는 현재 로컬 Compose의 PostgreSQL 18에 실제 리비전을 적용한 뒤 테스트 트랜잭션을 롤백하는 기존 프로젝트 방식을 따른다. 기술 스택에 정의된 Testcontainers 기반 테스트별 격리는 아직 도입하지 않았다.
 

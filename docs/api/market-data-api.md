@@ -51,7 +51,7 @@ uv run python -m auto_stock_trading.worker.market_data \
 
 Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO_STOCK_KIS_APP_KEY`·`AUTO_STOCK_KIS_APP_SECRET` 직접 값 또는 대응하는 `_FILE` 경로가 필요하며 기본 환경은 모의투자다. 값은 문서·Git·브라우저 번들·로그에 기록하지 않는다. Docker 실행은 [KIS 모의환경 검증 런북](../operations/kis-paper-verification.md)을 따른다.
 
-시장 달력 Taskiq 등록 이름은 `collect_krx_market_calendar`와 `confirm_today_market_calendar`다. 전자는 KIS 자격증명 없이 실행할 수 있고, 후자는 공식 KIS 국내휴장일조회가 실전 전용이므로 `AUTO_STOCK_KIS_ENVIRONMENT=live`와 분리된 실전 자격증명이 필요하다. KRX 원본 범위가 일부라도 빠지면 정규화 행을 저장하지 않고 실패 상태를 남긴다.
+시장 달력 Taskiq 등록 이름은 `collect_krx_market_calendar`와 `confirm_today_market_calendar`다. 전자는 KIS 자격증명 없이 KRX 연간 휴장일과 보도자료의 임시 거래시간 PDF를 합성하고, 후자는 공식 KIS 국내휴장일조회가 실전 전용이므로 `AUTO_STOCK_KIS_ENVIRONMENT=live`와 분리된 실전 자격증명이 필요하다. KRX 원본 범위가 일부라도 빠지거나 지원 대상 임시 공지의 PDF 계약이 다르면 정규화 행을 저장하지 않고 실패 상태를 남긴다.
 
 ## 현재 제한
 
@@ -59,4 +59,4 @@ Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO
 - 모의투자 REST 요청은 현재 초당 1건 제한에 맞춰 최소 1.05초 간격으로 실행한다.
 - 접근 토큰과 호출 간격은 Valkey에서 같은 자격증명의 worker가 공유한다.
 - 현재가 `as_of`는 체결시각이 아니라 수신시각이다. 향후 실시간 스트림에서는 거래소 시각을 별도 저장한다.
-- 수정주가, 분봉, 기업행사, 시장 달력 HTTP API와 자동 수집 스케줄러는 아직 구현하지 않았다. KRX 휴장일 화면은 단축장 시각을 주지 않으므로 임시 거래시간 공지 수집도 후속 범위다.
+- 수정주가, 분봉, 기업행사, 시장 달력 HTTP API와 자동 수집 스케줄러는 아직 구현하지 않았다. KRX 임시 거래시간 공지는 수능일·연초 개장일 형식을 지원하며 새로운 임시 변경 유형은 계약과 테스트를 추가하기 전 fail-closed로 처리한다.

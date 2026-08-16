@@ -19,13 +19,13 @@ FastAPI API ─┬─ PostgreSQL
 
 Taskiq worker ─┬─ Valkey 작업 큐
                ├─ KIS 시장 데이터·당일 달력 확인 어댑터
-               ├─ KRX 공식 휴장일 어댑터
+               ├─ KRX 공식 휴장일·임시 거래시간 공지 어댑터
                └─ PostgreSQL
 ```
 
-작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data`, KRX 연간 일정을 수집하는 `collect_krx_market_calendar`, 실전 KIS로 오늘 개장 여부를 확인하는 `confirm_today_market_calendar`를 등록했다. 모의환경은 지원되지 않는 종목 상세·휴장일 TR을 호출하지 않는다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
+작업자에는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집하는 `collect_seed_market_data`, KRX 연간 휴장일과 임시 거래시간 공지를 합성하는 `collect_krx_market_calendar`, 실전 KIS로 오늘 개장 여부를 확인하는 `confirm_today_market_calendar`를 등록했다. 모의환경은 지원되지 않는 종목 상세·휴장일 TR을 호출하지 않는다. 주문 작업은 아직 등록하지 않았으며 API 프로세스와 설정·도메인 패키지를 공유한다.
 
-시장 달력은 `domain/market_data/calendar_models.py`의 불변 도메인 타입, `calendar_logic.py`의 스케줄 판정, `adapters/exchanges/krx_market_calendar.py`와 `adapters/brokers/kis_market_calendar.py`의 외부 경계, `application/market_calendar.py`의 범위 수집·당일 확인, `adapters/database/market_calendar_*`의 행·매핑·SQL·저장소로 분리했다. 기존 호출자는 `domain/market_data/calendar.py` 호환 모듈을 통해 같은 공개 타입을 사용한다.
+시장 달력은 `domain/market_data/calendar_models.py`의 불변 도메인 타입, `calendar_logic.py`의 스케줄 판정, `adapters/exchanges/krx_market_calendar.py`의 연간 일정, `krx_trading_hours_notices.py`와 `krx_trading_hours_contracts.py`의 보도자료·PDF 경계, `krx_composite_calendar.py`의 합성, `adapters/brokers/kis_market_calendar.py`의 당일 확인, `application/market_calendar.py`의 범위 수집·확인, `adapters/database/market_calendar_*`의 행·매핑·SQL·저장소로 분리했다. 기존 호출자는 `domain/market_data/calendar.py` 호환 모듈을 통해 같은 공개 타입을 사용한다.
 
 ## 저장소 구조
 
@@ -71,6 +71,8 @@ infra/
 | `AUTO_STOCK_KIS_APP_KEY_FILE` | Docker secret 앱 키 파일 경로 | 금지 |
 | `AUTO_STOCK_KIS_APP_SECRET_FILE` | Docker secret 앱 시크릿 파일 경로 | 금지 |
 | `AUTO_STOCK_KRX_BASE_URL` | KRX 공식 사이트 기준 URL | 서버 설정 전용 |
+| `AUTO_STOCK_KRX_OPEN_BASE_URL` | KRX 보도자료 사이트 기준 URL | 서버 설정 전용 |
+| `AUTO_STOCK_KRX_ATTACHMENT_BASE_URL` | KRX 공식 첨부파일 기준 URL | 서버 설정 전용 |
 
 프론트엔드는 빌드 시 비밀 환경변수를 사용하지 않는다. 개발 전용 React 진단 도구는 `import.meta.env.DEV`에서만 동적 로드하며 `VITE_DISABLE_REACT_DEVTOOLS=1`로 QA 캡처에서 비활성화한다.
 

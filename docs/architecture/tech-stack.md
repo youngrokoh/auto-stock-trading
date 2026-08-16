@@ -120,7 +120,7 @@ EtfReferenceDataAdapter
 
 승인된 [ADR-0005](../decisions/0005-kis-token-and-rate-coordination.md)에 따라 `KIS 환경 + 자격증명 HMAC 지문`별로 토큰, 단일 발급 잠금과 REST 호출 게이트를 분리한다. 토큰 TTL은 KIS 만료시각보다 1분 짧고 모의 REST 호출은 모든 worker를 합쳐 최소 1.05초 간격이다. 유효한 메모리 토큰이 있어도 Valkey 호출 게이트를 사용할 수 없으면 외부 요청을 보내지 않고 실패한다.
 
-`KrxMarketCalendarAdapter`는 KRX 공식 휴장일 화면의 OTP와 연간 JSON 응답을 같은 HTTP 세션에서 조회한다. 연도별 원본 1건을 범위 내 날짜들이 공유하고, 공식 휴장 목록과 KRX 주말 규칙을 정상장·휴장 세션으로 정규화한다. `KisMarketCalendarVerifier`는 실전 전용 `CTCA0903R`의 요청일 `opnd_yn`만 사용해 저장된 KRX 사실을 당일 확인한다. 모의환경에서는 지원되지 않는 TR을 호출하지 않고 실패해 상태를 `pending`으로 유지한다.
+`KrxMarketCalendarAdapter`는 KRX 공식 휴장일 화면의 OTP와 연간 JSON 응답을 같은 HTTP 세션에서 조회한다. 연도별 원본 1건을 범위 내 날짜들이 공유하고, 공식 휴장 목록과 KRX 주말 규칙을 정상장·휴장 세션으로 정규화한다. `KrxTradingHoursNoticeAdapter`는 KRX 보도자료 목록과 첨부 PDF에서 수능일·연초 개장일의 주식·ETF 정규장 변경을 추출하고 PDF 원문을 Base64 근거로 보존한다. `KrxCompositeCalendarSource`가 임시 변경을 연간 세션에 합성한 전체 범위만 저장해 후속 연간 재수집이 단축장을 정상장으로 되돌리지 못하게 한다. PDF 파싱에는 `pypdf`를 사용한다. `KisMarketCalendarVerifier`는 실전 전용 `CTCA0903R`의 요청일 `opnd_yn`만 사용해 저장된 KRX 사실을 당일 확인한다. 모의환경에서는 지원되지 않는 TR을 호출하지 않고 실패해 상태를 `pending`으로 유지한다.
 
 ### 3.4 작업 처리와 스케줄링
 
@@ -136,8 +136,8 @@ EtfReferenceDataAdapter
 - PostgreSQL 주문 상태를 기준으로 재시작과 메시지 유실을 복구한다.
 - 모델 학습처럼 CPU 사용량이 큰 작업은 별도 프로세스로 격리한다.
 - ListQueueBroker의 블로킹 대기가 유휴 상태에서도 유지되도록 Valkey 연결의 `socket_timeout`을 `None`으로 지정한다.
-- `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. `collect_krx_market_calendar`는 연간 KRX 일정을 적재하고 `confirm_today_market_calendar`는 실전 KIS로 오늘 거래 가능 상태를 1회 확인한다.
-- 시장 달력 저장소는 누락·미확인·충돌·오래된 확인을 fail-closed로 판정한다. KRX 휴장일 응답에 없는 단축장 운영 공지 수집과 실행 시각 검증이 남아 있어 Taskiq scheduler 자동 등록은 계속 보류한다.
+- `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. `collect_krx_market_calendar`는 KRX 연간 휴장일과 임시 거래시간 공지를 합성해 적재하고 `confirm_today_market_calendar`는 실전 KIS로 오늘 거래 가능 상태를 1회 확인한다.
+- 시장 달력 저장소는 누락·미확인·충돌·오래된 확인을 fail-closed로 판정한다. 임시 거래시간 공지 수집은 완료했으며 실행 시각과 중복 방지에 관한 별도 결정·검증이 남아 있어 Taskiq scheduler 자동 등록은 계속 보류한다.
 - 기본 Compose는 자격증명 없이 실행한다. 실제 모의검증은 `compose.kis-paper.yaml`에서 `.secrets/` 파일을 Docker secret으로 worker에만 마운트하며 환경을 `paper`로 강제한다.
 - Valkey 호스트 포트는 로컬 루프백 `127.0.0.1`에만 바인딩한다. 운영 배포에서는 Valkey 포트를 공개하지 않는다.
 
