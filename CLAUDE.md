@@ -58,12 +58,13 @@ Also required:
 - Order execution, risk controls, permissions, and AI/execution boundary changes need a new or updated ADR in `docs/decisions/` **plus explicit human approval**.
 - Never edit an approved policy document to make an implementation pass. Report the conflict and fix the implementation, or ask for a decision.
 
-## Approval state (as of 2026-08-15)
+## Approval state (as of 2026-08-16)
 
-`docs/plan/current-status.md` is the handoff document — read it at session start. Two standing constraints:
+`docs/plan/current-status.md` is the handoff document — read it at session start. Three standing constraints:
 
 - **The UI direction is approved.** On 2026-08-12 the user approved the Research Grid structure combined with Night Watch safety states in `docs/design/claude-design/`. The current React dashboard still predates that approved design, so its QA `PASS` is not evidence that the approved design is implemented. Build future screens from the approved tokens, primitives, and responsive specifications; never hardcode the sample prices, positions, orders, or account values from the mockup.
-- **Live trading is off.** KIS paper-environment authentication and read-only market-data collection are implemented and externally validated for Samsung Electronics and KODEX 200. Account access, orders, positions, strategies, and live execution are not implemented. Live trading stays disabled until the approved gate in `docs/spec/paper-to-live-gate.md` is passed. Never use live credentials in a paper verification path or fabricate market data in the UI.
+- **Live trading is off.** KIS paper-environment authentication and read-only market-data collection are implemented and externally validated for Samsung Electronics and KODEX 200. The separate live KIS credentials are used only by the approved read-only market-calendar confirmation path. Account access, orders, positions, strategies, and live execution are not implemented. Live trading stays disabled until the approved gate in `docs/spec/paper-to-live-gate.md` is passed. Never use live credentials in a paper verification path or fabricate market data in the UI.
+- **The corporate-action and adjusted-price contract is approved.** `docs/data/corporate-action-adjusted-price-data-contract.md` is binding. Unadjusted daily bars now preserve versions and finality; adjusted prices must remain a separate derived dataset. Do not mix adjusted rows into `market.market_bar`, erase superseded facts, or publish derived data from pending inputs.
 
 ## Architecture
 
@@ -73,7 +74,8 @@ Modular monolith: one Python package, several processes (ADR-0001).
 Caddy :8080  ── /api/* → FastAPI :8000 ── PostgreSQL 18
              └─ /*     → React static     └─ Valkey ← Taskiq worker
                                                ↓
-                                  KIS paper market-data REST API
+                         KIS paper market data, KRX official calendar,
+                         and live KIS read-only calendar confirmation
 ```
 
 Backend layering, strictly one-directional (`backend/src/auto_stock_trading/`):
@@ -90,11 +92,11 @@ The health endpoints are the reference vertical slice for everything added later
 
 `/api/health/ready` returns 503 when degraded (for probes); `/api/health/status` returns the same body always 200 (for the browser, so TanStack Query does not treat degradation as a fetch error). Never leak connection URLs into responses or logs — the e2e test asserts `postgresql://` and `redis://` are absent from the rendered page.
 
-Alembic revision `20260811_0001` creates PostgreSQL schemas (`reference`, `market`, `fundamental`, `strategy`, `trading`, `operations`). Revision `20260814_0002` adds the first market-data tables for instruments, quotes, daily bars, raw responses, and collection runs. Revision `20260816_0003` adds the versioned `reference.market_calendar` table. The migration test renders offline SQL (`--sql`), while repository integration tests exercise the applied schema on PostgreSQL.
+Alembic revision `20260811_0001` creates PostgreSQL schemas (`reference`, `market`, `fundamental`, `strategy`, `trading`, `operations`). Revision `20260814_0002` adds the first market-data tables for instruments, quotes, daily bars, raw responses, and collection runs. Revision `20260816_0003` adds the versioned `reference.market_calendar` table. Revision `20260816_0004` adds persistent scheduled-job execution claims. Revision `20260816_0005` converts `market.market_bar` to versioned, unadjusted facts with explicit pending/confirmed finality and one current row per logical bar. The migration test renders offline SQL (`--sql`), while repository integration tests exercise the applied schema on PostgreSQL.
 
 ADR-0005 is the binding KIS coordination decision. Workers sharing an environment and credential scope reuse a Valkey-cached access token and reserve KIS request slots through a distributed gate. Valkey failure is fail-closed: do not bypass coordination with a local token or independent requests. Keep the Compose Valkey host binding on `127.0.0.1`, and never expose the token cache or include token values in diagnostics.
 
-ADR-0006 is the binding market-calendar scheduling decision. Run one Taskiq scheduler, but enforce duplicate prevention with PostgreSQL execution claims rather than process count alone. KRX collection precedes KIS same-day confirmation on Seoul time. Keep automatic KIS confirmation disabled until the live read-only verification and explicit activation are complete; missing, stale, pending, or conflicting calendar state remains fail-closed.
+ADR-0006 is the binding market-calendar scheduling decision. Run one Taskiq scheduler, but enforce duplicate prevention with PostgreSQL execution claims rather than process count alone. KRX collection precedes KIS same-day confirmation on Seoul time. Automatic KIS confirmation is enabled only through the user-approved `infra/compose.kis-live-calendar.yaml` override: the worker receives read-only live credentials, while the scheduler receives no secrets. Default Compose and paper environments keep it disabled; missing, stale, pending, or conflicting calendar state remains fail-closed.
 
 Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` switches on `window.location.pathname` (`/showcase` vs dashboard). Dev-only diagnostics load dynamically in `devtools.ts` behind `import.meta.env.DEV`.
 
@@ -112,4 +114,4 @@ Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` sw
 
 ## Next implementation work
 
-Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The KRX annual calendar, temporary-hours notice collection and KIS same-day confirmation boundary are implemented. Implement the Taskiq scheduler and PostgreSQL execution claims from approved ADR-0006 next, then minute bars and corporate actions/adjusted prices. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.
+Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The KRX annual calendar, temporary-hours notices, Taskiq scheduler, PostgreSQL execution claims, approved live read-only KIS confirmation, and versioned unadjusted daily-bar storage are implemented. Next, implement the corporate-action domain types, `market.corporate_action` migration, and version repository from the approved corporate-action and adjusted-price contract. After that, connect official corporate-action sources and build the separate adjusted-price dataset; minute bars follow. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.
