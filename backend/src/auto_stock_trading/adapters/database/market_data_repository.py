@@ -11,15 +11,20 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from auto_stock_trading.adapters.database.market_data_bar_repository import (
+    MarketBarEvidence,
+    MarketBarRange,
+    confirm_market_bar,
+    read_market_bars,
+    save_market_bar,
+)
 from auto_stock_trading.adapters.database.market_data_rows import (
     InstrumentRow,
-    MarketBarRow,
     QuoteRow,
     RawApiResponseRow,
     SyncStatusRow,
 )
 from auto_stock_trading.adapters.database.market_data_statements import (
-    bar_upsert,
     instrument_identifier,
     instrument_upsert,
     quote_upsert,
@@ -34,6 +39,7 @@ from auto_stock_trading.domain.market_data.models import (
     ProductType,
     Quote,
     SyncState,
+    VersionedDailyBar,
 )
 
 if TYPE_CHECKING:
@@ -111,8 +117,19 @@ class PostgresMarketDataRepository:
             _ = await session.execute(instrument_upsert(bundle, instrument_id, bundle.collected_at))
             _ = await session.execute(quote_upsert(bundle, instrument_id, raw_ids))
             for bar in bundle.daily_bars:
-                _ = await session.execute(bar_upsert(bar, instrument_id, raw_ids))
+                await save_market_bar(
+                    session,
+                    MarketBarEvidence(
+                        bar,
+                        instrument_id,
+                        raw_ids[BrokerOperation.DAILY_BARS],
+                    ),
+                )
             _ = await session.execute(success_upsert(bundle))
+
+    async def confirm_daily_bar(self, bar: DailyBar, confirmed_at: datetime) -> bool:
+        async with self._sessions.begin() as session:
+            return await confirm_market_bar(session, bar, confirmed_at)
 
     async def mark_failed(
         self,
@@ -202,36 +219,10 @@ class PostgresMarketDataRepository:
         symbol: str,
         start_date: date | None,
         end_date: date | None,
-    ) -> tuple[DailyBar, ...]:
-        statement = (
-            select(MarketBarRow)
-            .join(InstrumentRow, MarketBarRow.instrument_id == InstrumentRow.id)
-            .where(InstrumentRow.symbol == symbol)
-        )
-        if start_date is not None:
-            statement = statement.where(MarketBarRow.trading_date >= start_date)
-        if end_date is not None:
-            statement = statement.where(MarketBarRow.trading_date <= end_date)
-        statement = statement.order_by(MarketBarRow.trading_date)
-        async with self._sessions() as session:
-            rows = tuple((await session.scalars(statement)).all())
-        return tuple(
-            DailyBar(
-                symbol=symbol,
-                trading_date=row.trading_date,
-                open_price=row.open_price,
-                high_price=row.high_price,
-                low_price=row.low_price,
-                close_price=row.close_price,
-                volume=row.volume,
-                trading_value=row.trading_value,
-                adjusted=row.adjusted,
-                correction_code=row.correction_code,
-                split_ratio=row.split_ratio,
-                source=row.source,
-                received_at=row.received_at,
-            )
-            for row in rows
+    ) -> tuple[VersionedDailyBar, ...]:
+        return await read_market_bars(
+            self._sessions,
+            MarketBarRange(symbol, start_date, end_date),
         )
 
     async def close(self) -> None:

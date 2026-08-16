@@ -136,10 +136,15 @@ AI나 실전 주문부터 시작하지 않는다. 데이터의 시점 정확성�
 - 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)의 Taskiq 예약, PostgreSQL 실행 claim과 KRX 전용 Compose 활성화 프로필
 - 실전 읽기 전용 `CTCA0903R` 수동 응답과 같은 실행 키의 중복 호출 차단 검증
 - 사용자 승인 기반 실전 달력 전용 Compose override와 KIS 자동 확인 활성화
+- 비수정 일봉의 버전·확정 상태, 동일 사실 근거 갱신과 정정 이력 보존 저장소
 
 남은 범위:
 
-- 분봉, 기업행사와 수정주가 데이터셋
+- 승인 완료: [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md)
+- 완료: 비수정 일봉 버전·확정 상태 마이그레이션과 저장소 구현
+- 다음 작업: 기업행사 사실 버전 저장소 구현
+- 후속: 공식 기업행사 수집과 수정주가 데이터셋 구현
+- 분봉 데이터셋
 
 구현 내용:
 

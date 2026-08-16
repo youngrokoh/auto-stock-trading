@@ -6,10 +6,12 @@ from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
 from auto_stock_trading.domain.market_data.models import (
+    BarFinality,
     DailyBar,
     Instrument,
     ProductType,
     Quote,
+    VersionedDailyBar,
 )
 from auto_stock_trading.settings.runtime import Environment, Settings
 
@@ -69,7 +71,7 @@ class StubMarketDataReader:
         symbol: str,
         start_date: date | None,
         end_date: date | None,
-    ) -> tuple[DailyBar, ...]:
+    ) -> tuple[VersionedDailyBar, ...]:
         if symbol != "005930":
             return ()
         bar = DailyBar(
@@ -91,7 +93,16 @@ class StubMarketDataReader:
             return ()
         if end_date is not None and bar.trading_date > end_date:
             return ()
-        return (bar,)
+        return (
+            VersionedDailyBar(
+                bar=bar,
+                finality=BarFinality.PENDING,
+                confirmed_at=None,
+                version=1,
+                valid_from=bar.received_at,
+                superseded_at=None,
+            ),
+        )
 
     async def close(self) -> None:
         return None
@@ -125,6 +136,10 @@ def test_market_data_read_endpoints_include_source_and_as_of() -> None:
     assert bars.status_code == 200
     assert bars.json()["interval"] == "1d"
     assert bars.json()["bars"][0]["adjusted"] is False
+    assert bars.json()["bars"][0]["version"] == 1
+    assert bars.json()["bars"][0]["finality"] == "pending"
+    assert bars.json()["bars"][0]["confirmed_at"] is None
+    assert bars.json()["bars"][0]["valid_from"] == "2026-08-14T01:00:00Z"
 
 
 def test_market_data_endpoints_return_explicit_not_found_and_invalid_range() -> None:

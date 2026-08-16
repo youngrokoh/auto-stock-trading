@@ -8,10 +8,13 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
+    Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -100,14 +103,23 @@ class QuoteRow(Base):
 @final
 class MarketBarRow(Base):
     __tablename__: str = "market_bar"
-    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+    __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (
         UniqueConstraint(
             "instrument_id",
             "interval",
             "trading_date",
-            "adjusted",
             "source",
-            name="uq_market_bar_identity",
+            "version",
+            name="uq_market_bar_version",
+        ),
+        Index(
+            "uq_market_bar_current",
+            "instrument_id",
+            "interval",
+            "trading_date",
+            "source",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
         ),
         {"schema": "market"},
     )
@@ -130,6 +142,11 @@ class MarketBarRow(Base):
     split_ratio: Mapped[Decimal | None] = mapped_column(Numeric(24, 8))
     source: Mapped[str] = mapped_column(String(32))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finality: Mapped[str] = mapped_column(String(16))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_response_id: Mapped[UUID] = mapped_column(
         ForeignKey("operations.raw_api_response.id"),
     )

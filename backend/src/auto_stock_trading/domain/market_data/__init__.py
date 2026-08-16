@@ -1,4 +1,5 @@
 from auto_stock_trading.domain.market_data.models import (
+    BarFinality,
     DailyBar,
     Instrument,
     InstrumentId,
@@ -8,9 +9,11 @@ from auto_stock_trading.domain.market_data.models import (
     Quote,
     RawBrokerResponse,
     SyncState,
+    VersionedDailyBar,
 )
 
 __all__ = [
+    "BarFinality",
     "DailyBar",
     "Instrument",
     "InstrumentId",
@@ -20,4 +23,5 @@ __all__ = [
     "Quote",
     "RawBrokerResponse",
     "SyncState",
+    "VersionedDailyBar",
 ]

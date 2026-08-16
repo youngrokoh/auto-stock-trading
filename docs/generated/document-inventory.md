@@ -9,6 +9,7 @@
 | [시장 데이터 읽기 API](../api/market-data-api.md) | `docs/api/market-data-api.md` | 구현됨 |
 | [프로젝트 실행 구조](../architecture/project-structure.md) | `docs/architecture/project-structure.md` | 구현됨 |
 | [상세 기술 스택](../architecture/tech-stack.md) | `docs/architecture/tech-stack.md` | 승인 |
+| [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md) | `docs/data/corporate-action-adjusted-price-data-contract.md` | 승인 |
 | [국내 시장 달력 데이터 계약](../data/market-calendar-data-contract.md) | `docs/data/market-calendar-data-contract.md` | 구현 기준 |
 | [ADR-0001: 모듈형 모놀리스 채택](../decisions/0001-modular-monolith.md) | `docs/decisions/0001-modular-monolith.md` | 승인 |
 | [ADR-0002: Python·React 기술 기준선 채택](../decisions/0002-technology-baseline.md) | `docs/decisions/0002-technology-baseline.md` | 승인 |

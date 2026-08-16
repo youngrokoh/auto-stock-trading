@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, NewType
+from typing import TYPE_CHECKING, NewType, override
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -19,6 +19,25 @@ class SyncState(StrEnum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+
+
+class BarFinality(StrEnum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+
+
+class MarketBarInvariant(StrEnum):
+    UNADJUSTED = "market_bar accepts only unadjusted observations"
+    VALIDITY = "corrected market bar evidence must be newer than the current version"
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidMarketBarError(Exception):
+    invariant: MarketBarInvariant
+
+    @override
+    def __str__(self) -> str:
+        return self.invariant.value
 
 
 class BrokerOperation(StrEnum):
@@ -92,6 +111,16 @@ class DailyBar:
     split_ratio: Decimal | None
     source: str
     received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class VersionedDailyBar:
+    bar: DailyBar
+    finality: BarFinality
+    confirmed_at: datetime | None
+    version: int
+    valid_from: datetime
+    superseded_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)

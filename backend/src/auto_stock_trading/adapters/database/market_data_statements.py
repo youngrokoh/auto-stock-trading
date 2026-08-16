@@ -6,14 +6,13 @@ from sqlalchemy.dialects.postgresql import Insert, insert
 
 from auto_stock_trading.adapters.database.market_data_rows import (
     InstrumentRow,
-    MarketBarRow,
     QuoteRow,
     SyncStatusRow,
 )
 from auto_stock_trading.domain.market_data.models import BrokerOperation, SyncState
 
 if TYPE_CHECKING:
-    from auto_stock_trading.domain.market_data.models import DailyBar, MarketDataBundle
+    from auto_stock_trading.domain.market_data.models import MarketDataBundle
 
 
 def instrument_identifier(bundle: MarketDataBundle) -> UUID:
@@ -89,38 +88,6 @@ def quote_upsert(
     )
     return statement.on_conflict_do_update(
         constraint="uq_quote_latest_source",
-        set_=values,
-    )
-
-
-def bar_upsert(
-    bar: DailyBar,
-    instrument_id: UUID,
-    raw_ids: dict[BrokerOperation, UUID],
-) -> Insert:
-    values = {
-        "open_price": bar.open_price,
-        "high_price": bar.high_price,
-        "low_price": bar.low_price,
-        "close_price": bar.close_price,
-        "volume": bar.volume,
-        "trading_value": bar.trading_value,
-        "correction_code": bar.correction_code,
-        "split_ratio": bar.split_ratio,
-        "received_at": bar.received_at,
-        "raw_response_id": raw_ids[BrokerOperation.DAILY_BARS],
-    }
-    statement = insert(MarketBarRow).values(
-        id=uuid4(),
-        instrument_id=instrument_id,
-        interval="1d",
-        trading_date=bar.trading_date,
-        adjusted=bar.adjusted,
-        source=bar.source,
-        **values,
-    )
-    return statement.on_conflict_do_update(
-        constraint="uq_market_bar_identity",
         set_=values,
     )
 

@@ -54,6 +54,10 @@ class DailyBarResponse(MarketDataResponse):
     split_ratio: Decimal | None
     source: str
     received_at: datetime
+    finality: str
+    confirmed_at: datetime | None
+    version: int
+    valid_from: datetime
 
 
 class DailyBarsResponse(MarketDataResponse):

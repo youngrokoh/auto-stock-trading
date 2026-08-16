@@ -11,6 +11,7 @@ if TYPE_CHECKING:
         InstrumentTarget,
         MarketDataBundle,
         Quote,
+        VersionedDailyBar,
     )
 
 
@@ -24,7 +25,7 @@ class MarketDataReader(Protocol):
         symbol: str,
         start_date: date | None,
         end_date: date | None,
-    ) -> tuple[DailyBar, ...]: ...
+    ) -> tuple[VersionedDailyBar, ...]: ...
 
     async def close(self) -> None: ...
 
@@ -33,6 +34,8 @@ class MarketDataStore(MarketDataReader, Protocol):
     async def mark_started(self, target: InstrumentTarget, started_at: datetime) -> None: ...
 
     async def save_bundle(self, bundle: MarketDataBundle) -> None: ...
+
+    async def confirm_daily_bar(self, bar: DailyBar, confirmed_at: datetime) -> bool: ...
 
     async def mark_failed(
         self,

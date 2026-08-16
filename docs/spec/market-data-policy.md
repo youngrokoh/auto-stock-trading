@@ -4,7 +4,7 @@
 - 승인일: 2026-08-11
 - 초기 범위: 국내주식·국내 ETF, 일봉 전략
 - 관련 정책: [거래 안전 정책](trading-safety-policy.md)
-- 관련 데이터 계약: [국내 시장 달력 데이터 계약](../data/market-calendar-data-contract.md)
+- 관련 데이터 계약: [국내 시장 달력 데이터 계약](../data/market-calendar-data-contract.md), [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md)
 
 ## 구현 기록
 
@@ -24,6 +24,8 @@
 - 같은 날 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따라 서울 기준 KRX·KIS Taskiq 예약, PostgreSQL 영속 실행 claim과 Compose 단일 scheduler 프로필을 구현했다. 기본 실행은 scheduler가 꺼져 있고 프로필 활성화 시에도 KRX만 켜진다.
 - 같은 날 분리한 실전 읽기 전용 자격증명으로 `CTCA0903R`을 1회 수동 검증했다. `2026-08-16` 응답의 `opnd_yn=N`이 KRX 휴장 세션과 일치해 `confirmed`가 됐고, 재실행은 영속 claim에서 외부 호출 없이 종료됐다. KIS 자동 확인은 사용자의 별도 활성화 결정 전까지 계속 꺼져 있다.
 - 같은 날 사용자 승인 후 실전 달력 전용 Compose override를 추가했다. worker만 실전 secret을 받고 scheduler는 비밀정보 없이 `live` 환경과 활성화 플래그로 KIS 예약을 등록한다. 기본 Compose와 모의환경에는 이 활성화를 적용하지 않는다.
+- 같은 날 기업행사 사실 버전, 비수정 일봉 버전, `split_adjusted`·`total_return` 파생 데이터셋과 point-in-time 규칙을 구체화한 [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md)을 작성했고 사용자가 구현 기준으로 승인했다.
+- 같은 날 비수정 `market_bar`를 사실 버전 저장으로 전환했다. 기존 20개 행은 `version=1`, `pending`으로 보존했고, 동일 사실 재수신은 근거만 갱신하며 정정은 이전 확정 버전을 남기고 새 `pending` 버전을 만든다. 일봉 읽기 API는 현재 사실의 버전과 확정 상태를 함께 제공한다.
 
 ## 1. 시간 기준
 
@@ -98,6 +100,8 @@ UI가 정상으로 표시하는 30초 기준과 주문 위험검사의 10초 기
 - 미확정 일봉은 차트에 잠정값으로 표시할 수 있지만 전략 입력에는 사용하지 않는다.
 
 ## 6. 가격과 기업행사
+
+구현 필드, 수정계수, 입력 해시와 미래정보 차단 기준은 승인된 [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md)을 따른다.
 
 - 원본 OHLCV는 비수정 가격으로 저장한다.
 - 수정주가는 별도 데이터셋으로 생성하고 조정 방식과 생성 버전을 기록한다.

@@ -72,18 +72,22 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
         bars = tuple(
             DailyBarResponse(
-                trading_date=result.trading_date,
-                open_price=result.open_price,
-                high_price=result.high_price,
-                low_price=result.low_price,
-                close_price=result.close_price,
-                volume=result.volume,
-                trading_value=result.trading_value,
-                adjusted=result.adjusted,
-                correction_code=result.correction_code,
-                split_ratio=result.split_ratio,
-                source=result.source,
-                received_at=result.received_at,
+                trading_date=result.bar.trading_date,
+                open_price=result.bar.open_price,
+                high_price=result.bar.high_price,
+                low_price=result.bar.low_price,
+                close_price=result.bar.close_price,
+                volume=result.bar.volume,
+                trading_value=result.bar.trading_value,
+                adjusted=result.bar.adjusted,
+                correction_code=result.bar.correction_code,
+                split_ratio=result.bar.split_ratio,
+                source=result.bar.source,
+                received_at=result.bar.received_at,
+                finality=result.finality.value,
+                confirmed_at=result.confirmed_at,
+                version=result.version,
+                valid_from=result.valid_from,
             )
             for result in results
         )
@@ -91,7 +95,7 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
-            source=results[0].source if results else None,
+            source=results[0].bar.source if results else None,
             bars=bars,
         )
 

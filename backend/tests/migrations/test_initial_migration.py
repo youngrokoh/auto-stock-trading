@@ -21,6 +21,11 @@ def test_initial_migration_renders_reproducible_postgres_sql(
     assert "CREATE TABLE market.quote" in migration_sql
     assert "CREATE TABLE market.market_bar" in migration_sql
     assert "CONSTRAINT uq_market_bar_identity UNIQUE" in migration_sql
+    assert "CONSTRAINT uq_market_bar_version UNIQUE" in migration_sql
+    assert "CREATE UNIQUE INDEX uq_market_bar_current" in migration_sql
+    assert "CONSTRAINT ck_market_bar_finality" in migration_sql
+    assert "CONSTRAINT ck_market_bar_confirmation" in migration_sql
+    assert "CONSTRAINT ck_market_bar_validity" in migration_sql
     assert "CREATE TABLE reference.market_calendar" in migration_sql
     assert "CONSTRAINT ck_market_calendar_session_window" in migration_sql
     assert "CREATE UNIQUE INDEX uq_market_calendar_current" in migration_sql
