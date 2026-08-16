@@ -130,6 +130,7 @@ Taskiq worker ── Valkey
 - [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](decisions/0003-data-architecture.md)
 - [ADR-0004: AI 신호와 주문 실행 분리](decisions/0004-ai-execution-separation.md)
 - [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](decisions/0005-kis-token-and-rate-coordination.md)
+- [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](decisions/0006-market-calendar-scheduling.md)
 
 #### Governance
 

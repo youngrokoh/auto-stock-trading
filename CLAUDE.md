@@ -94,6 +94,8 @@ Alembic revision `20260811_0001` creates PostgreSQL schemas (`reference`, `marke
 
 ADR-0005 is the binding KIS coordination decision. Workers sharing an environment and credential scope reuse a Valkey-cached access token and reserve KIS request slots through a distributed gate. Valkey failure is fail-closed: do not bypass coordination with a local token or independent requests. Keep the Compose Valkey host binding on `127.0.0.1`, and never expose the token cache or include token values in diagnostics.
 
+ADR-0006 is the binding market-calendar scheduling decision. Run one Taskiq scheduler, but enforce duplicate prevention with PostgreSQL execution claims rather than process count alone. KRX collection precedes KIS same-day confirmation on Seoul time. Keep automatic KIS confirmation disabled until the live read-only verification and explicit activation are complete; missing, stale, pending, or conflicting calendar state remains fail-closed.
+
 Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` switches on `window.location.pathname` (`/showcase` vs dashboard). Dev-only diagnostics load dynamically in `devtools.ts` behind `import.meta.env.DEV`.
 
 ## Conventions that bite
@@ -110,4 +112,4 @@ Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` sw
 
 ## Next implementation work
 
-Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The Korean market-calendar migration, domain types, and PostgreSQL repository are implemented against `docs/data/market-calendar-data-contract.md`. Implement the KRX collection adapter and KIS same-day confirmation next, then minute bars and corporate actions/adjusted prices. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.
+Continue from `docs/plan/current-status.md`, not from a remembered chat plan. The KRX annual calendar, temporary-hours notice collection and KIS same-day confirmation boundary are implemented. Implement the Taskiq scheduler and PostgreSQL execution claims from approved ADR-0006 next, then minute bars and corporate actions/adjusted prices. Approved-design frontend implementation is a separate track and requires real browser QA at 390px, 768px, and 1360px.

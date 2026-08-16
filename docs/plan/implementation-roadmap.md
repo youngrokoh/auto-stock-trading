@@ -137,7 +137,7 @@ AI나 실전 주문부터 시작하지 않는다. 데이터의 시점 정확성�
 남은 범위:
 
 - 분봉, 기업행사와 수정주가 데이터셋
-- 시장 달력 scheduler 실행 시각·중복 방지 결정과 호출 한도별 운영 정책
+- 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따른 시장 달력 scheduler, PostgreSQL 실행 claim과 단계별 활성화
 
 구현 내용:
 

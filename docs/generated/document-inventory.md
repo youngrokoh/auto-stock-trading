@@ -15,6 +15,7 @@
 | [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](../decisions/0003-data-architecture.md) | `docs/decisions/0003-data-architecture.md` | 승인 |
 | [ADR-0004: AI 신호와 주문 실행 분리](../decisions/0004-ai-execution-separation.md) | `docs/decisions/0004-ai-execution-separation.md` | 승인 |
 | [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](../decisions/0005-kis-token-and-rate-coordination.md) | `docs/decisions/0005-kis-token-and-rate-coordination.md` | 승인 |
+| [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](../decisions/0006-market-calendar-scheduling.md) | `docs/decisions/0006-market-calendar-scheduling.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |
