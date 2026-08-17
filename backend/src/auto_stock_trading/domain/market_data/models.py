@@ -44,6 +44,7 @@ class BrokerOperation(StrEnum):
     INSTRUMENT = "instrument"
     QUOTE = "quote"
     DAILY_BARS = "daily_bars"
+    MINUTE_BARS = "minute_bars"
     MARKET_CALENDAR = "market_calendar"
 
 

@@ -72,7 +72,7 @@ Infrastructure
 
 증권사·공시 API의 JSON은 어댑터에서 Pydantic 모델로 한 번만 파싱한 뒤 내부 도메인 타입으로 변환한다. 외부 원본 `dict`를 애플리케이션 내부로 전달하지 않는다.
 
-FastAPI 라우터는 `create_app`이 주입하는 application 계층 Protocol(상태 probe, 시장 데이터 reader, 기업행사·수정주가 reader)만 사용한다. 어댑터 구현은 기본 factory로 연결하고 테스트는 fake reader를 주입한다. 읽기 전용 조회 어댑터는 쓰기 저장소와 모듈을 분리한다.
+FastAPI 라우터는 `create_app`이 주입하는 application 계층 Protocol(상태 probe, 시장 데이터 reader, 기업행사·수정주가 reader)만 사용한다. 어댑터 구현은 기본 factory로 연결하고 테스트는 fake reader를 주입한다. 읽기 전용 조회 어댑터는 쓰기 저장소와 모듈을 분리한다. 분봉 읽기는 `MarketDataReader` Protocol의 `minute_bars`로 노출되며, 분봉 수집은 시장 달력·KIS 당일분봉·분봉 저장소 Protocol을 조합한 application 유스케이스가 담당한다.
 
 KIS 어댑터의 `httpx2` 클라이언트는 HTTP/2, 연결 풀, Brotli·Zstandard 응답, 연결·읽기·쓰기·풀 타임아웃과 전송 재시도를 사용한다. 모의투자 인증과 시세 요청은 초당 1건 제한보다 안전한 최소 1.05초 간격으로 직렬화하고, 로그에는 HTTP 메서드·경로·상태·소요시간만 남겨 인증 헤더와 요청 본문을 제외한다.
 

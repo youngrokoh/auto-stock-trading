@@ -153,6 +153,56 @@ class MarketBarRow(Base):
 
 
 @final
+class MinuteBarRow(Base):
+    __tablename__: str = "minute_bar"
+    __table_args__: tuple[UniqueConstraint, Index, Index, dict[str, str]] = (
+        UniqueConstraint(
+            "instrument_id",
+            "interval",
+            "bar_started_at",
+            "source",
+            "version",
+            name="uq_minute_bar_version",
+        ),
+        Index(
+            "uq_minute_bar_current",
+            "instrument_id",
+            "interval",
+            "bar_started_at",
+            "source",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+        Index("ix_minute_bar_instrument_trading_date", "instrument_id", "trading_date"),
+        {"schema": "market"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    instrument_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reference.instrument.id", ondelete="CASCADE"),
+    )
+    interval: Mapped[str] = mapped_column(String(8))
+    trading_date: Mapped[date] = mapped_column(Date)
+    bar_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    open_price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    high_price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    low_price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    close_price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    volume: Mapped[int] = mapped_column(BigInteger)
+    cumulative_trading_value: Mapped[Decimal] = mapped_column(Numeric(32, 8))
+    source: Mapped[str] = mapped_column(String(32))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finality: Mapped[str] = mapped_column(String(16))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )
+
+
+@final
 class CorporateActionRow(Base):
     __tablename__: str = "corporate_action"
     __table_args__: tuple[UniqueConstraint, UniqueConstraint, Index, dict[str, str]] = (

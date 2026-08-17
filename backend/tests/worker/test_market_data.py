@@ -96,6 +96,33 @@ def test_cli_routes_daily_bar_confirmation() -> None:
     confirm.assert_awaited_once_with("2026-08-12", "2026-08-13")
 
 
+def test_minute_bar_collection_requires_server_side_kis_credentials() -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        kis_app_key=None,
+        kis_app_secret=None,
+    )
+
+    with (
+        patch("auto_stock_trading.worker.market_data.Settings", return_value=settings),
+        pytest.raises(KisConfigurationError, match="AUTO_STOCK_KIS_APP_KEY"),
+    ):
+        _ = anyio.run(market_data.collect_seed_minute_bars)
+
+
+def test_cli_routes_minute_bar_collection() -> None:
+    collect = AsyncMock(return_value=(391, 0, 391))
+    argv = ["market_data", "--collect-minute-bars"]
+
+    with (
+        patch.object(market_data, "collect_seed_minute_bars", new=collect),
+        patch.object(sys, "argv", argv),
+    ):
+        market_data.main()
+
+    collect.assert_awaited_once_with()
+
+
 def test_kis_calendar_confirmation_rejects_the_paper_environment() -> None:
     settings = Settings(
         environment=Environment.TEST,

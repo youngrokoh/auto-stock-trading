@@ -5,6 +5,7 @@ from typing import final
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
+from auto_stock_trading.domain.market_data.minute_bars import MinuteBar, VersionedMinuteBar
 from auto_stock_trading.domain.market_data.models import (
     BarFinality,
     DailyBar,
@@ -104,6 +105,37 @@ class StubMarketDataReader:
             ),
         )
 
+    async def minute_bars(
+        self,
+        symbol: str,
+        trading_date: date,
+    ) -> tuple[VersionedMinuteBar, ...]:
+        if symbol != "005930" or trading_date != date(2026, 8, 13):
+            return ()
+        received_at = datetime(2026, 8, 13, 6, 45, tzinfo=UTC)
+        return (
+            VersionedMinuteBar(
+                bar=MinuteBar(
+                    symbol=symbol,
+                    trading_date=trading_date,
+                    bar_started_at=datetime(2026, 8, 13, 0, 0, tzinfo=UTC),
+                    open_price=Decimal(72800),
+                    high_price=Decimal(72900),
+                    low_price=Decimal(72700),
+                    close_price=Decimal(72850),
+                    volume=15_000,
+                    cumulative_trading_value=Decimal(1_092_000_000),
+                    source="KIS",
+                    received_at=received_at,
+                ),
+                finality=BarFinality.PENDING,
+                confirmed_at=None,
+                version=1,
+                valid_from=received_at,
+                superseded_at=None,
+            ),
+        )
+
     async def close(self) -> None:
         return None
 
@@ -142,6 +174,45 @@ def test_market_data_read_endpoints_include_source_and_as_of() -> None:
     assert bars.json()["bars"][0]["valid_from"] == "2026-08-14T01:00:00Z"
 
 
+def test_minute_bars_expose_versioned_facts_for_a_trading_date() -> None:
+    with _client() as client:
+        response = client.get(
+            "/api/market-data/instruments/005930/minute-bars",
+            params={"trading_date": "2026-08-13"},
+        )
+        empty = client.get(
+            "/api/market-data/instruments/005930/minute-bars",
+            params={"trading_date": "2026-08-12"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "symbol": "005930",
+        "interval": "1m",
+        "trading_date": "2026-08-13",
+        "source": "KIS",
+        "bars": [
+            {
+                "bar_started_at": "2026-08-13T00:00:00Z",
+                "open_price": "72800",
+                "high_price": "72900",
+                "low_price": "72700",
+                "close_price": "72850",
+                "volume": 15_000,
+                "cumulative_trading_value": "1092000000",
+                "source": "KIS",
+                "received_at": "2026-08-13T06:45:00Z",
+                "finality": "pending",
+                "confirmed_at": None,
+                "version": 1,
+                "valid_from": "2026-08-13T06:45:00Z",
+            }
+        ],
+    }
+    assert empty.status_code == 200
+    assert empty.json()["bars"] == []
+
+
 def test_market_data_endpoints_return_explicit_not_found_and_invalid_range() -> None:
     with _client() as client:
         missing = client.get("/api/market-data/instruments/999999")
@@ -149,6 +220,13 @@ def test_market_data_endpoints_return_explicit_not_found_and_invalid_range() -> 
             "/api/market-data/instruments/005930/daily-bars",
             params={"start_date": "2026-08-14", "end_date": "2026-08-13"},
         )
+        missing_minutes = client.get(
+            "/api/market-data/instruments/999999/minute-bars",
+            params={"trading_date": "2026-08-13"},
+        )
+        missing_date = client.get("/api/market-data/instruments/005930/minute-bars")
 
     assert missing.status_code == 404
     assert invalid.status_code == 422
+    assert missing_minutes.status_code == 404
+    assert missing_date.status_code == 422

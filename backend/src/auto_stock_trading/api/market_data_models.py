@@ -67,3 +67,27 @@ class DailyBarsResponse(MarketDataResponse):
     end_date: date | None
     source: str | None
     bars: tuple[DailyBarResponse, ...]
+
+
+class MinuteBarResponse(MarketDataResponse):
+    bar_started_at: datetime
+    open_price: Decimal
+    high_price: Decimal
+    low_price: Decimal
+    close_price: Decimal
+    volume: int
+    cumulative_trading_value: Decimal
+    source: str
+    received_at: datetime
+    finality: str
+    confirmed_at: datetime | None
+    version: int
+    valid_from: datetime
+
+
+class MinuteBarsResponse(MarketDataResponse):
+    symbol: str
+    interval: str = "1m"
+    trading_date: date
+    source: str | None
+    bars: tuple[MinuteBarResponse, ...]

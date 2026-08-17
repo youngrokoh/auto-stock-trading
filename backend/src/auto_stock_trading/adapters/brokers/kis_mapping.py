@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Final, override
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
+from auto_stock_trading.domain.market_data.minute_bars import MinuteBar
 from auto_stock_trading.domain.market_data.models import (
     BrokerOperation,
     DailyBar,
@@ -16,12 +17,11 @@ from auto_stock_trading.domain.market_data.models import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from auto_stock_trading.adapters.brokers.kis_contracts import (
         KisDailyBarOutput,
         KisDailyBarsResponse,
         KisInstrumentResponse,
+        KisMinuteBarOutput,
         KisQuoteResponse,
     )
     from auto_stock_trading.adapters.brokers.kis_http import KisRawResponse
@@ -157,6 +157,33 @@ def bar_from(
         adjusted=False,
         correction_code=output.revl_issu_reas or ("modified" if output.mod_yn == "Y" else None),
         split_ratio=_decimal_or_none(output.prtt_rate),
+        source=KIS_SOURCE,
+        received_at=received_at,
+    )
+
+
+def minute_bar_from(
+    target: InstrumentTarget,
+    output: KisMinuteBarOutput,
+    received_at: datetime,
+) -> MinuteBar:
+    trading_date = _kis_date(output.stck_bsop_date)
+    label = output.stck_cntg_hour
+    bar_started_at = datetime.combine(
+        trading_date,
+        time(int(label[:2]), int(label[2:4]), int(label[4:6])),
+        _SEOUL,
+    ).astimezone(UTC)
+    return MinuteBar(
+        symbol=target.symbol,
+        trading_date=trading_date,
+        bar_started_at=bar_started_at,
+        open_price=_decimal(output.stck_oprc),
+        high_price=_decimal(output.stck_hgpr),
+        low_price=_decimal(output.stck_lwpr),
+        close_price=_decimal(output.stck_prpr),
+        volume=_integer(output.cntg_vol),
+        cumulative_trading_value=_decimal(output.acml_tr_pbmn),
         source=KIS_SOURCE,
         received_at=received_at,
     )

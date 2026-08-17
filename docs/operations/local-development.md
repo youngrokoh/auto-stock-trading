@@ -203,6 +203,19 @@ curl "http://localhost:8000/api/market-data/corporate-actions/{action_key}/adjus
 
 기업행사 조회는 `knowledge_cutoff_at`(시간대 오프셋 필수)으로 당시 알 수 있었던 버전을 선택하는 point-in-time 조회를 지원한다. 자세한 응답 계약은 [시장 데이터 읽기 API](../api/market-data-api.md)를 따른다.
 
+## 분봉 수집
+
+검증된 시장 달력이 결정한 최신 거래 세션의 1분봉을 수집한다. 정규장 종료 후 같은 명령을 두 번 실행하면 두 관측이 일치한 분봉이 `confirmed`가 된다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.market_data --collect-minute-bars
+uv run python -m auto_stock_trading.worker.market_data --collect-minute-bars   # 재수집으로 확정
+curl "http://localhost:8000/api/market-data/instruments/069500/minute-bars?trading_date=2026-08-14"
+```
+
+모의환경 당일분봉 API는 날짜 지정이 불가능해 최신 세션만 수집할 수 있다. 수집하지 않은 과거 거래일은 영구 결손으로 남으므로 거래일마다 실행한다. 달력이 없거나 충돌 상태면 수집은 실패 상태만 남기고 아무것도 저장하지 않는다.
+
 KIS 모의투자 REST API는 초당 1건 제한을 적용하므로 Valkey 호출 게이트가 같은 환경과 자격증명을 사용하는 모든 worker의 인증·시세 요청을 최소 1.05초 간격으로 예약한다. 접근 토큰은 만료 1분 전까지 Valkey에서 재사용하며 동시에 토큰이 필요해도 분산 잠금을 획득한 worker 하나만 발급한다. Valkey를 사용할 수 없으면 호출 제한 위반을 막기 위해 새 KIS 요청을 보내지 않고 수집을 실패 처리한다. 자세한 반복 실행은 [모의환경 검증 런북](kis-paper-verification.md)을 따른다.
 
 ## 프론트엔드만 실행

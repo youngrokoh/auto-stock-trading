@@ -81,6 +81,31 @@ class KisDailyBarsResponse(KisContract):
     output2: tuple[KisDailyBarOutput, ...]
 
 
+class KisMinuteSummary(KisContract):
+    hts_kor_isnm: str = ""
+    stck_prdy_clpr: str = ""
+    acml_vol: str = ""
+
+
+class KisMinuteBarOutput(KisContract):
+    stck_bsop_date: str
+    stck_cntg_hour: str
+    stck_oprc: str
+    stck_hgpr: str
+    stck_lwpr: str
+    stck_prpr: str
+    cntg_vol: str
+    acml_tr_pbmn: str
+
+
+class KisMinuteBarsResponse(KisContract):
+    rt_cd: str
+    msg_cd: str
+    msg1: str
+    output1: KisMinuteSummary
+    output2: tuple[KisMinuteBarOutput, ...]
+
+
 class KisHolidayOutput(KisContract):
     bass_dt: Annotated[str, Field(pattern=r"^\d{8}$")]
     wday_dvsn_cd: str

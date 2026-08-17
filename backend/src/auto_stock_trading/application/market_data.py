@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from datetime import date
 
     from auto_stock_trading.adapters.brokers.kis_market_data import MarketDataSource
+    from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
     from auto_stock_trading.domain.market_data.models import (
         DailyBar,
         Instrument,
@@ -33,6 +34,12 @@ class MarketDataReader(Protocol):
         start_date: date | None,
         end_date: date | None,
     ) -> tuple[VersionedDailyBar, ...]: ...
+
+    async def minute_bars(
+        self,
+        symbol: str,
+        trading_date: date,
+    ) -> tuple[VersionedMinuteBar, ...]: ...
 
     async def close(self) -> None: ...
 

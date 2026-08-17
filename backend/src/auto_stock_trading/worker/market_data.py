@@ -15,10 +15,18 @@ from auto_stock_trading.adapters.brokers.kis_http import (
     create_kis_http_client,
 )
 from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAdapter
+from auto_stock_trading.adapters.brokers.kis_minute_bars import KisMinuteBarAdapter
+from auto_stock_trading.adapters.database.market_calendar_repository import (
+    PostgresMarketCalendarRepository,
+)
+from auto_stock_trading.adapters.database.market_data_minute_bar_store import (
+    PostgresMinuteBarStore,
+)
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
 from auto_stock_trading.application.market_data import DailyBarConfirmer, MarketDataCollector
+from auto_stock_trading.application.minute_bars import MinuteBarCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker import market_calendar
@@ -42,6 +50,7 @@ class Arguments(argparse.Namespace):
     calendar_year: int | None = None
     confirm_calendar_today: bool = False
     confirm_daily_bars: bool = False
+    collect_minute_bars: bool = False
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
@@ -127,8 +136,47 @@ async def confirm_seed_daily_bars(
     return confirmed, pending
 
 
+async def collect_seed_minute_bars() -> tuple[int, int, int]:
+    settings = Settings()
+    credentials = load_kis_credentials(settings)
+    http_client = KisHttpClient(
+        create_kis_http_client(settings.kis_base_url),
+        credentials,
+        ValkeyKisRequestCoordinator.from_url(
+            settings.valkey_url.get_secret_value(),
+            kis_coordination_scope(
+                settings.kis_environment.value,
+                credentials.app_key,
+                credentials.app_secret,
+            ),
+        ),
+    )
+    source = KisMinuteBarAdapter(http_client)
+    database_url = settings.database_url.get_secret_value()
+    calendar = PostgresMarketCalendarRepository.from_url(database_url)
+    store = PostgresMinuteBarStore.from_url(database_url)
+    collector = MinuteBarCollector(calendar, source, store)
+    collected = 0
+    confirmed = 0
+    pending = 0
+    try:
+        for target in _TARGETS:
+            result = await collector.collect(target, datetime.now(UTC))
+            collected += result.collected
+            confirmed += result.confirmed
+            pending += result.pending
+    finally:
+        await source.close()
+        await calendar.close()
+        await store.close()
+    return collected, confirmed, pending
+
+
 collect_seed_market_data_task = broker.task(task_name="collect_seed_market_data")(
     collect_seed_market_data
+)
+collect_seed_minute_bars_task = broker.task(task_name="collect_seed_minute_bars")(
+    collect_seed_minute_bars
 )
 
 
@@ -147,8 +195,11 @@ def main() -> None:
     _ = parser.add_argument("--calendar-year", type=int)
     _ = parser.add_argument("--confirm-calendar-today", action="store_true")
     _ = parser.add_argument("--confirm-daily-bars", action="store_true")
+    _ = parser.add_argument("--collect-minute-bars", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.confirm_daily_bars:
+    if arguments.collect_minute_bars:
+        _ = anyio.run(collect_seed_minute_bars)
+    elif arguments.confirm_daily_bars:
         _ = anyio.run(confirm_seed_daily_bars, arguments.start_date, arguments.end_date)
     elif arguments.confirm_calendar_today:
         _ = anyio.run(run_claimed_kis_market_calendar_confirmation)

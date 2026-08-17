@@ -18,6 +18,9 @@ from auto_stock_trading.adapters.database.market_data_bar_repository import (
     read_market_bars,
     save_market_bar,
 )
+from auto_stock_trading.adapters.database.market_data_minute_bar_repository import (
+    read_minute_bars,
+)
 from auto_stock_trading.adapters.database.market_data_rows import (
     InstrumentRow,
     QuoteRow,
@@ -45,6 +48,8 @@ from auto_stock_trading.domain.market_data.models import (
 if TYPE_CHECKING:
     from datetime import date, datetime
     from uuid import UUID
+
+    from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
 
 
 @final
@@ -224,6 +229,13 @@ class PostgresMarketDataRepository:
             self._sessions,
             MarketBarRange(symbol, start_date, end_date),
         )
+
+    async def minute_bars(
+        self,
+        symbol: str,
+        trading_date: date,
+    ) -> tuple[VersionedMinuteBar, ...]:
+        return await read_minute_bars(self._sessions, symbol, trading_date)
 
     async def close(self) -> None:
         if self._engine is not None:

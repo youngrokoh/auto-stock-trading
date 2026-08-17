@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import final
+from typing import TYPE_CHECKING, final
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -28,6 +28,9 @@ from auto_stock_trading.domain.market_data.models import (
     VersionedDailyBar,
 )
 from auto_stock_trading.settings.runtime import Environment, Settings
+
+if TYPE_CHECKING:
+    from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
 
 _SYMBOL = "069500"
 _DATASET_ID = UUID(int=1)
@@ -79,6 +82,14 @@ class StubMarketDataReader:
         end_date: date | None,
     ) -> tuple[VersionedDailyBar, ...]:
         _ = (symbol, start_date, end_date)
+        return ()
+
+    async def minute_bars(
+        self,
+        symbol: str,
+        trading_date: date,
+    ) -> tuple[VersionedMinuteBar, ...]:
+        _ = (symbol, trading_date)
         return ()
 
     async def close(self) -> None:

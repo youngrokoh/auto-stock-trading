@@ -14,12 +14,15 @@
 | `GET` | `/api/market-data/instruments/{symbol}` | 종목 기본정보와 상품 유형 |
 | `GET` | `/api/market-data/instruments/{symbol}/quote` | 저장된 최신 현재가 |
 | `GET` | `/api/market-data/instruments/{symbol}/daily-bars` | 거래일 오름차순 비수정 일봉 |
+| `GET` | `/api/market-data/instruments/{symbol}/minute-bars` | 거래일별 시각 오름차순 비수정 1분봉 |
 | `GET` | `/api/market-data/instruments/{symbol}/corporate-actions` | 기업행사 사실 버전 (현재·이력·시점 조회) |
 | `GET` | `/api/market-data/instruments/{symbol}/adjusted-daily-bars` | 최신 발행 수정주가 데이터셋과 파생 일봉 |
 | `GET` | `/api/market-data/adjusted-datasets/{dataset_id}` | 데이터셋 ID로 수정 일봉·계수·기업행사 계보 |
 | `GET` | `/api/market-data/corporate-actions/{action_key}/adjusted-datasets` | 기업행사가 반영된 데이터셋 목록 |
 
 일봉 조회는 선택적인 `start_date`, `end_date` 쿼리를 `YYYY-MM-DD` 형식으로 받는다. 시작일이 종료일보다 늦으면 `422`, 종목이 없으면 `404`를 반환한다. 등록된 종목에 조회 구간 데이터가 없으면 빈 `bars`를 반환한다.
+
+분봉 조회는 필수 쿼리 `trading_date`를 받으며 [국내 분봉 데이터 계약](../data/minute-bar-data-contract.md)을 따른다. 검증된 시장 달력 세션 창 안의 비수정 1분봉 현재 버전을 `bar_started_at` 오름차순으로 반환하고, 각 분봉은 `version`, `valid_from`, `finality`, `confirmed_at`과 원본이 제공하는 당일 누적 거래대금(`cumulative_trading_value`)을 노출한다. `pending` 분봉은 재관측 확정 전 값으로 전략 입력에 사용할 수 없다. 종가 단일가(15:30) 행의 분당 거래량은 원본 특성상 실제 체결량의 2배로 반환되며 보정 없이 그대로 저장·노출된다.
 
 ## 기업행사·수정주가 읽기
 
@@ -86,4 +89,5 @@ Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO
 - 모의투자 REST 요청은 현재 초당 1건 제한에 맞춰 최소 1.05초 간격으로 실행한다.
 - 접근 토큰과 호출 간격은 Valkey에서 같은 자격증명의 worker가 공유한다.
 - 현재가 `as_of`는 체결시각이 아니라 수신시각이다. 향후 실시간 스트림에서는 거래소 시각을 별도 저장한다.
-- 분봉과 시장 달력 HTTP API는 아직 구현하지 않았다. 수정주가·기업행사 읽기 API는 구현했으며 KIS 수정주가 대조는 분할 이력 종목 확보 시 수행한다. KRX 임시 거래시간 공지는 수능일·연초 개장일 형식을 지원하며 새로운 임시 변경 유형은 계약과 테스트를 추가하기 전 fail-closed로 처리한다.
+- 시장 달력 HTTP API는 아직 구현하지 않았다. 분봉·수정주가·기업행사 읽기 API는 구현했으며 KIS 수정주가 대조는 분할 이력 종목 확보 시 수행한다.
+- 분봉 수집은 모의환경 당일분봉 API의 한계로 최신 거래 세션만 가능하다. 수집하지 않은 과거 거래일은 영구 결손으로 남으며 직전 값으로 채우지 않는다. KRX 임시 거래시간 공지는 수능일·연초 개장일 형식을 지원하며 새로운 임시 변경 유형은 계약과 테스트를 추가하기 전 fail-closed로 처리한다.
