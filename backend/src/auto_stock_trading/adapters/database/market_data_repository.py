@@ -18,6 +18,9 @@ from auto_stock_trading.adapters.database.market_data_bar_repository import (
     read_market_bars,
     save_market_bar,
 )
+from auto_stock_trading.adapters.database.market_data_investor_flow_repository import (
+    read_investor_flows,
+)
 from auto_stock_trading.adapters.database.market_data_listed_share_repository import (
     read_listed_share_count,
     save_listed_share_count,
@@ -53,6 +56,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
     from uuid import UUID
 
+    from auto_stock_trading.domain.market_data.investor_flows import VersionedInvestorFlow
     from auto_stock_trading.domain.market_data.listed_shares import VersionedListedShareCount
     from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
 
@@ -242,6 +246,13 @@ class PostgresMarketDataRepository:
 
     async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
         return await read_listed_share_count(self._sessions, symbol)
+
+    async def investor_flows(
+        self,
+        symbol: str,
+        limit: int,
+    ) -> tuple[VersionedInvestorFlow, ...]:
+        return await read_investor_flows(self._sessions, symbol, limit)
 
     async def close(self) -> None:
         if self._engine is not None:

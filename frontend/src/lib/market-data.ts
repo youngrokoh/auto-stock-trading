@@ -106,6 +106,26 @@ const corporateActionsSchema = z.strictObject({
   symbol: z.string().min(1),
 });
 
+const investorFlowSchema = z.strictObject({
+  foreign_net_quantity: z.number().int(),
+  foreign_net_value: z.number().int(),
+  individual_net_quantity: z.number().int(),
+  individual_net_value: z.number().int(),
+  institution_net_quantity: z.number().int(),
+  institution_net_value: z.number().int(),
+  received_at: isoDateTime,
+  trading_date: isoDate,
+  version: z.number().int().positive(),
+});
+
+const investorFlowsSchema = z.strictObject({
+  flows: z.array(investorFlowSchema).readonly(),
+  quantity_unit: z.literal("share"),
+  source: z.string().min(1),
+  symbol: z.string().min(1),
+  value_unit: z.literal("million_krw"),
+});
+
 export type Instrument = z.infer<typeof instrumentSchema>;
 export type Instruments = z.infer<typeof instrumentsSchema>;
 export type Quote = z.infer<typeof quoteSchema>;
@@ -113,9 +133,13 @@ export type DailyBar = z.infer<typeof dailyBarSchema>;
 export type DailyBars = z.infer<typeof dailyBarsSchema>;
 export type CorporateAction = z.infer<typeof corporateActionSchema>;
 export type CorporateActions = z.infer<typeof corporateActionsSchema>;
+export type InvestorFlow = z.infer<typeof investorFlowSchema>;
+export type InvestorFlows = z.infer<typeof investorFlowsSchema>;
 
 export const parseInstruments = (input: unknown): Instruments => instrumentsSchema.parse(input);
 export const parseQuote = (input: unknown): Quote => quoteSchema.parse(input);
 export const parseDailyBars = (input: unknown): DailyBars => dailyBarsSchema.parse(input);
 export const parseCorporateActions = (input: unknown): CorporateActions =>
   corporateActionsSchema.parse(input);
+export const parseInvestorFlows = (input: unknown): InvestorFlows =>
+  investorFlowsSchema.parse(input);

@@ -56,6 +56,23 @@ class KisQuoteResponse(KisContract):
     output: KisQuoteOutput
 
 
+class KisInvestorRow(KisContract):
+    stck_bsop_date: str
+    prsn_ntby_qty: str
+    frgn_ntby_qty: str
+    orgn_ntby_qty: str
+    prsn_ntby_tr_pbmn: str
+    frgn_ntby_tr_pbmn: str
+    orgn_ntby_tr_pbmn: str
+
+
+class KisInvestorResponse(KisContract):
+    rt_cd: str
+    msg_cd: str
+    msg1: str
+    output: tuple[KisInvestorRow, ...]
+
+
 class KisDailySummary(KisContract):
     stck_shrn_iscd: str = ""
     hts_kor_isnm: str = ""

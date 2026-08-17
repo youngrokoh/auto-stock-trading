@@ -157,7 +157,8 @@ AI나 실전 주문부터 시작하지 않는다. 데이터의 시점 정확성�
 - 완료: [재무제표 데이터 계약](../data/financial-statement-data-contract.md)과 OpenDART 수집·버전 저장·읽기 API
 - 완료: [재무 지표 정의 계약](../data/financial-indicator-contract.md)과 지표 계산·기업 분석 화면
 - 완료: 상장주식수 버전 사실 수집과 가치지표(EPS 원문·PER·시가총액)
-- 다음 작업: 4단계 후속 — 수급, 공시 연결
+- 완료: [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md)과 KIS 투자자별 매매·DART 공시 목록 수집·읽기 API·화면
+- 다음 작업: 5단계 ETF 탐색과 순위
 
 구현 내용:
 
@@ -210,7 +211,7 @@ api_sync_status
 
 ### 4단계: 종목별 기업 분석
 
-2026-08-17에 재무 데이터 기반을 구현했다([검증 기록](../qa/phase-4-fundamentals-verification.md)). 승인된 [재무제표 데이터 계약](../data/financial-statement-data-contract.md)에 따라 OpenDART 전체 재무제표(연결·개별)를 접수번호 근거 사실 버전으로 수집·저장하고 읽기 API로 제공한다. 같은 날 승인된 [재무 지표 정의 계약](../data/financial-indicator-contract.md)에 따라 성장성·수익성·안정성 지표 9종을 수식·기준연도·접수번호 출처와 함께 조회 시점에 계산하는 API와 승인 디자인 기업 분석 화면(`/analysis`)을 구현하고 실데이터·실브라우저로 검증했다. 이어 상장주식수 버전 사실 수집과 가치지표(공시 기본주당이익 원문, PER, 시가총액 — 기준 3종 분리 명시)를 구현·검증했다. BPS·PBR(우선주 반영 설계), 수급, 공시 연결은 후속이다.
+2026-08-17에 재무 데이터 기반을 구현했다([검증 기록](../qa/phase-4-fundamentals-verification.md)). 승인된 [재무제표 데이터 계약](../data/financial-statement-data-contract.md)에 따라 OpenDART 전체 재무제표(연결·개별)를 접수번호 근거 사실 버전으로 수집·저장하고 읽기 API로 제공한다. 같은 날 승인된 [재무 지표 정의 계약](../data/financial-indicator-contract.md)에 따라 성장성·수익성·안정성 지표 9종을 수식·기준연도·접수번호 출처와 함께 조회 시점에 계산하는 API와 승인 디자인 기업 분석 화면(`/analysis`)을 구현하고 실데이터·실브라우저로 검증했다. 이어 상장주식수 버전 사실 수집과 가치지표(공시 기본주당이익 원문, PER, 시가총액 — 기준 3종 분리 명시), KIS 투자자별 수급(당일 제외 버전 사실)과 DART 공시 목록(주요 유형별, 접수번호 유일)을 구현·검증해 기업 분석 화면 좌표를 전부 실제 값으로 채웠다. BPS·PBR(우선주 반영 설계)과 전체 corpCode 매핑은 후속이다.
 
 구현 내용:
 

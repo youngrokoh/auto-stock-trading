@@ -16,6 +16,7 @@
 | `GET` | `/api/market-data/instruments/{symbol}/quote` | 저장된 최신 현재가 |
 | `GET` | `/api/market-data/instruments/{symbol}/daily-bars` | 거래일 오름차순 비수정 일봉 |
 | `GET` | `/api/market-data/instruments/{symbol}/minute-bars` | 거래일별 시각 오름차순 비수정 1분봉 |
+| `GET` | `/api/market-data/instruments/{symbol}/investor-flows` | 일자별 개인·외국인·기관 순매수 (거래일 내림차순, `limit` 기본 30) |
 | `GET` | `/api/market-data/instruments/{symbol}/corporate-actions` | 기업행사 사실 버전 (현재·이력·시점 조회) |
 | `GET` | `/api/market-data/instruments/{symbol}/adjusted-daily-bars` | 최신 발행 수정주가 데이터셋과 파생 일봉 |
 | `GET` | `/api/market-data/adjusted-datasets/{dataset_id}` | 데이터셋 ID로 수정 일봉·계수·기업행사 계보 |
@@ -40,6 +41,14 @@
 - `applied_actions`는 반영된 기업행사의 `action_key`, `action_version`, 사건일, 사건 계수와 출처를 노출한다.
 - 데이터셋 ID 조회는 감사·재현을 위해 `failed`·`superseded` 상태도 반환한다. 기업행사별 데이터셋 목록은 해당 사실 버전이 반영된 발행 이력을 생성 시각 순으로 반환한다.
 - `split_adjusted`는 주식 수 변화 사건만 반영해 사건일 이전 가격에 1/주식수승수, 거래량에 주식수승수를 누적 적용한다. `total_return`은 여기에 현금배당·ETF 분배금을 락일 직전 종가 기준 `(P - D) / P` 가격계수로 추가 반영한다. 두 계열 모두 비수정 확정 일봉의 파생값이며 체결가로 사용할 수 없다. 계산식은 OpenAPI 경로 설명에도 명시된다.
+
+## 투자자별 매매(수급)
+
+[수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md)을 따른다. 행마다
+개인·외국인·기관의 순매수 수량(주, `quantity_unit: share`)과 대금(백만원,
+`value_unit: million_krw`)을 원본 그대로 제공하며, 세 주체 합계는 기타 주체가 없어 0이
+아니다. 서울 기준 당일 데이터는 잠정치라 저장하지 않고, 출처는 KIS이며 최근 약 30거래일만
+제공되므로 수집 시점부터 축적한다. 행은 `received_at`·`version`을 포함한다.
 
 ## 출처와 시각
 

@@ -30,6 +30,7 @@ from auto_stock_trading.domain.market_data.models import (
 from auto_stock_trading.settings.runtime import Environment, Settings
 
 if TYPE_CHECKING:
+    from auto_stock_trading.domain.market_data.investor_flows import VersionedInvestorFlow
     from auto_stock_trading.domain.market_data.listed_shares import (
         VersionedListedShareCount,
     )
@@ -95,6 +96,14 @@ class StubMarketDataReader:
     async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
         _ = symbol
         return None
+
+    async def investor_flows(
+        self,
+        symbol: str,
+        limit: int,
+    ) -> tuple[VersionedInvestorFlow, ...]:
+        _ = (symbol, limit)
+        return ()
 
     async def minute_bars(
         self,

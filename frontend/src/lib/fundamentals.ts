@@ -140,6 +140,21 @@ const financialIndicatorsSchema = z.strictObject({
   years: z.array(annualIndicatorsSchema).readonly(),
 });
 
+const disclosureSchema = z.strictObject({
+  disclosure_type: z.enum(["A", "B", "D", "I"]),
+  flr_nm: z.string().min(1),
+  rcept_dt: z.iso.date(),
+  rcept_no: z.string().min(1),
+  received_at: isoDateTime,
+  report_nm: z.string().min(1),
+});
+
+const disclosuresSchema = z.strictObject({
+  disclosures: z.array(disclosureSchema).readonly(),
+  source: z.string().min(1),
+  symbol: z.string().min(1),
+});
+
 export type FinancialReport = z.infer<typeof financialReportSchema>;
 export type FinancialReports = z.infer<typeof financialReportsSchema>;
 export type FinancialStatementLine = z.infer<typeof statementLineSchema>;
@@ -150,6 +165,8 @@ export type AnnualIndicators = z.infer<typeof annualIndicatorsSchema>;
 export type FinancialValuation = z.infer<typeof valuationSchema>;
 export type ValuationItem = z.infer<typeof valuationItemSchema>;
 export type FinancialIndicators = z.infer<typeof financialIndicatorsSchema>;
+export type Disclosure = z.infer<typeof disclosureSchema>;
+export type Disclosures = z.infer<typeof disclosuresSchema>;
 
 export const parseFinancialReports = (input: unknown): FinancialReports =>
   financialReportsSchema.parse(input);
@@ -157,3 +174,4 @@ export const parseFinancialReportDetail = (input: unknown): FinancialReportDetai
   financialReportDetailSchema.parse(input);
 export const parseFinancialIndicators = (input: unknown): FinancialIndicators =>
   financialIndicatorsSchema.parse(input);
+export const parseDisclosures = (input: unknown): Disclosures => disclosuresSchema.parse(input);

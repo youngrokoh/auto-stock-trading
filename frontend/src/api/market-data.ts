@@ -2,9 +2,11 @@ import {
   type CorporateActions,
   type DailyBars,
   type Instruments,
+  type InvestorFlows,
   parseCorporateActions,
   parseDailyBars,
   parseInstruments,
+  parseInvestorFlows,
   parseQuote,
   type Quote,
 } from "../lib/market-data";
@@ -33,4 +35,9 @@ export const fetchDailyBars = async (symbol: string, startDate?: string): Promis
 export const fetchCorporateActions = async (symbol: string): Promise<CorporateActions> =>
   parseCorporateActions(
     await fetchJson(`/api/market-data/instruments/${symbol}/corporate-actions`),
+  );
+
+export const fetchInvestorFlows = async (symbol: string, limit: number): Promise<InvestorFlows> =>
+  parseInvestorFlows(
+    await fetchJson(`/api/market-data/instruments/${symbol}/investor-flows?limit=${String(limit)}`),
   );

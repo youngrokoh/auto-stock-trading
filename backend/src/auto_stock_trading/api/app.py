@@ -4,6 +4,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from auto_stock_trading.adapters.database.fundamental_disclosure_reader import (
+    PostgresDisclosureReader,
+)
 from auto_stock_trading.adapters.database.fundamental_statement_reader import (
     PostgresFinancialReportReader,
 )
@@ -25,6 +28,7 @@ from auto_stock_trading.application.adjusted_prices import (
     AdjustedPriceReader,
     CorporateActionReader,
 )
+from auto_stock_trading.application.disclosures import DisclosureReader
 from auto_stock_trading.application.financial_statements import FinancialReportReader
 from auto_stock_trading.application.health import HealthProbe, HealthService
 from auto_stock_trading.application.market_data import MarketDataReader
@@ -35,6 +39,7 @@ MarketDataReaderFactory = Callable[[], MarketDataReader]
 CorporateActionReaderFactory = Callable[[], CorporateActionReader]
 AdjustedPriceReaderFactory = Callable[[], AdjustedPriceReader]
 FinancialReportReaderFactory = Callable[[], FinancialReportReader]
+DisclosureReaderFactory = Callable[[], DisclosureReader]
 
 
 def create_app(  # noqa: PLR0913
@@ -46,6 +51,7 @@ def create_app(  # noqa: PLR0913
     corporate_action_reader_factory: CorporateActionReaderFactory | None = None,
     adjusted_price_reader_factory: AdjustedPriceReaderFactory | None = None,
     financial_report_reader_factory: FinancialReportReaderFactory | None = None,
+    disclosure_reader_factory: DisclosureReaderFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -79,6 +85,10 @@ def create_app(  # noqa: PLR0913
         )
     )
     financial_report_reader = financial_reader_factory()
+    disclosure_factory = disclosure_reader_factory or (
+        lambda: PostgresDisclosureReader.from_url(runtime_settings.database_url.get_secret_value())
+    )
+    disclosure_reader = disclosure_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -90,6 +100,7 @@ def create_app(  # noqa: PLR0913
             await corporate_action_reader.close()
             await adjusted_price_reader.close()
             await financial_report_reader.close()
+            await disclosure_reader.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -112,7 +123,9 @@ def create_app(  # noqa: PLR0913
             adjusted_price_reader,
         )
     )
-    app.include_router(create_fundamentals_router(market_data_reader, financial_report_reader))
+    app.include_router(
+        create_fundamentals_router(market_data_reader, financial_report_reader, disclosure_reader)
+    )
     return app
 
 

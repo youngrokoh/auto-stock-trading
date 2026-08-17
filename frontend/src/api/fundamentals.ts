@@ -1,7 +1,9 @@
 import {
+  type Disclosures,
   type FinancialIndicators,
   type FinancialReportDetail,
   type FinancialReports,
+  parseDisclosures,
   parseFinancialIndicators,
   parseFinancialReportDetail,
   parseFinancialReports,
@@ -32,3 +34,8 @@ export const fetchFinancialReportDetail = async (
   reportId: string,
 ): Promise<FinancialReportDetail> =>
   parseFinancialReportDetail(await fetchJson(`/api/fundamentals/financial-reports/${reportId}`));
+
+export const fetchDisclosures = async (symbol: string, limit: number): Promise<Disclosures> =>
+  parseDisclosures(
+    await fetchJson(`/api/fundamentals/instruments/${symbol}/disclosures?limit=${String(limit)}`),
+  );

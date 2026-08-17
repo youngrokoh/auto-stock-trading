@@ -101,6 +101,50 @@ class QuoteRow(Base):
 
 
 @final
+class InvestorFlowRow(Base):
+    __tablename__: str = "investor_flow"
+    __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (
+        UniqueConstraint(
+            "instrument_id",
+            "trading_date",
+            "source",
+            "version",
+            name="uq_investor_flow_version",
+        ),
+        Index(
+            "uq_investor_flow_current",
+            "instrument_id",
+            "trading_date",
+            "source",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+        {"schema": "market"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    instrument_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reference.instrument.id", ondelete="CASCADE"),
+        index=True,
+    )
+    trading_date: Mapped[date] = mapped_column(Date, index=True)
+    individual_net_quantity: Mapped[int] = mapped_column(BigInteger)
+    foreign_net_quantity: Mapped[int] = mapped_column(BigInteger)
+    institution_net_quantity: Mapped[int] = mapped_column(BigInteger)
+    individual_net_value: Mapped[int] = mapped_column(BigInteger)
+    foreign_net_value: Mapped[int] = mapped_column(BigInteger)
+    institution_net_value: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(32))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )
+
+
+@final
 class ListedShareCountRow(Base):
     __tablename__: str = "listed_share_count"
     __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (

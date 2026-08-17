@@ -95,3 +95,23 @@ class MinuteBarsResponse(MarketDataResponse):
     trading_date: date
     source: str | None
     bars: tuple[MinuteBarResponse, ...]
+
+
+class InvestorFlowResponse(MarketDataResponse):
+    trading_date: date
+    individual_net_quantity: int
+    foreign_net_quantity: int
+    institution_net_quantity: int
+    individual_net_value: int
+    foreign_net_value: int
+    institution_net_value: int
+    received_at: datetime
+    version: int
+
+
+class InvestorFlowsResponse(MarketDataResponse):
+    symbol: str
+    source: str = "KIS"
+    quantity_unit: str = "share"
+    value_unit: str = "million_krw"
+    flows: tuple[InvestorFlowResponse, ...]

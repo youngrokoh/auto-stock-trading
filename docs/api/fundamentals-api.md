@@ -3,11 +3,11 @@
 - 상태: 구현됨
 - 구현일: 2026-08-17
 - 기준 경로: `/api/fundamentals`
-- 관련 계약: [재무제표 데이터 계약](../data/financial-statement-data-contract.md), [재무 지표 정의 계약](../data/financial-indicator-contract.md)
+- 관련 계약: [재무제표 데이터 계약](../data/financial-statement-data-contract.md), [재무 지표 정의 계약](../data/financial-indicator-contract.md), [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md)
 
 ## 범위
 
-OpenDART에서 수집한 재무제표 사실 버전과 그 사실에서 파생한 성장성·수익성·안정성 지표를 읽기 전용으로 제공한다. 가치지표(PER·PBR)와 수급·공시 연결 API는 후속 단계다.
+OpenDART에서 수집한 재무제표 사실 버전, 그 사실에서 파생한 지표(성장성·수익성·안정성·가치)와 DART 공시 목록을 읽기 전용으로 제공한다.
 
 | 메서드 | 경로 | 응답 |
 |---|---|---|
@@ -15,6 +15,7 @@ OpenDART에서 수집한 재무제표 사실 버전과 그 사실에서 파생�
 | `GET` | `/api/fundamentals/instruments/{symbol}/financial-reports/history` | 논리 보고서의 정정 이력 전체 (`bsns_year`·`reprt_code`·`fs_div` 쿼리 필수) |
 | `GET` | `/api/fundamentals/financial-reports/{report_id}` | 보고서 버전의 계정 라인 (원문 순번 순) |
 | `GET` | `/api/fundamentals/instruments/{symbol}/indicators` | 연간 보고서별 지표와 실적 원문 값 (사업연도 오름차순, `fs_div` 쿼리 기본 `CFS`) |
+| `GET` | `/api/fundamentals/instruments/{symbol}/disclosures` | DART 공시 목록 (접수일 내림차순, `limit` 기본 30) |
 
 ## 재무 지표 응답
 
@@ -39,6 +40,13 @@ OpenDART에서 수집한 재무제표 사실 버전과 그 사실에서 파생�
 - 계정 라인은 재무제표 구분(`sj_div`: BS·IS·CIS·CF·SCE), IFRS 표준 `account_id`(미사용 계정 `null`), 원문 응답 순번(`line_seq`)과 표시 순서(`ord`), 당기·전기·전전기 명칭과 금액을 원문 그대로 노출한다. 금액은 정밀도를 보존하는 문자열로 직렬화된다.
 - 파생·환산 값은 없다. 지표 계산은 이 사실을 입력으로 수식·기준일·출처와 함께 별도 정의한다.
 
+## 공시 목록
+
+[수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md)을 따른다. 항목은
+접수번호(`rcept_no`)·보고서명·제출인·접수일·유형(`A` 정기, `B` 주요사항, `D` 지분, `I`
+거래소)을 포함하는 불변 사실이며, 정정 공시는 새 접수번호로 나타난다. 화면은 접수번호로
+DART 원문 뷰어에 연결한다. 문서 원문은 저장하지 않는다.
+
 ## 수집 작업
 
 ```bash
@@ -47,7 +55,7 @@ AUTO_STOCK_DART_API_KEY_FILE=../.secrets/dart-api-key \
   uv run python -m auto_stock_trading.worker.fundamentals
 ```
 
-기본 대상은 삼성전자(`005930`, 고유번호 `00126380`)이며 승인 범위(최근 5개년 사업보고서 + 당해 분·반기 × 연결·개별)를 수집한다. 미제출 기간은 건너뛰고, 같은 접수번호 재수집은 버전을 늘리지 않는다. API 키는 문서·Git·로그에 기록하지 않는다.
+기본 대상은 삼성전자(`005930`, 고유번호 `00126380`)이며 승인 범위(최근 5개년 사업보고서 + 당해 분·반기 × 연결·개별)를 수집한다. `--collect-disclosures`를 주면 최근 1년의 공시 목록(정기·주요사항·지분·거래소)을 수집한다. 미제출 기간은 건너뛰고, 같은 접수번호 재수집은 버전을 늘리지 않는다. API 키는 문서·Git·로그에 기록하지 않는다.
 
 ## 현재 제한
 

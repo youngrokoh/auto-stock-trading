@@ -82,6 +82,14 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT ck_listed_share_count_positive",
         "CONSTRAINT ck_listed_share_count_version",
         "CONSTRAINT ck_listed_share_count_validity",
+        "CREATE TABLE market.investor_flow",
+        "CONSTRAINT uq_investor_flow_version UNIQUE",
+        "CREATE UNIQUE INDEX uq_investor_flow_current",
+        "CONSTRAINT ck_investor_flow_version",
+        "CONSTRAINT ck_investor_flow_validity",
+        "CREATE TABLE fundamental.disclosure",
+        "CONSTRAINT uq_disclosure_receipt UNIQUE",
+        "CONSTRAINT ck_disclosure_type",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

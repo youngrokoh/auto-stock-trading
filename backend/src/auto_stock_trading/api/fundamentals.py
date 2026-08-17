@@ -5,6 +5,8 @@ from fastapi import APIRouter, HTTPException, status
 
 from auto_stock_trading.api.fundamentals_models import (
     AnnualIndicatorsResponse,
+    DisclosureResponse,
+    DisclosuresResponse,
     FinancialFigureResponse,
     FinancialIndicatorsResponse,
     FinancialReportDetailResponse,
@@ -23,6 +25,7 @@ from auto_stock_trading.application.financial_indicators import (
     annual_indicator_history,
     valuation_snapshot,
 )
+from auto_stock_trading.domain.fundamentals.disclosures import Disclosure
 from auto_stock_trading.domain.fundamentals.financial_statements import (
     FinancialStatementLine,
     FsDivision,
@@ -37,6 +40,7 @@ from auto_stock_trading.domain.fundamentals.indicators import (
 from auto_stock_trading.domain.fundamentals.valuation import Valuation
 
 if TYPE_CHECKING:
+    from auto_stock_trading.application.disclosures import DisclosureReader
     from auto_stock_trading.application.financial_statements import FinancialReportReader
     from auto_stock_trading.application.market_data import MarketDataReader
 
@@ -44,6 +48,7 @@ if TYPE_CHECKING:
 def create_fundamentals_router(
     instruments: MarketDataReader,
     reports: FinancialReportReader,
+    disclosures: DisclosureReader,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/fundamentals", tags=["fundamentals"])
 
@@ -121,6 +126,8 @@ def create_fundamentals_router(
             "금액은 원문 그대로이며 파생·환산하지 않는다."
         ),
     )
+
+    _add_disclosure_route(router, instruments, disclosures)
     router.add_api_route(
         "/instruments/{symbol}/indicators",
         financial_indicators,
@@ -133,6 +140,43 @@ def create_fundamentals_router(
         ),
     )
     return router
+
+
+def _add_disclosure_route(
+    router: APIRouter,
+    instruments: MarketDataReader,
+    disclosures: DisclosureReader,
+) -> None:
+    async def instrument_disclosures(symbol: str, limit: int = 30) -> DisclosuresResponse:
+        results = await disclosures.read_disclosures(symbol, limit)
+        if not results and await instruments.instrument(symbol) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
+        return DisclosuresResponse(
+            symbol=symbol,
+            disclosures=tuple(_disclosure_response(result) for result in results),
+        )
+
+    router.add_api_route(
+        "/instruments/{symbol}/disclosures",
+        instrument_disclosures,
+        methods=["GET"],
+        description=(
+            "DART 공시 목록 사실을 접수일 내림차순으로 반환한다. 유형은 정기공시(A)·"
+            "주요사항보고(B)·지분공시(D)·거래소공시(I)이며, 접수번호로 DART 원문 뷰어에 "
+            "연결할 수 있다. 목록 항목은 불변이고 정정 공시는 새 접수번호로 나타난다."
+        ),
+    )
+
+
+def _disclosure_response(result: Disclosure) -> DisclosureResponse:
+    return DisclosureResponse(
+        rcept_no=result.rcept_no,
+        report_nm=result.report_nm,
+        flr_nm=result.filer_name,
+        rcept_dt=result.receipt_date,
+        disclosure_type=result.disclosure_type.value,
+        received_at=result.received_at,
+    )
 
 
 def _report_response(result: VersionedFinancialReport) -> FinancialReportResponse:

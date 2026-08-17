@@ -14,10 +14,14 @@ from auto_stock_trading.adapters.brokers.kis_http import (
     KisHttpClient,
     create_kis_http_client,
 )
+from auto_stock_trading.adapters.brokers.kis_investor_flows import KisInvestorFlowAdapter
 from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAdapter
 from auto_stock_trading.adapters.brokers.kis_minute_bars import KisMinuteBarAdapter
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
+)
+from auto_stock_trading.adapters.database.market_data_investor_flow_store import (
+    PostgresInvestorFlowStore,
 )
 from auto_stock_trading.adapters.database.market_data_minute_bar_store import (
     PostgresMinuteBarStore,
@@ -25,6 +29,7 @@ from auto_stock_trading.adapters.database.market_data_minute_bar_store import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.application.investor_flows import InvestorFlowCollector
 from auto_stock_trading.application.market_data import DailyBarConfirmer, MarketDataCollector
 from auto_stock_trading.application.minute_bars import MinuteBarCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
@@ -51,6 +56,7 @@ class Arguments(argparse.Namespace):
     confirm_calendar_today: bool = False
     confirm_daily_bars: bool = False
     collect_minute_bars: bool = False
+    collect_investor_flows: bool = False
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
@@ -180,6 +186,40 @@ collect_seed_minute_bars_task = broker.task(task_name="collect_seed_minute_bars"
 )
 
 
+async def collect_seed_investor_flows() -> int:
+    settings = Settings()
+    credentials = load_kis_credentials(settings)
+    http_client = KisHttpClient(
+        create_kis_http_client(settings.kis_base_url),
+        credentials,
+        ValkeyKisRequestCoordinator.from_url(
+            settings.valkey_url.get_secret_value(),
+            kis_coordination_scope(
+                settings.kis_environment.value,
+                credentials.app_key,
+                credentials.app_secret,
+            ),
+        ),
+    )
+    source = KisInvestorFlowAdapter(http_client)
+    store = PostgresInvestorFlowStore.from_url(settings.database_url.get_secret_value())
+    collector = InvestorFlowCollector(source, store)
+    collected = 0
+    try:
+        for target in _TARGETS:
+            result = await collector.collect(target, datetime.now(UTC))
+            collected += result.collected
+    finally:
+        await source.close()
+        await store.close()
+    return collected
+
+
+collect_seed_investor_flows_task = broker.task(task_name="collect_seed_investor_flows")(
+    collect_seed_investor_flows
+)
+
+
 async def collect_krx_market_calendar(year: int | None = None) -> int:
     return await market_calendar.collect_krx_market_calendar(year, Settings())
 
@@ -196,8 +236,11 @@ def main() -> None:
     _ = parser.add_argument("--confirm-calendar-today", action="store_true")
     _ = parser.add_argument("--confirm-daily-bars", action="store_true")
     _ = parser.add_argument("--collect-minute-bars", action="store_true")
+    _ = parser.add_argument("--collect-investor-flows", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.collect_minute_bars:
+    if arguments.collect_investor_flows:
+        _ = anyio.run(collect_seed_investor_flows)
+    elif arguments.collect_minute_bars:
         _ = anyio.run(collect_seed_minute_bars)
     elif arguments.confirm_daily_bars:
         _ = anyio.run(confirm_seed_daily_bars, arguments.start_date, arguments.end_date)

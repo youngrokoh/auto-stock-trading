@@ -9,6 +9,7 @@ from auto_stock_trading.adapters.brokers.kis_coordination import (
     KisCoordinationConfig,
 )
 from auto_stock_trading.adapters.brokers.kis_http import KisCredentials, KisHttpClient
+from auto_stock_trading.adapters.brokers.kis_investor_flows import INVESTOR_FLOWS_ENDPOINT
 from auto_stock_trading.adapters.brokers.kis_market_data import (
     DAILY_BARS_ENDPOINT,
     INSTRUMENT_ENDPOINT,
@@ -44,6 +45,7 @@ class KisFixtureHandler:
             INSTRUMENT_ENDPOINT: "instrument",
             QUOTE_ENDPOINT: "quote",
             DAILY_BARS_ENDPOINT: "daily_bars",
+            INVESTOR_FLOWS_ENDPOINT: "investor",
         }
         suffix = suffix_by_path.get(request.url.path)
         if suffix is None:
@@ -60,11 +62,9 @@ class KisFixtureHandler:
         )
 
 
-def create_fixture_adapter(
+def create_fixture_handler_client(
     token_filenames: tuple[str, ...] = ("token.json",),
-    *,
-    instrument_details_available: bool = True,
-) -> tuple[KisMarketDataAdapter, KisFixtureHandler]:
+) -> tuple[KisHttpClient, KisFixtureHandler]:
     handler = KisFixtureHandler(token_filenames)
     client = httpx2.AsyncClient(
         base_url="https://kis.example.test",
@@ -77,6 +77,15 @@ def create_fixture_adapter(
         KisCredentials(SecretStr("fixture-app-key"), SecretStr("fixture-app-secret")),
         InMemoryKisRequestCoordinator(KisCoordinationConfig(minimum_interval_seconds=0)),
     )
+    return http_client, handler
+
+
+def create_fixture_adapter(
+    token_filenames: tuple[str, ...] = ("token.json",),
+    *,
+    instrument_details_available: bool = True,
+) -> tuple[KisMarketDataAdapter, KisFixtureHandler]:
+    http_client, handler = create_fixture_handler_client(token_filenames)
     return KisMarketDataAdapter(
         http_client,
         instrument_details_available=instrument_details_available,

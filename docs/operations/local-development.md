@@ -224,6 +224,14 @@ curl "http://localhost:8000/api/fundamentals/instruments/005930/financial-report
 cd backend
 uv run python -m auto_stock_trading.worker.market_data --collect-minute-bars
 uv run python -m auto_stock_trading.worker.market_data --collect-minute-bars   # 재수집으로 확정
+```
+
+투자자별 수급(개인·외국인·기관 순매수)은 같은 자격증명으로 수집한다. 서울 기준 당일 행은
+저장하지 않고, KIS가 최근 약 30거래일만 반환하므로 거래일마다 수집해 축적한다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.market_data --collect-investor-flows
 curl "http://localhost:8000/api/market-data/instruments/069500/minute-bars?trading_date=2026-08-14"
 ```
 

@@ -795,6 +795,40 @@ select:focus-visible {
   border-bottom: var(--border-width) solid var(--color-row-line);
 }
 
+.disclosure-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.disclosure-list li {
+  padding: var(--space-2) 0;
+  border-bottom: var(--border-width) solid var(--color-row-line);
+}
+
+.disclosure-list li:last-child {
+  border-bottom: 0;
+}
+
+.disclosure-list__meta {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-coord);
+}
+
+.disclosure-list a {
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.disclosure-list a:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 /* ── 컨트롤 ────────────────────────────────────────────────── */
 
 .control-row {

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
+from auto_stock_trading.domain.fundamentals.disclosures import Disclosure, DisclosureType
 from auto_stock_trading.domain.fundamentals.financial_statements import (
     FinancialStatementLine,
     FsDivision,
@@ -23,6 +24,7 @@ from auto_stock_trading.domain.market_data.models import (
 from auto_stock_trading.settings.runtime import Environment, Settings
 
 if TYPE_CHECKING:
+    from auto_stock_trading.domain.market_data.investor_flows import VersionedInvestorFlow
     from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
 
 _SYMBOL = "005930"
@@ -82,6 +84,14 @@ class StubMarketDataReader:
     async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
         _ = symbol
         return None
+
+    async def investor_flows(
+        self,
+        symbol: str,
+        limit: int,
+    ) -> tuple[VersionedInvestorFlow, ...]:
+        _ = (symbol, limit)
+        return ()
 
     async def minute_bars(
         self,
@@ -173,6 +183,7 @@ def _client() -> TestClient:
         cache_probe_factory=StubProbe,
         market_data_reader_factory=StubMarketDataReader,
         financial_report_reader_factory=StubFinancialReportReader,
+        disclosure_reader_factory=StubDisclosureReader,
     )
     return TestClient(app)
 
@@ -435,6 +446,14 @@ class StubValuationMarketDataReader:
         _ = (symbol, start_date, end_date)
         return ()
 
+    async def investor_flows(
+        self,
+        symbol: str,
+        limit: int,
+    ) -> tuple[VersionedInvestorFlow, ...]:
+        _ = (symbol, limit)
+        return ()
+
     async def minute_bars(
         self,
         symbol: str,
@@ -488,6 +507,7 @@ def _indicator_client() -> TestClient:
         cache_probe_factory=StubProbe,
         market_data_reader_factory=StubValuationMarketDataReader,
         financial_report_reader_factory=StubIndicatorReportReader,
+        disclosure_reader_factory=StubDisclosureReader,
     )
     return TestClient(app)
 
@@ -825,3 +845,68 @@ def test_financial_indicators_reject_unknown_symbol_and_invalid_fs_div() -> None
 
     assert unknown.status_code == 404
     assert invalid.status_code == 422
+
+
+@final
+class StubDisclosureReader:
+    async def read_disclosures(self, symbol: str, limit: int) -> tuple[Disclosure, ...]:
+        if symbol != _SYMBOL:
+            return ()
+        return (
+            Disclosure(
+                symbol=symbol,
+                corp_code="00126380",
+                rcept_no="20260814003699",
+                report_nm="반기보고서 (2026.06)",
+                filer_name="삼성전자",
+                receipt_date=date(2026, 8, 14),
+                disclosure_type=DisclosureType.PERIODIC,
+                received_at=_RECEIVED_AT,
+            ),
+            Disclosure(
+                symbol=symbol,
+                corp_code="00126380",
+                rcept_no="20260811000285",
+                report_nm="임원ㆍ주요주주특정증권등소유상황보고서",
+                filer_name="여명구",
+                receipt_date=date(2026, 8, 11),
+                disclosure_type=DisclosureType.OWNERSHIP,
+                received_at=_RECEIVED_AT,
+            ),
+        )[:limit]
+
+    async def close(self) -> None:
+        return None
+
+
+def test_disclosures_expose_receipts_types_and_sources() -> None:
+    with _client() as client:
+        response = client.get(
+            f"/api/fundamentals/instruments/{_SYMBOL}/disclosures", params={"limit": 2}
+        )
+        unknown = client.get("/api/fundamentals/instruments/999999/disclosures")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "symbol": _SYMBOL,
+        "source": "DART",
+        "disclosures": [
+            {
+                "rcept_no": "20260814003699",
+                "report_nm": "반기보고서 (2026.06)",
+                "flr_nm": "삼성전자",
+                "rcept_dt": "2026-08-14",
+                "disclosure_type": "A",
+                "received_at": "2026-03-10T01:00:00Z",
+            },
+            {
+                "rcept_no": "20260811000285",
+                "report_nm": "임원ㆍ주요주주특정증권등소유상황보고서",
+                "flr_nm": "여명구",
+                "rcept_dt": "2026-08-11",
+                "disclosure_type": "D",
+                "received_at": "2026-03-10T01:00:00Z",
+            },
+        ],
+    }
+    assert unknown.status_code == 404

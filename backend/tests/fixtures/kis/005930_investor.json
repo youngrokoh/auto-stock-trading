@@ -1,0 +1,46 @@
+{
+  "rt_cd": "0",
+  "msg_cd": "MCA00000",
+  "msg1": "정상처리 되었습니다.",
+  "output": [
+    {
+      "stck_bsop_date": "20260814",
+      "stck_clpr": "274500",
+      "prdy_vrss": "6500",
+      "prdy_vrss_sign": "2",
+      "prsn_ntby_qty": "-3049225",
+      "frgn_ntby_qty": "4913433",
+      "orgn_ntby_qty": "-1830920",
+      "prsn_ntby_tr_pbmn": "-829332",
+      "frgn_ntby_tr_pbmn": "1336152",
+      "orgn_ntby_tr_pbmn": "-497830",
+      "prsn_shnu_vol": "3550063",
+      "frgn_shnu_vol": "11933549",
+      "orgn_shnu_vol": "6008988"
+    },
+    {
+      "stck_bsop_date": "20260813",
+      "stck_clpr": "268000",
+      "prdy_vrss": "12500",
+      "prdy_vrss_sign": "2",
+      "prsn_ntby_qty": "-5097051",
+      "frgn_ntby_qty": "-401379",
+      "orgn_ntby_qty": "5544777",
+      "prsn_ntby_tr_pbmn": "-1372371",
+      "frgn_ntby_tr_pbmn": "-103862",
+      "orgn_ntby_tr_pbmn": "1488708"
+    },
+    {
+      "stck_bsop_date": "20260812",
+      "stck_clpr": "255500",
+      "prdy_vrss": "16000",
+      "prdy_vrss_sign": "2",
+      "prsn_ntby_qty": "-6022669",
+      "frgn_ntby_qty": "5802466",
+      "orgn_ntby_qty": "776871",
+      "prsn_ntby_tr_pbmn": "-1533238",
+      "frgn_ntby_tr_pbmn": "1477545",
+      "orgn_ntby_tr_pbmn": "196181"
+    }
+  ]
+}

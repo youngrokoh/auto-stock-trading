@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import ClassVar
 from uuid import UUID
@@ -133,3 +133,18 @@ class FinancialIndicatorsResponse(FundamentalsResponse):
     fs_div: str
     years: tuple[AnnualIndicatorsResponse, ...]
     valuation: ValuationResponse | None
+
+
+class DisclosureResponse(FundamentalsResponse):
+    rcept_no: str
+    report_nm: str
+    flr_nm: str
+    rcept_dt: date
+    disclosure_type: str
+    received_at: datetime
+
+
+class DisclosuresResponse(FundamentalsResponse):
+    symbol: str
+    source: str = "DART"
+    disclosures: tuple[DisclosureResponse, ...]

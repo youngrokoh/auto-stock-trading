@@ -8,6 +8,8 @@ from auto_stock_trading.api.market_data_models import (
     DailyBarsResponse,
     InstrumentResponse,
     InstrumentsResponse,
+    InvestorFlowResponse,
+    InvestorFlowsResponse,
     MinuteBarResponse,
     MinuteBarsResponse,
     QuoteResponse,
@@ -123,11 +125,42 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
             bars=bars,
         )
 
+    async def investor_flows(symbol: str, limit: int = 30) -> InvestorFlowsResponse:
+        results = await reader.investor_flows(symbol, limit)
+        await _ensure_known_instrument(reader, symbol, has_results=bool(results))
+        return InvestorFlowsResponse(
+            symbol=symbol,
+            flows=tuple(
+                InvestorFlowResponse(
+                    trading_date=result.trading_date,
+                    individual_net_quantity=result.individual_net_quantity,
+                    foreign_net_quantity=result.foreign_net_quantity,
+                    institution_net_quantity=result.institution_net_quantity,
+                    individual_net_value=result.individual_net_value,
+                    foreign_net_value=result.foreign_net_value,
+                    institution_net_value=result.institution_net_value,
+                    received_at=result.received_at,
+                    version=result.version,
+                )
+                for result in results
+            ),
+        )
+
     router.add_api_route(
         "",
         instrument_list,
         methods=["GET"],
         description="수집 대상으로 등록된 종목 목록을 종목코드 순으로 반환한다.",
+    )
+    router.add_api_route(
+        "/{symbol}/investor-flows",
+        investor_flows,
+        methods=["GET"],
+        description=(
+            "일자별 개인·외국인·기관 순매수 수량(주)과 대금(백만원)의 현재 버전을 거래일 "
+            "내림차순으로 반환한다. 세 주체 합계는 기타 주체가 없어 0이 아니며, 서울 기준 "
+            "당일 데이터는 잠정치라 저장하지 않는다. 출처 KIS."
+        ),
     )
     router.add_api_route("/{symbol}", instrument, methods=["GET"])
     router.add_api_route("/{symbol}/quote", quote, methods=["GET"])

@@ -5,6 +5,7 @@ import {
   parseCorporateActions,
   parseDailyBars,
   parseInstruments,
+  parseInvestorFlows,
   parseQuote,
 } from "../src/lib/market-data";
 
@@ -142,5 +143,44 @@ describe("format helpers", () => {
 
   it("UTC 시각을 서울 기준으로 표기한다", () => {
     expect(formatKstDateTime("2026-08-14T06:35:00Z")).toBe("2026-08-14 15:35");
+  });
+});
+
+describe("investor flows schema", () => {
+  it("수급 계약을 단위·버전과 함께 수용한다", () => {
+    const parsed = parseInvestorFlows({
+      flows: [
+        {
+          foreign_net_quantity: 4913433,
+          foreign_net_value: 1336152,
+          individual_net_quantity: -3049225,
+          individual_net_value: -829332,
+          institution_net_quantity: -1830920,
+          institution_net_value: -497830,
+          received_at: "2026-08-17T13:16:01Z",
+          trading_date: "2026-08-14",
+          version: 1,
+        },
+      ],
+      quantity_unit: "share",
+      source: "KIS",
+      symbol: "005930",
+      value_unit: "million_krw",
+    });
+    expect(parsed.flows[0]?.foreign_net_quantity).toBe(4913433);
+    expect(parsed.value_unit).toBe("million_krw");
+  });
+
+  it("계약 밖 필드는 거부한다", () => {
+    expect(() =>
+      parseInvestorFlows({
+        flows: [],
+        quantity_unit: "share",
+        source: "KIS",
+        symbol: "005930",
+        value_unit: "million_krw",
+        databaseUrl: "postgresql://x",
+      }),
+    ).toThrow();
   });
 });

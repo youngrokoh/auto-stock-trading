@@ -48,6 +48,7 @@ class BrokerOperation(StrEnum):
     DAILY_BARS = "daily_bars"
     MINUTE_BARS = "minute_bars"
     MARKET_CALENDAR = "market_calendar"
+    INVESTOR_FLOWS = "investor_flows"
 
 
 @dataclass(frozen=True, slots=True)

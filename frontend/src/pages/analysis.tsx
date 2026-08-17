@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import {
+  fetchDisclosures,
   fetchFinancialIndicators,
   fetchFinancialReportDetail,
   fetchFinancialReports,
 } from "../api/fundamentals";
-import { fetchInstruments } from "../api/market-data";
+import { fetchInstruments, fetchInvestorFlows } from "../api/market-data";
 import { AppShell } from "../components/app-shell";
 import { CoordinateCell, KpiGrid } from "../components/coordinate-cell";
 import type { FigureYear } from "../components/figure-bars";
@@ -18,6 +19,7 @@ import {
   formatDecimal,
   formatKoreanAmount,
   formatKstDateTime,
+  formatSignedDecimal,
 } from "../lib/format";
 import type { AnnualIndicators, FinancialIndicator, ValuationItem } from "../lib/fundamentals";
 
@@ -42,6 +44,20 @@ const CATEGORY_LABEL: Readonly<Record<FinancialIndicator["category"], string>> =
   growth: "성장성",
   profitability: "수익성",
   stability: "안정성",
+};
+
+const DISCLOSURE_TYPE_LABEL: Readonly<Record<string, string>> = {
+  A: "정기",
+  B: "주요사항",
+  D: "지분",
+  I: "거래소",
+};
+
+const netTone = (value: number): string | undefined => {
+  if (value > 0) {
+    return "is-up";
+  }
+  return value < 0 ? "is-down" : undefined;
 };
 
 const UNAVAILABLE_LABEL: Readonly<Record<string, string>> = {
@@ -205,10 +221,24 @@ export const Analysis = () => {
     queryKey: ["financial-reports", activeSymbol],
     retry: false,
   });
+  const flowsQuery = useQuery({
+    enabled: activeSymbol !== null,
+    queryFn: () => fetchInvestorFlows(activeSymbol ?? "", 8),
+    queryKey: ["investor-flows", activeSymbol],
+    retry: false,
+  });
+  const disclosuresQuery = useQuery({
+    enabled: activeSymbol !== null,
+    queryFn: () => fetchDisclosures(activeSymbol ?? "", 8),
+    queryKey: ["disclosures", activeSymbol],
+    retry: false,
+  });
 
   const years = indicatorsQuery.data?.years ?? [];
   const latest = years.at(-1);
   const valuation = indicatorsQuery.data?.valuation ?? null;
+  const flows = flowsQuery.data?.flows ?? [];
+  const disclosureItems = disclosuresQuery.data?.disclosures ?? [];
   const fsDivLabel = fsDiv === "CFS" ? "연결" : "개별";
   const basisSub =
     latest === undefined
@@ -548,25 +578,90 @@ export const Analysis = () => {
               <div className="card__note">출처 DART · 정정 공시는 새 버전으로 반영됩니다</div>
             </section>
 
-            <section className="card card--empty">
+            <section className={flows.length === 0 ? "card card--empty" : "card"}>
               <div className="card__head">
                 <h2>
                   <span className="card__coord">D2</span> 수급
                 </h2>
               </div>
               <div className="card__body">
-                외국인·기관 수급은 아직 수집하지 않습니다. 4단계 후속 작업에서 제공됩니다.
+                {flows.length === 0 ? (
+                  flowsQuery.isError ? (
+                    "수급 데이터를 불러오지 못했습니다."
+                  ) : (
+                    "수집된 투자자별 매매 데이터가 없습니다."
+                  )
+                ) : (
+                  <table className="grid-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">거래일</th>
+                        <th scope="col">외국인</th>
+                        <th scope="col">기관</th>
+                        <th scope="col">개인</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {flows.map((flow) => (
+                        <tr key={flow.trading_date}>
+                          <td className="is-name">{flow.trading_date.slice(5)}</td>
+                          <td className={netTone(flow.foreign_net_quantity)}>
+                            {formatSignedDecimal(String(flow.foreign_net_quantity))}
+                          </td>
+                          <td className={netTone(flow.institution_net_quantity)}>
+                            {formatSignedDecimal(String(flow.institution_net_quantity))}
+                          </td>
+                          <td className={netTone(flow.individual_net_quantity)}>
+                            {formatSignedDecimal(String(flow.individual_net_quantity))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <div className="card__note">
+                순매수 수량(주) · 출처 KIS 일별 확정치(당일 제외) · 기타 주체가 없어 합계는 0이
+                아닙니다
               </div>
             </section>
 
-            <section className="card card--empty">
+            <section className={disclosureItems.length === 0 ? "card card--empty" : "card"}>
               <div className="card__head">
                 <h2>
                   <span className="card__coord">D3</span> 공시 연결
                 </h2>
               </div>
               <div className="card__body">
-                배당 외 주요 공시 연결은 아직 만들지 않았습니다. 4단계 후속 작업에서 제공됩니다.
+                {disclosureItems.length === 0 ? (
+                  disclosuresQuery.isError ? (
+                    "공시 목록을 불러오지 못했습니다."
+                  ) : (
+                    "수집된 공시가 없습니다."
+                  )
+                ) : (
+                  <ul className="disclosure-list">
+                    {disclosureItems.map((entry) => (
+                      <li key={entry.rcept_no}>
+                        <span className="disclosure-list__meta">
+                          {entry.rcept_dt} · {DISCLOSURE_TYPE_LABEL[entry.disclosure_type]} ·{" "}
+                          {entry.flr_nm}
+                        </span>
+                        <a
+                          href={`https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${entry.rcept_no}`}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          {entry.report_nm}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="card__note">
+                출처 DART 최근 1년 목록(정기·주요사항·지분·거래소) · 제목을 누르면 DART 원문으로
+                이동합니다
               </div>
             </section>
           </div>

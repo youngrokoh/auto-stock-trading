@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { formatKoreanAmount } from "../src/lib/format";
-import { parseFinancialIndicators, parseFinancialReports } from "../src/lib/fundamentals";
+import {
+  parseDisclosures,
+  parseFinancialIndicators,
+  parseFinancialReports,
+} from "../src/lib/fundamentals";
 
 const indicatorPayload = {
   category: "growth",
@@ -192,5 +196,32 @@ describe("formatKoreanAmount", () => {
   it("억 단위와 그 미만을 처리한다", () => {
     expect(formatKoreanAmount("898000000000")).toBe("8,980억");
     expect(formatKoreanAmount("150")).toBe("150");
+  });
+});
+
+describe("disclosures schema", () => {
+  it("공시 목록 계약을 유형·접수번호와 함께 수용한다", () => {
+    const parsed = parseDisclosures({
+      disclosures: [
+        {
+          disclosure_type: "A",
+          flr_nm: "삼성전자",
+          rcept_dt: "2026-08-14",
+          rcept_no: "20260814003699",
+          received_at: "2026-08-17T13:16:20Z",
+          report_nm: "반기보고서 (2026.06)",
+        },
+      ],
+      source: "DART",
+      symbol: "005930",
+    });
+    expect(parsed.disclosures[0]?.rcept_no).toBe("20260814003699");
+    expect(parsed.disclosures[0]?.disclosure_type).toBe("A");
+  });
+
+  it("계약 밖 필드는 거부한다", () => {
+    expect(() =>
+      parseDisclosures({ symbol: "005930", source: "DART", disclosures: [], x: 1 }),
+    ).toThrow();
   });
 });

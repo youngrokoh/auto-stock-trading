@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import final
 from uuid import UUID
 
 from sqlalchemy import (
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -92,3 +93,28 @@ class FinancialStatementLineRow(Base):
     frmtrm_amount: Mapped[Decimal | None] = mapped_column(Numeric(32, 4))
     bfefrmtrm_nm: Mapped[str | None] = mapped_column(String(40))
     bfefrmtrm_amount: Mapped[Decimal | None] = mapped_column(Numeric(32, 4))
+
+
+@final
+class DisclosureRow(Base):
+    __tablename__: str = "disclosure"
+    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+        UniqueConstraint("instrument_id", "rcept_no", name="uq_disclosure_receipt"),
+        {"schema": "fundamental"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    instrument_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reference.instrument.id", ondelete="CASCADE"),
+        index=True,
+    )
+    corp_code: Mapped[str] = mapped_column(String(8))
+    rcept_no: Mapped[str] = mapped_column(String(14))
+    report_nm: Mapped[str] = mapped_column(String(300))
+    flr_nm: Mapped[str] = mapped_column(String(120))
+    rcept_dt: Mapped[date] = mapped_column(Date, index=True)
+    disclosure_type: Mapped[str] = mapped_column(String(1))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )

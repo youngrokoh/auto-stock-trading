@@ -86,6 +86,11 @@ test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공�
   );
   await expect(page.getByText("매출액", { exact: true }).first()).toBeVisible();
 
+  await expect(page.getByText("D2")).toBeVisible();
+  await expect(page.getByText("순매수 수량(주)", { exact: false })).toBeVisible();
+  await expect(page.getByText("D3")).toBeVisible();
+  await expect(page.getByText("공시 연결")).toBeVisible();
+
   await page.getByRole("button", { name: "개별" }).click();
   await expect(page.getByText("지배주주 계정 없음")).toBeVisible();
 

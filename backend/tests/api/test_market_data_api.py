@@ -5,6 +5,7 @@ from typing import final
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
+from auto_stock_trading.domain.market_data.investor_flows import VersionedInvestorFlow
 from auto_stock_trading.domain.market_data.listed_shares import VersionedListedShareCount
 from auto_stock_trading.domain.market_data.minute_bars import MinuteBar, VersionedMinuteBar
 from auto_stock_trading.domain.market_data.models import (
@@ -114,6 +115,32 @@ class StubMarketDataReader:
     async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
         _ = symbol
         return None
+
+    async def investor_flows(
+        self,
+        symbol: str,
+        limit: int,
+    ) -> tuple[VersionedInvestorFlow, ...]:
+        if symbol != "005930":
+            return ()
+        received_at = datetime(2026, 8, 17, 1, 0, tzinfo=UTC)
+        return (
+            VersionedInvestorFlow(
+                symbol=symbol,
+                trading_date=date(2026, 8, 14),
+                individual_net_quantity=-3049225,
+                foreign_net_quantity=4913433,
+                institution_net_quantity=-1830920,
+                individual_net_value=-829332,
+                foreign_net_value=1336152,
+                institution_net_value=-497830,
+                source="KIS",
+                received_at=received_at,
+                version=1,
+                valid_from=received_at,
+                superseded_at=None,
+            ),
+        )[:limit]
 
     async def minute_bars(
         self,
@@ -265,3 +292,31 @@ def test_market_data_endpoints_return_explicit_not_found_and_invalid_range() -> 
     assert invalid.status_code == 422
     assert missing_minutes.status_code == 404
     assert missing_date.status_code == 422
+
+
+def test_investor_flows_expose_units_and_versioned_rows() -> None:
+    with _client() as client:
+        response = client.get("/api/market-data/instruments/005930/investor-flows")
+        unknown = client.get("/api/market-data/instruments/999999/investor-flows")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "symbol": "005930",
+        "source": "KIS",
+        "quantity_unit": "share",
+        "value_unit": "million_krw",
+        "flows": [
+            {
+                "trading_date": "2026-08-14",
+                "individual_net_quantity": -3049225,
+                "foreign_net_quantity": 4913433,
+                "institution_net_quantity": -1830920,
+                "individual_net_value": -829332,
+                "foreign_net_value": 1336152,
+                "institution_net_value": -497830,
+                "received_at": "2026-08-17T01:00:00Z",
+                "version": 1,
+            }
+        ],
+    }
+    assert unknown.status_code == 404
