@@ -48,10 +48,38 @@ const yearPayload = {
   version: 1,
 };
 
+const valuationPayload = {
+  items: [
+    {
+      formula: "현재가 ÷ 최근 연간 기본주당이익",
+      key: "per",
+      name: "PER",
+      unavailable_reason: null,
+      unit: "ratio",
+      value: "41.56",
+    },
+  ],
+  price: { as_of: "2026-08-17T12:31:18Z", price: "274500.00000000", source: "KIS" },
+  report: {
+    bsns_year: 2025,
+    fs_div: "CFS",
+    rcept_no: "20260310002820",
+    reprt_code: "11011",
+    version: 1,
+  },
+  share_count: {
+    as_of: "2026-08-17T12:31:18Z",
+    share_count: 5846278608,
+    source: "KIS",
+    version: 1,
+  },
+};
+
 const indicatorsPayload = {
   fs_div: "CFS",
   source: "DART",
   symbol: "005930",
+  valuation: valuationPayload,
   years: [yearPayload],
 };
 
@@ -88,6 +116,38 @@ describe("fundamentals schemas", () => {
     expect(() =>
       parseFinancialIndicators({ ...indicatorsPayload, databaseUrl: "postgresql://x" }),
     ).toThrow();
+  });
+
+  it("가치지표 블록의 기준과 항목을 수용한다", () => {
+    const parsed = parseFinancialIndicators(indicatorsPayload);
+    expect(parsed.valuation?.price?.price).toBe("274500.00000000");
+    expect(parsed.valuation?.share_count?.share_count).toBe(5846278608);
+    expect(parsed.valuation?.report.rcept_no).toBe("20260310002820");
+    expect(parsed.valuation?.items[0]?.value).toBe("41.56");
+  });
+
+  it("가치지표가 없으면 null을 수용하고 기준 없는 항목은 사유와 함께 수용한다", () => {
+    const noValuation = parseFinancialIndicators({ ...indicatorsPayload, valuation: null });
+    expect(noValuation.valuation).toBeNull();
+
+    const failClosed = parseFinancialIndicators({
+      ...indicatorsPayload,
+      valuation: {
+        ...valuationPayload,
+        items: [
+          {
+            formula: "현재가 × 보통주 상장주식수",
+            key: "market_cap",
+            name: "시가총액(보통주)",
+            unavailable_reason: "MISSING_SHARE_COUNT",
+            unit: "krw",
+            value: null,
+          },
+        ],
+        share_count: null,
+      },
+    });
+    expect(failClosed.valuation?.items[0]?.unavailable_reason).toBe("MISSING_SHARE_COUNT");
   });
 
   it("보고서 목록 계약을 수용한다", () => {

@@ -13,8 +13,13 @@ import type { FigureYear } from "../components/figure-bars";
 import { FigureBars } from "../components/figure-bars";
 import { SafetyBanner } from "../components/safety-banner";
 import { StatusBadge } from "../components/status-badge";
-import { decimalToNumber, formatDecimal, formatKoreanAmount } from "../lib/format";
-import type { AnnualIndicators, FinancialIndicator } from "../lib/fundamentals";
+import {
+  decimalToNumber,
+  formatDecimal,
+  formatKoreanAmount,
+  formatKstDateTime,
+} from "../lib/format";
+import type { AnnualIndicators, FinancialIndicator, ValuationItem } from "../lib/fundamentals";
 
 type FsDiv = "CFS" | "OFS";
 
@@ -43,7 +48,23 @@ const UNAVAILABLE_LABEL: Readonly<Record<string, string>> = {
   AMBIGUOUS_ACCOUNT: "계정 중복",
   MISSING_ACCOUNT: "계정 없음",
   MISSING_AMOUNT: "금액 없음",
+  MISSING_QUOTE: "시세 없음",
+  MISSING_SHARE_COUNT: "주식수 없음",
   ZERO_DENOMINATOR: "분모 0",
+};
+
+const valuationItemText = (item: ValuationItem): string => {
+  if (item.value === null) {
+    return item.unavailable_reason === null
+      ? "—"
+      : `— (${UNAVAILABLE_LABEL[item.unavailable_reason] ?? item.unavailable_reason})`;
+  }
+  if (item.unit === "ratio") {
+    return `${formatDecimal(item.value)}배`;
+  }
+  return item.key === "market_cap"
+    ? `${formatKoreanAmount(item.value)}원`
+    : `${formatDecimal(item.value)}원`;
 };
 
 const figureAmount = (year: AnnualIndicators | undefined, key: string): string | null =>
@@ -187,6 +208,7 @@ export const Analysis = () => {
 
   const years = indicatorsQuery.data?.years ?? [];
   const latest = years.at(-1);
+  const valuation = indicatorsQuery.data?.valuation ?? null;
   const fsDivLabel = fsDiv === "CFS" ? "연결" : "개별";
   const basisSub =
     latest === undefined
@@ -454,15 +476,50 @@ export const Analysis = () => {
           </div>
 
           <div className="board__aside">
-            <section className="card card--empty">
+            <section className={valuation === null ? "card card--empty" : "card"}>
               <div className="card__head">
                 <h2>
                   <span className="card__coord">C2</span> 가치 지표
                 </h2>
               </div>
               <div className="card__body">
-                PER·PBR·EPS·BPS는 상장주식수 정규화 수집 후 제공합니다. 산식·기준일을 증명할 수 없는
-                외부 계산값은 쓰지 않습니다.
+                {valuation === null ? (
+                  "가치지표를 계산할 연간 보고서가 없습니다."
+                ) : (
+                  <dl className="fact-list">
+                    {valuation.items.map((item) => (
+                      <div key={item.key}>
+                        <dt title={item.formula}>{item.name}</dt>
+                        <dd>{valuationItemText(item)}</dd>
+                      </div>
+                    ))}
+                    <div>
+                      <dt>가격 기준</dt>
+                      <dd>
+                        {valuation.price === null
+                          ? "저장된 시세 없음"
+                          : `${formatDecimal(valuation.price.price)}원 · ${formatKstDateTime(valuation.price.as_of)}`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>상장주식수</dt>
+                      <dd>
+                        {valuation.share_count === null
+                          ? "저장된 주식수 없음"
+                          : `${formatDecimal(String(valuation.share_count.share_count))}주`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>재무 기준</dt>
+                      <dd>
+                        {valuation.report.bsns_year} 사업보고서 · {valuation.report.rcept_no}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </div>
+              <div className="card__note">
+                산식은 각 항목 도움말에 표시 · BPS·PBR은 우선주 반영 설계 확정 후 제공합니다
               </div>
             </section>
 

@@ -90,8 +90,46 @@ class AnnualIndicatorsResponse(FundamentalsResponse):
     indicators: tuple[IndicatorResponse, ...]
 
 
+class ValuationPriceBasisResponse(FundamentalsResponse):
+    price: Decimal
+    as_of: datetime
+    source: str
+
+
+class ValuationShareCountBasisResponse(FundamentalsResponse):
+    share_count: int
+    as_of: datetime
+    source: str
+    version: int
+
+
+class ValuationReportBasisResponse(FundamentalsResponse):
+    bsns_year: int
+    reprt_code: str
+    fs_div: str
+    rcept_no: str
+    version: int
+
+
+class ValuationItemResponse(FundamentalsResponse):
+    key: str
+    name: str
+    unit: str
+    formula: str
+    value: Decimal | None
+    unavailable_reason: str | None
+
+
+class ValuationResponse(FundamentalsResponse):
+    price: ValuationPriceBasisResponse | None
+    share_count: ValuationShareCountBasisResponse | None
+    report: ValuationReportBasisResponse
+    items: tuple[ValuationItemResponse, ...]
+
+
 class FinancialIndicatorsResponse(FundamentalsResponse):
     symbol: str
     source: str = "DART"
     fs_div: str
     years: tuple[AnnualIndicatorsResponse, ...]
+    valuation: ValuationResponse | None

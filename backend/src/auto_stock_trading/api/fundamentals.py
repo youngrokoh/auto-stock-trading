@@ -13,8 +13,16 @@ from auto_stock_trading.api.fundamentals_models import (
     FinancialStatementLineResponse,
     IndicatorInputResponse,
     IndicatorResponse,
+    ValuationItemResponse,
+    ValuationPriceBasisResponse,
+    ValuationReportBasisResponse,
+    ValuationResponse,
+    ValuationShareCountBasisResponse,
 )
-from auto_stock_trading.application.financial_indicators import annual_indicator_history
+from auto_stock_trading.application.financial_indicators import (
+    annual_indicator_history,
+    valuation_snapshot,
+)
 from auto_stock_trading.domain.fundamentals.financial_statements import (
     FinancialStatementLine,
     FsDivision,
@@ -26,6 +34,7 @@ from auto_stock_trading.domain.fundamentals.indicators import (
     FinancialFigure,
     IndicatorValue,
 )
+from auto_stock_trading.domain.fundamentals.valuation import Valuation
 
 if TYPE_CHECKING:
     from auto_stock_trading.application.financial_statements import FinancialReportReader
@@ -95,10 +104,12 @@ def create_fundamentals_router(
         years = await annual_indicator_history(reports, symbol, fs_div)
         if not years and await instruments.instrument(symbol) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
+        valuation = await valuation_snapshot(reports, instruments, symbol, fs_div)
         return FinancialIndicatorsResponse(
             symbol=symbol,
             fs_div=fs_div.value,
             years=tuple(_annual_indicators_response(year) for year in years),
+            valuation=None if valuation is None else _valuation_response(valuation),
         )
 
     router.add_api_route(
@@ -183,6 +194,52 @@ def _indicator_response(indicator: IndicatorValue) -> IndicatorResponse:
         value=indicator.value,
         unavailable_reason=(
             None if indicator.unavailable_reason is None else indicator.unavailable_reason.value
+        ),
+    )
+
+
+def _valuation_response(valuation: Valuation) -> ValuationResponse:
+    price = valuation.price
+    shares = valuation.share_count
+    return ValuationResponse(
+        price=(
+            None
+            if price is None
+            else ValuationPriceBasisResponse(
+                price=price.price,
+                as_of=price.as_of,
+                source=price.source,
+            )
+        ),
+        share_count=(
+            None
+            if shares is None
+            else ValuationShareCountBasisResponse(
+                share_count=shares.share_count,
+                as_of=shares.as_of,
+                source=shares.source,
+                version=shares.version,
+            )
+        ),
+        report=ValuationReportBasisResponse(
+            bsns_year=valuation.report.bsns_year,
+            reprt_code=valuation.report.reprt_code.value,
+            fs_div=valuation.report.fs_div.value,
+            rcept_no=valuation.report.rcept_no,
+            version=valuation.report.version,
+        ),
+        items=tuple(
+            ValuationItemResponse(
+                key=item.key,
+                name=item.name,
+                unit=item.unit,
+                formula=item.formula,
+                value=item.value,
+                unavailable_reason=(
+                    None if item.unavailable_reason is None else item.unavailable_reason.value
+                ),
+            )
+            for item in valuation.items
         ),
     )
 

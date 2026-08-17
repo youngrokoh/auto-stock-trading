@@ -46,6 +46,7 @@ class KisQuoteOutput(KisContract):
     prdy_ctrt: str
     acml_vol: str
     acml_tr_pbmn: str
+    lstn_stcn: str
 
 
 class KisQuoteResponse(KisContract):

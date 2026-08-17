@@ -76,6 +76,12 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT uq_financial_statement_line_seq UNIQUE",
         "CONSTRAINT ck_financial_statement_line_seq",
         "CONSTRAINT ck_financial_statement_line_sj_div",
+        "CREATE TABLE reference.listed_share_count",
+        "CONSTRAINT uq_listed_share_count_version UNIQUE",
+        "CREATE UNIQUE INDEX uq_listed_share_count_current",
+        "CONSTRAINT ck_listed_share_count_positive",
+        "CONSTRAINT ck_listed_share_count_version",
+        "CONSTRAINT ck_listed_share_count_validity",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

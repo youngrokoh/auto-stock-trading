@@ -9,6 +9,7 @@ from auto_stock_trading.adapters.brokers.kis_mapping import (
     bar_from,
     instrument_from,
     instrument_from_daily_summary,
+    listed_shares_from,
     parse_response,
     quote_from,
     raw_from,
@@ -118,11 +119,13 @@ class KisMarketDataAdapter:
                 raw_from(BrokerOperation.DAILY_BARS, bars_raw),
             )
         quote = quote_from(target, quote_response, quote_raw.received_at)
+        listed_shares = listed_shares_from(target, quote_response, quote_raw.received_at)
         bars = tuple(bar_from(target, item, bars_raw.received_at) for item in bars_response.output2)
         return MarketDataBundle(
             target=target,
             instrument=instrument,
             quote=quote,
+            listed_shares=listed_shares,
             daily_bars=bars,
             raw_responses=raw_responses,
             collected_at=max(raw.received_at for raw in raw_responses),

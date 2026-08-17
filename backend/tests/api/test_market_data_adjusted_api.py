@@ -30,6 +30,9 @@ from auto_stock_trading.domain.market_data.models import (
 from auto_stock_trading.settings.runtime import Environment, Settings
 
 if TYPE_CHECKING:
+    from auto_stock_trading.domain.market_data.listed_shares import (
+        VersionedListedShareCount,
+    )
     from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
 
 _SYMBOL = "069500"
@@ -88,6 +91,10 @@ class StubMarketDataReader:
     ) -> tuple[VersionedDailyBar, ...]:
         _ = (symbol, start_date, end_date)
         return ()
+
+    async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
+        _ = symbol
+        return None
 
     async def minute_bars(
         self,

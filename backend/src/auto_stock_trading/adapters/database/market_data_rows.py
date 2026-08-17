@@ -101,6 +101,43 @@ class QuoteRow(Base):
 
 
 @final
+class ListedShareCountRow(Base):
+    __tablename__: str = "listed_share_count"
+    __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (
+        UniqueConstraint(
+            "instrument_id",
+            "source",
+            "version",
+            name="uq_listed_share_count_version",
+        ),
+        Index(
+            "uq_listed_share_count_current",
+            "instrument_id",
+            "source",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+        {"schema": "reference"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    instrument_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reference.instrument.id", ondelete="CASCADE"),
+        index=True,
+    )
+    share_count: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(32))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )
+
+
+@final
 class MarketBarRow(Base):
     __tablename__: str = "market_bar"
     __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (

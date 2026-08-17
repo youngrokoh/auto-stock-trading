@@ -73,9 +73,11 @@ test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공�
   await expect(page.getByRole("img", { name: "연간 실적 막대 차트" })).toBeVisible();
   await expect(page.getByText("연도별 지표")).toBeVisible();
   await expect(page.getByText("매출액증가율").first()).toBeVisible();
-  await expect(
-    page.getByText("PER·PBR·EPS·BPS는 상장주식수 정규화 수집 후 제공합니다."),
-  ).toBeVisible();
+  await expect(page.getByText("PER", { exact: true })).toBeVisible();
+  await expect(page.getByText("시가총액(보통주)")).toBeVisible();
+  await expect(page.getByText("가격 기준")).toBeVisible();
+  await expect(page.getByText("상장주식수", { exact: true })).toBeVisible();
+  await expect(page.getByText("재무 기준")).toBeVisible();
 
   await page.getByRole("button", { name: "손익계산서" }).click();
   await expect(page.getByRole("button", { name: "손익계산서" })).toHaveAttribute(

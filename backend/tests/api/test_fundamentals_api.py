@@ -13,6 +13,7 @@ from auto_stock_trading.domain.fundamentals.financial_statements import (
     StatementDivision,
     VersionedFinancialReport,
 )
+from auto_stock_trading.domain.market_data.listed_shares import VersionedListedShareCount
 from auto_stock_trading.domain.market_data.models import (
     Instrument,
     ProductType,
@@ -77,6 +78,10 @@ class StubMarketDataReader:
     ) -> tuple[VersionedDailyBar, ...]:
         _ = (symbol, start_date, end_date)
         return ()
+
+    async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
+        _ = symbol
+        return None
 
     async def minute_bars(
         self,
@@ -344,6 +349,13 @@ def _indicator_lines() -> tuple[FinancialStatementLine, ...]:
             "지배기업 소유주지분",
             amounts=("100", "80"),
         ),
+        _statement_line(
+            11,
+            is_,
+            "ifrs-full_BasicEarningsLossPerShare",
+            "기본주당이익",
+            amounts=("11", "8"),
+        ),
     )
 
 
@@ -404,12 +416,77 @@ class StubIndicatorReportReader:
         return None
 
 
+@final
+class StubValuationMarketDataReader:
+    async def instruments(self) -> tuple[Instrument, ...]:
+        result = await self.instrument(_SYMBOL)
+        assert result is not None
+        return (result,)
+
+    async def instrument(self, symbol: str) -> Instrument | None:
+        return await StubMarketDataReader().instrument(symbol)
+
+    async def daily_bars(
+        self,
+        symbol: str,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> tuple[VersionedDailyBar, ...]:
+        _ = (symbol, start_date, end_date)
+        return ()
+
+    async def minute_bars(
+        self,
+        symbol: str,
+        trading_date: date,
+    ) -> tuple[VersionedMinuteBar, ...]:
+        _ = (symbol, trading_date)
+        return ()
+
+    async def close(self) -> None:
+        return None
+
+    async def quote(self, symbol: str) -> Quote | None:
+        if symbol != _SYMBOL:
+            return None
+        return Quote(
+            symbol=symbol,
+            price=Decimal(220),
+            open_price=Decimal(210),
+            high_price=Decimal(225),
+            low_price=Decimal(205),
+            previous_close=Decimal(215),
+            change=Decimal(5),
+            change_percent=Decimal("2.33"),
+            volume=1000,
+            trading_value=Decimal(220000),
+            currency="KRW",
+            source="KIS",
+            as_of=_RECEIVED_AT,
+            received_at=_RECEIVED_AT,
+        )
+
+    async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
+        if symbol != _SYMBOL:
+            return None
+        return VersionedListedShareCount(
+            symbol=symbol,
+            share_count=1000,
+            source="KIS",
+            as_of=_RECEIVED_AT,
+            received_at=_RECEIVED_AT,
+            version=1,
+            valid_from=_RECEIVED_AT,
+            superseded_at=None,
+        )
+
+
 def _indicator_client() -> TestClient:
     app = create_app(
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,
-        market_data_reader_factory=StubMarketDataReader,
+        market_data_reader_factory=StubValuationMarketDataReader,
         financial_report_reader_factory=StubIndicatorReportReader,
     )
     return TestClient(app)
@@ -614,6 +691,51 @@ def _year_json(
     }
 
 
+def _valuation_json(rcept_no: str, fs_div: str) -> dict[str, object]:
+    return {
+        "price": {"price": "220", "as_of": "2026-03-10T01:00:00Z", "source": "KIS"},
+        "share_count": {
+            "share_count": 1000,
+            "as_of": "2026-03-10T01:00:00Z",
+            "source": "KIS",
+            "version": 1,
+        },
+        "report": {
+            "bsns_year": 2025,
+            "reprt_code": "11011",
+            "fs_div": fs_div,
+            "rcept_no": rcept_no,
+            "version": 1,
+        },
+        "items": [
+            {
+                "key": "eps",
+                "name": "기본주당이익",
+                "unit": "krw",
+                "formula": "최근 연간 보고서의 기본주당이익 원문 값",
+                "value": "11",
+                "unavailable_reason": None,
+            },
+            {
+                "key": "per",
+                "name": "PER",
+                "unit": "ratio",
+                "formula": "현재가 ÷ 최근 연간 기본주당이익",
+                "value": "20.00",
+                "unavailable_reason": None,
+            },
+            {
+                "key": "market_cap",
+                "name": "시가총액(보통주)",
+                "unit": "krw",
+                "formula": "현재가 × 보통주 상장주식수",
+                "value": "220000",
+                "unavailable_reason": None,
+            },
+        ],
+    }
+
+
 def test_financial_indicators_cover_annual_reports_with_formula_and_sources() -> None:
     with _indicator_client() as client:
         response = client.get(f"/api/fundamentals/instruments/{_SYMBOL}/indicators")
@@ -627,6 +749,7 @@ def test_financial_indicators_cover_annual_reports_with_formula_and_sources() ->
             _year_json(2024, "CFS", "20250311000001", _cfs_figures_json(), _cfs_indicators_json()),
             _year_json(2025, "CFS", "20260310000002", _cfs_figures_json(), _cfs_indicators_json()),
         ],
+        "valuation": _valuation_json("20260310000002", "CFS"),
     }
 
 
@@ -688,6 +811,7 @@ def test_financial_indicators_for_separate_statements_fail_closed_without_owner_
         "years": [
             _year_json(2025, "OFS", "20260310000003", _ofs_figures_json(), _ofs_indicators_json()),
         ],
+        "valuation": _valuation_json("20260310000003", "OFS"),
     }
 
 

@@ -39,6 +39,10 @@ def test_kis_fixture_contract_normalizes_stock_and_etf() -> None:
         )
         assert stock.instrument.name == "삼성전자"
         assert stock.quote.price == Decimal(73500)
+        assert stock.listed_shares.share_count == 5969782550
+        assert stock.listed_shares.source == "KIS"
+        assert stock.listed_shares.as_of == stock.quote.as_of
+        assert etf.listed_shares.share_count == 236250000
         assert tuple(bar.trading_date for bar in stock.daily_bars) == (
             date(2026, 8, 13),
             date(2026, 8, 12),

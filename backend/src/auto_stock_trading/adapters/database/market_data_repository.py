@@ -18,6 +18,10 @@ from auto_stock_trading.adapters.database.market_data_bar_repository import (
     read_market_bars,
     save_market_bar,
 )
+from auto_stock_trading.adapters.database.market_data_listed_share_repository import (
+    read_listed_share_count,
+    save_listed_share_count,
+)
 from auto_stock_trading.adapters.database.market_data_minute_bar_repository import (
     read_minute_bars,
 )
@@ -49,6 +53,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
     from uuid import UUID
 
+    from auto_stock_trading.domain.market_data.listed_shares import VersionedListedShareCount
     from auto_stock_trading.domain.market_data.minute_bars import VersionedMinuteBar
 
 
@@ -121,6 +126,12 @@ class PostgresMarketDataRepository:
             instrument_id = instrument_identifier(bundle)
             _ = await session.execute(instrument_upsert(bundle, instrument_id, bundle.collected_at))
             _ = await session.execute(quote_upsert(bundle, instrument_id, raw_ids))
+            await save_listed_share_count(
+                session,
+                bundle.listed_shares,
+                instrument_id,
+                raw_ids[BrokerOperation.QUOTE],
+            )
             for bar in bundle.daily_bars:
                 await save_market_bar(
                     session,
@@ -228,6 +239,9 @@ class PostgresMarketDataRepository:
         trading_date: date,
     ) -> tuple[VersionedMinuteBar, ...]:
         return await read_minute_bars(self._sessions, symbol, trading_date)
+
+    async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
+        return await read_listed_share_count(self._sessions, symbol)
 
     async def close(self) -> None:
         if self._engine is not None:

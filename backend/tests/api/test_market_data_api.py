@@ -5,6 +5,7 @@ from typing import final
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
+from auto_stock_trading.domain.market_data.listed_shares import VersionedListedShareCount
 from auto_stock_trading.domain.market_data.minute_bars import MinuteBar, VersionedMinuteBar
 from auto_stock_trading.domain.market_data.models import (
     BarFinality,
@@ -109,6 +110,10 @@ class StubMarketDataReader:
                 superseded_at=None,
             ),
         )
+
+    async def listed_share_count(self, symbol: str) -> VersionedListedShareCount | None:
+        _ = symbol
+        return None
 
     async def minute_bars(
         self,

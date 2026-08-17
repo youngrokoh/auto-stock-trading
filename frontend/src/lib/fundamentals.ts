@@ -88,10 +88,55 @@ const annualIndicatorsSchema = z.strictObject({
   version: z.number().int().positive(),
 });
 
+const unavailableReason = z.enum([
+  "MISSING_ACCOUNT",
+  "AMBIGUOUS_ACCOUNT",
+  "MISSING_AMOUNT",
+  "ZERO_DENOMINATOR",
+  "MISSING_QUOTE",
+  "MISSING_SHARE_COUNT",
+]);
+
+const valuationItemSchema = z.strictObject({
+  formula: z.string().min(1),
+  key: z.string().min(1),
+  name: z.string().min(1),
+  unavailable_reason: unavailableReason.nullable(),
+  unit: z.enum(["krw", "ratio"]),
+  value: nullableDecimal,
+});
+
+const valuationSchema = z.strictObject({
+  items: z.array(valuationItemSchema).readonly(),
+  price: z
+    .strictObject({
+      as_of: isoDateTime,
+      price: decimal,
+      source: z.string().min(1),
+    })
+    .nullable(),
+  report: z.strictObject({
+    bsns_year: z.number().int(),
+    fs_div: z.enum(["CFS", "OFS"]),
+    rcept_no: z.string().min(1),
+    reprt_code: z.enum(["11011", "11012", "11013", "11014"]),
+    version: z.number().int().positive(),
+  }),
+  share_count: z
+    .strictObject({
+      as_of: isoDateTime,
+      share_count: z.number().int().positive(),
+      source: z.string().min(1),
+      version: z.number().int().positive(),
+    })
+    .nullable(),
+});
+
 const financialIndicatorsSchema = z.strictObject({
   fs_div: z.enum(["CFS", "OFS"]),
   source: z.string().min(1),
   symbol: z.string().min(1),
+  valuation: valuationSchema.nullable(),
   years: z.array(annualIndicatorsSchema).readonly(),
 });
 
@@ -102,6 +147,8 @@ export type FinancialReportDetail = z.infer<typeof financialReportDetailSchema>;
 export type FinancialIndicator = z.infer<typeof indicatorSchema>;
 export type FinancialFigure = z.infer<typeof financialFigureSchema>;
 export type AnnualIndicators = z.infer<typeof annualIndicatorsSchema>;
+export type FinancialValuation = z.infer<typeof valuationSchema>;
+export type ValuationItem = z.infer<typeof valuationItemSchema>;
 export type FinancialIndicators = z.infer<typeof financialIndicatorsSchema>;
 
 export const parseFinancialReports = (input: unknown): FinancialReports =>

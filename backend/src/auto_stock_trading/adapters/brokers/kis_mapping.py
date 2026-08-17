@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
+from auto_stock_trading.domain.market_data.listed_shares import ListedShareCount
 from auto_stock_trading.domain.market_data.minute_bars import MinuteBar
 from auto_stock_trading.domain.market_data.models import (
     BrokerOperation,
@@ -134,6 +135,20 @@ def quote_from(
         volume=_integer(output.acml_vol),
         trading_value=_decimal(output.acml_tr_pbmn),
         currency="KRW",
+        source=KIS_SOURCE,
+        as_of=received_at,
+        received_at=received_at,
+    )
+
+
+def listed_shares_from(
+    target: InstrumentTarget,
+    response: KisQuoteResponse,
+    received_at: datetime,
+) -> ListedShareCount:
+    return ListedShareCount(
+        symbol=target.symbol,
+        share_count=_integer(response.output.lstn_stcn),
         source=KIS_SOURCE,
         as_of=received_at,
         received_at=received_at,

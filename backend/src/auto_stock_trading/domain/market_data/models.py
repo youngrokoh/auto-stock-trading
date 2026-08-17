@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     from datetime import date, datetime
     from decimal import Decimal
 
+    from auto_stock_trading.domain.market_data.listed_shares import ListedShareCount
+
 InstrumentId = NewType("InstrumentId", UUID)
 
 
@@ -129,6 +131,7 @@ class MarketDataBundle:
     target: InstrumentTarget
     instrument: Instrument
     quote: Quote
+    listed_shares: ListedShareCount
     daily_bars: tuple[DailyBar, ...]
     raw_responses: tuple[RawBrokerResponse, ...]
     collected_at: datetime

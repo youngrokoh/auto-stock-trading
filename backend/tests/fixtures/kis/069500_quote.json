@@ -11,6 +11,7 @@
     "prdy_vrss": "250",
     "prdy_ctrt": "0.66",
     "acml_vol": "5210000",
-    "acml_tr_pbmn": "199000000000"
+    "acml_tr_pbmn": "199000000000",
+    "lstn_stcn": "236250000"
   }
 }

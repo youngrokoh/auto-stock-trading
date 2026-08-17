@@ -25,6 +25,11 @@ OpenDART에서 수집한 재무제표 사실 버전과 그 사실에서 파생�
 - 지표 항목은 키·이름·분류(`growth`·`profitability`·`stability`), 단위(`percent`), 수식 문자열, 입력 계정(이름·`sj_div`·`account_id`·기간·금액), 값 또는 실패 사유 코드(`MISSING_ACCOUNT`·`AMBIGUOUS_ACCOUNT`·`MISSING_AMOUNT`·`ZERO_DENOMINATOR`)를 포함한다.
 - 실적 원문 값(`figures`)은 매출액·영업이익·당기순이익·지배주주순이익·자산·부채·자본 금액을 계정 출처와 함께 원문 그대로 제공한다.
 - 개별(`OFS`) 조회에서 지배주주 계정이 없는 ROE는 계약대로 값 없이 `MISSING_ACCOUNT`를 반환한다.
+- `valuation` 블록이 가치지표(기본주당이익 원문 `eps`, `per`, `market_cap`)를 제공한다. 기준이
+  서로 다른 세 입력을 결합하므로 가격(값·기준시각·출처), 상장주식수(값·기준시각·출처·버전),
+  재무(사업연도·유형·구분·`rcept_no`·버전) 기준을 항상 별도 노출하고, 저장된 시세·주식수가
+  없으면 `MISSING_QUOTE`·`MISSING_SHARE_COUNT`로 해당 항목만 빈 값이다. 연간 보고서가 없으면
+  (ETF 포함) `valuation`은 `null`이다. BPS·PBR은 우선주 반영 설계 확정 시 추가한다.
 - 미등록 종목은 404, 잘못된 `fs_div`는 422다.
 
 ## 출처와 버전
