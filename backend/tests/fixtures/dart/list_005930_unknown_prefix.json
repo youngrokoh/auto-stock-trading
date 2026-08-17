@@ -1,0 +1,21 @@
+{
+  "status": "000",
+  "message": "정상",
+  "page_no": 1,
+  "page_count": 100,
+  "total_count": 1,
+  "total_page": 1,
+  "list": [
+    {
+      "corp_cls": "Y",
+      "corp_name": "삼성전자",
+      "corp_code": "00126380",
+      "stock_code": "005930",
+      "report_nm": "[취소]현금ㆍ현물배당결정",
+      "rcept_no": "20260502800002",
+      "flr_nm": "삼성전자",
+      "rcept_dt": "20260502",
+      "rm": "유"
+    }
+  ]
+}

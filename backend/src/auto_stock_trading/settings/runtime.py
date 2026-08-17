@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     kis_app_secret: SecretStr | None = None
     kis_app_key_file: Path | None = None
     kis_app_secret_file: Path | None = None
+    dart_api_key: SecretStr | None = None
+    dart_api_key_file: Path | None = None
+    dart_base_url: str = "https://opendart.fss.or.kr"
+    kodex_base_url: str = "https://www.samsungfund.com"
     krx_base_url: str = "https://global.krx.co.kr"
     krx_open_base_url: str = "https://open.krx.co.kr"
     krx_attachment_base_url: str = "https://inc.krx.co.kr/attach/"

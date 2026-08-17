@@ -153,6 +153,66 @@ class MarketBarRow(Base):
 
 
 @final
+class CorporateActionRow(Base):
+    __tablename__: str = "corporate_action"
+    __table_args__: tuple[UniqueConstraint, UniqueConstraint, Index, dict[str, str]] = (
+        UniqueConstraint("action_key", "version", name="uq_corporate_action_version"),
+        UniqueConstraint(
+            "source",
+            "source_event_id",
+            "version",
+            name="uq_corporate_action_source_event",
+        ),
+        Index(
+            "uq_corporate_action_current",
+            "action_key",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+        {"schema": "market"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    action_key: Mapped[UUID] = mapped_column()
+    instrument_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reference.instrument.id", ondelete="CASCADE"),
+        index=True,
+    )
+    action_type: Mapped[str] = mapped_column(String(32))
+    lifecycle_status: Mapped[str] = mapped_column(String(16))
+    quality_state: Mapped[str] = mapped_column(String(16))
+    announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    announcement_date: Mapped[date] = mapped_column(Date)
+    time_precision: Mapped[str] = mapped_column(String(8))
+    ex_date: Mapped[date | None] = mapped_column(Date)
+    effective_date: Mapped[date | None] = mapped_column(Date)
+    record_date: Mapped[date | None] = mapped_column(Date)
+    payment_date: Mapped[date | None] = mapped_column(Date)
+    share_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    cash_amount: Mapped[Decimal | None] = mapped_column(Numeric(24, 8))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    subscription_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 8))
+    related_instrument_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("reference.instrument.id"),
+    )
+    source: Mapped[str] = mapped_column(String(32))
+    source_event_id: Mapped[str] = mapped_column(String(120))
+    source_reference: Mapped[str] = mapped_column(String(240))
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("now()"),
+    )
+
+
+@final
 class SyncStatusRow(Base):
     __tablename__: str = "api_sync_status"
     __table_args__: tuple[UniqueConstraint, dict[str, str]] = (

@@ -122,6 +122,10 @@ EtfReferenceDataAdapter
 
 `KrxMarketCalendarAdapter`는 KRX 공식 휴장일 화면의 OTP와 연간 JSON 응답을 같은 HTTP 세션에서 조회한다. 연도별 원본 1건을 범위 내 날짜들이 공유하고, 공식 휴장 목록과 KRX 주말 규칙을 정상장·휴장 세션으로 정규화한다. `KrxTradingHoursNoticeAdapter`는 KRX 보도자료 목록과 첨부 PDF에서 수능일·연초 개장일의 주식·ETF 정규장 변경을 추출하고 PDF 원문을 Base64 근거로 보존한다. `KrxCompositeCalendarSource`가 임시 변경을 연간 세션에 합성한 전체 범위만 저장해 후속 연간 재수집이 단축장을 정상장으로 되돌리지 못하게 한다. PDF 파싱에는 `pypdf`를 사용한다. `KisMarketCalendarVerifier`는 실전 전용 `CTCA0903R`의 요청일 `opnd_yn`만 사용해 저장된 KRX 사실을 당일 확인한다. 모의환경에서는 지원되지 않는 TR을 호출하지 않고 실패해 상태를 `pending`으로 유지한다.
 
+2026-08-16 구현 범위의 `DartCorporateActionAdapter`는 OpenDART 공시검색 `list.json`으로 접수번호를 페이지 단위로 수집하고, 공시서류 원본 `document.xml`의 ZIP에서 거래소 서식 HTML을 추출해 EUC-KR로 복호화한다. `현금ㆍ현물배당결정` 서식만 엄격 파싱하며(허용 정정 접두어: 기재정정·첨부정정·첨부추가) 현물배당, 알 수 없는 접두어, 서식 불일치는 전체 수집을 실패시킨다. `crtfc_key`는 요청에만 사용하고 저장 지문·원본·로그에 포함하지 않는다. 원본은 목록 JSON과 문서 파일의 Base64 봉투로 append-only 보존한다.
+
+2026-08-17 구현 범위의 `KodexDistributionAdapter`는 삼성자산운용 KODEX 공식 분배금 데이터에서 지급기준일·세전 주당분배금·실지급일 이력을 인증 없이 수집한다. 응답 항목은 엄격한 필드 계약으로 검증하고 지급기준일 중복이나 형식 불일치는 전체 수집을 실패시킨다. 한 응답을 공유하는 여러 분배 사실은 원본 한 건을 함께 참조한다. 두 어댑터는 공통 `CorporateActionCollector` 유스케이스와 기업행사 사실 버전 저장소를 공유한다. KRX 정보데이터시스템 `getJsonData`는 화면 종속 세션 게이트가 있어 자동 수집 출처로 사용하지 않는다.
+
 ### 3.4 작업 처리와 스케줄링
 
 | 역할 | 기술 |
@@ -136,7 +140,7 @@ EtfReferenceDataAdapter
 - PostgreSQL 주문 상태를 기준으로 재시작과 메시지 유실을 복구한다.
 - 모델 학습처럼 CPU 사용량이 큰 작업은 별도 프로세스로 격리한다.
 - ListQueueBroker의 블로킹 대기가 유휴 상태에서도 유지되도록 Valkey 연결의 `socket_timeout`을 `None`으로 지정한다.
-- `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. `collect_krx_market_calendar`는 KRX 연간 휴장일과 임시 거래시간 공지를 합성해 적재하고 `confirm_today_market_calendar`는 실전 KIS로 오늘 거래 가능 상태를 1회 확인한다.
+- `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. `collect_krx_market_calendar`는 KRX 연간 휴장일과 임시 거래시간 공지를 합성해 적재하고 `confirm_today_market_calendar`는 실전 KIS로 오늘 거래 가능 상태를 1회 확인한다. `collect_dart_cash_dividends`와 `collect_kodex_distributions`는 각각 DART 현금배당 공시와 KODEX 분배금 이력을 기업행사 사실 버전으로 저장하며 아직 예약 없이 수동으로 실행한다.
 - 시장 달력 저장소는 누락·미확인·충돌·오래된 확인을 fail-closed로 판정한다. 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따라 서울 기준 KRX 선행 수집, KIS 당일 보완 확인과 PostgreSQL 영속 실행 claim을 구현했다. 기본 Compose의 단일 scheduler 프로필은 KRX 예약만 켠다. 실전 `CTCA0903R` 읽기 전용 검증 후 사용자가 승인한 `compose.kis-live-calendar.yaml`을 함께 적용할 때만 KIS 자동 확인을 활성화한다.
 - 기본 Compose는 자격증명 없이 실행한다. 실제 모의검증은 `compose.kis-paper.yaml`에서 `.secrets/` 파일을 Docker secret으로 worker에만 마운트하며 환경을 `paper`로 강제한다.
 - Valkey 호스트 포트는 로컬 루프백 `127.0.0.1`에만 바인딩한다. 운영 배포에서는 Valkey 포트를 공개하지 않는다.

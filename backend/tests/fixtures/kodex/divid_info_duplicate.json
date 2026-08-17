@@ -1,0 +1,9 @@
+{
+  "dividList": [
+    {"basicD": "20260430", "dividA": "446", "payD": "20260506", "taxDividA": "446", "dividY": "0.4423"},
+    {"basicD": "20260430", "dividA": "440", "payD": "20260506", "taxDividA": "440", "dividY": "0.4423"}
+  ],
+  "lastleDivid": null,
+  "annualTrend": [],
+  "dividInfo": null
+}

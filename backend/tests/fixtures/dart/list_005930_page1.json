@@ -1,0 +1,43 @@
+{
+  "status": "000",
+  "message": "정상",
+  "page_no": 1,
+  "page_count": 100,
+  "total_count": 3,
+  "total_page": 1,
+  "list": [
+    {
+      "corp_cls": "Y",
+      "corp_name": "삼성전자",
+      "corp_code": "00126380",
+      "stock_code": "005930",
+      "report_nm": "[기재정정]현금ㆍ현물배당결정",
+      "rcept_no": "20260501800001",
+      "flr_nm": "삼성전자",
+      "rcept_dt": "20260501",
+      "rm": "유"
+    },
+    {
+      "corp_cls": "Y",
+      "corp_name": "삼성전자",
+      "corp_code": "00126380",
+      "stock_code": "005930",
+      "report_nm": "현금ㆍ현물배당결정",
+      "rcept_no": "20260430800106",
+      "flr_nm": "삼성전자",
+      "rcept_dt": "20260430",
+      "rm": "유"
+    },
+    {
+      "corp_cls": "Y",
+      "corp_name": "삼성전자",
+      "corp_code": "00126380",
+      "stock_code": "005930",
+      "report_nm": "주요사항보고서(자기주식취득결정)",
+      "rcept_no": "20260415000123",
+      "flr_nm": "삼성전자",
+      "rcept_dt": "20260415",
+      "rm": ""
+    }
+  ]
+}

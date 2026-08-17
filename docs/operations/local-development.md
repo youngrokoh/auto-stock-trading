@@ -140,6 +140,32 @@ uv run python -m auto_stock_trading.worker.market_data --confirm-calendar-today
 
 KIS 국내휴장일조회 `CTCA0903R`은 실전 전용이며 공식 예제가 1일 1회 호출을 권고한다. 위 두 파일은 `.secrets/` 아래에서 각각 권한 `0600`으로 보관하고 기존 모의 키와 분리한다. 모의환경에서는 외부 호출 없이 설정 오류로 끝나며 시장 달력은 `pending`을 유지한다. 실전 키를 채팅, 명령행 직접 값, Git 또는 문서에 기록하지 않는다. 2026-08-16 수동 검증은 주문·계좌 API를 사용하지 않고 이 읽기 전용 TR만 호출했다.
 
+OpenDART 현금배당 공시는 사용자가 [OpenDART](https://opendart.fss.or.kr)에서 발급한 API 키로 수집한다.
+
+```bash
+cd backend
+AUTO_STOCK_DART_API_KEY_FILE=../.secrets/dart-api-key \
+uv run python -m auto_stock_trading.worker.corporate_actions \
+  --symbol 005930 \
+  --corp-code 00126380 \
+  --start-date 2026-01-01 \
+  --end-date 2026-08-16
+```
+
+키 파일은 `.secrets/` 아래 권한 `0600`으로 두고 Git·문서·명령행 직접 값으로 기록하지 않는다. 이 명령은 공시검색 목록과 `현금ㆍ현물배당결정` 원본 문서를 append-only로 보존한 뒤 배당 사실 버전을 저장한다. 같은 범위를 반복 실행해도 새 사실 버전이 생기지 않으며, 지원하지 않는 서식·접두어·배당종류를 만나면 추정 없이 전체 수집이 실패한다. 키가 없으면 비밀 값 노출 없이 설정 오류로 종료한다.
+
+KODEX 200 ETF 분배금은 운용사 공식 데이터에서 인증 없이 수집한다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.corporate_actions \
+  --etf-distributions \
+  --start-date 2024-01-01 \
+  --end-date 2026-08-17
+```
+
+기본 대상은 KODEX 200 `069500`(펀드 `2ETF01`)이며 `--symbol`과 `--fund-id`로 바꿀 수 있다. 응답 원본은 append-only로 보존되고, 지급기준일·세전 주당분배금·실지급일이 지급 완료(`confirmed`) 사실 버전으로 저장된다. 같은 범위를 반복 실행해도 새 사실 버전이 생기지 않는다.
+
 KIS 모의투자 REST API는 초당 1건 제한을 적용하므로 Valkey 호출 게이트가 같은 환경과 자격증명을 사용하는 모든 worker의 인증·시세 요청을 최소 1.05초 간격으로 예약한다. 접근 토큰은 만료 1분 전까지 Valkey에서 재사용하며 동시에 토큰이 필요해도 분산 잠금을 획득한 worker 하나만 발급한다. Valkey를 사용할 수 없으면 호출 제한 위반을 막기 위해 새 KIS 요청을 보내지 않고 수집을 실패 처리한다. 자세한 반복 실행은 [모의환경 검증 런북](kis-paper-verification.md)을 따른다.
 
 ## 프론트엔드만 실행

@@ -32,3 +32,15 @@ def test_initial_migration_renders_reproducible_postgres_sql(
     assert "CREATE TABLE operations.scheduled_job_run" in migration_sql
     assert "CONSTRAINT uq_scheduled_job_execution UNIQUE" in migration_sql
     assert "CONSTRAINT ck_scheduled_job_state" in migration_sql
+    assert "CREATE TABLE market.corporate_action" in migration_sql
+    assert "CONSTRAINT uq_corporate_action_version UNIQUE" in migration_sql
+    assert "CONSTRAINT uq_corporate_action_source_event UNIQUE" in migration_sql
+    assert "CREATE UNIQUE INDEX uq_corporate_action_current" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_type" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_lifecycle" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_quality" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_time_precision" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_share_multiplier" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_amounts" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_version" in migration_sql
+    assert "CONSTRAINT ck_corporate_action_validity" in migration_sql
