@@ -124,6 +124,8 @@ EtfReferenceDataAdapter
 
 2026-08-16 구현 범위의 `DartCorporateActionAdapter`는 OpenDART 공시검색 `list.json`으로 접수번호를 페이지 단위로 수집하고, 공시서류 원본 `document.xml`의 ZIP에서 거래소 서식 HTML을 추출해 EUC-KR로 복호화한다. `현금ㆍ현물배당결정` 서식만 엄격 파싱하며(허용 정정 접두어: 기재정정·첨부정정·첨부추가) 현물배당, 알 수 없는 접두어, 서식 불일치는 전체 수집을 실패시킨다. `crtfc_key`는 요청에만 사용하고 저장 지문·원본·로그에 포함하지 않는다. 원본은 목록 JSON과 문서 파일의 Base64 봉투로 append-only 보존한다.
 
+배당·분배락일은 사용자가 승인한 규칙 기반 도출로 확정한다. `ExDateResolver`가 검증된 `XKRX` 달력에서 `기준일 이전 마지막 거래일의 직전 거래일`을 계산하고, 달력 미커버는 확정하지 않으며, 확정 결과는 원본 근거를 재사용하는 `verified` 새 사실 버전이다. 수정주가는 `domain/market_data/adjustments.py`의 순수 계산기가 `Decimal` 정밀도 34로 계수를 만들고 가격 8자리·계수 16자리 `ROUND_HALF_UP`으로 고정하며, `PostgresAdjustmentStore`가 knowledge cutoff 기준 point-in-time 기업행사 선택, 입력 해시 멱등성, 정정 시 새 데이터셋 생성과 실패 코드 기록을 담당한다.
+
 2026-08-17 구현 범위의 `KodexDistributionAdapter`는 삼성자산운용 KODEX 공식 분배금 데이터에서 지급기준일·세전 주당분배금·실지급일 이력을 인증 없이 수집한다. 응답 항목은 엄격한 필드 계약으로 검증하고 지급기준일 중복이나 형식 불일치는 전체 수집을 실패시킨다. 한 응답을 공유하는 여러 분배 사실은 원본 한 건을 함께 참조한다. 두 어댑터는 공통 `CorporateActionCollector` 유스케이스와 기업행사 사실 버전 저장소를 공유한다. KRX 정보데이터시스템 `getJsonData`는 화면 종속 세션 게이트가 있어 자동 수집 출처로 사용하지 않는다.
 
 ### 3.4 작업 처리와 스케줄링

@@ -6,9 +6,19 @@ from zoneinfo import ZoneInfo
 import anyio
 from pydantic import SecretStr
 
+from auto_stock_trading.adapters.database.market_calendar_repository import (
+    PostgresMarketCalendarRepository,
+)
+from auto_stock_trading.adapters.database.market_data_adjustment_records import (
+    AdjustmentRequest,
+)
+from auto_stock_trading.adapters.database.market_data_adjustment_store import (
+    PostgresAdjustmentStore,
+)
 from auto_stock_trading.adapters.database.market_data_corporate_action_store import (
     PostgresCorporateActionStore,
 )
+from auto_stock_trading.adapters.database.market_data_exdate_store import PostgresExDateStore
 from auto_stock_trading.adapters.disclosures.kodex_distributions import (
     KodexDistributionAdapter,
     KodexDistributionTarget,
@@ -23,10 +33,12 @@ from auto_stock_trading.adapters.disclosures.opendart_http import (
     DartHttpClient,
     create_dart_http_client,
 )
+from auto_stock_trading.application.corporate_action_exdates import ExDateResolver
 from auto_stock_trading.application.corporate_actions import (
     CorporateActionCollector,
     CorporateActionSource,
 )
+from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
 from auto_stock_trading.settings.runtime import Settings
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
@@ -40,6 +52,8 @@ class Arguments(argparse.Namespace):
     corp_code: str = _DEFAULT_TARGET.corp_code
     fund_id: str = _DEFAULT_ETF_TARGET.fund_id
     etf_distributions: bool = False
+    confirm_ex_dates: bool = False
+    build_adjusted: str | None = None
     start_date: str | None = None
     end_date: str | None = None
 
@@ -119,16 +133,81 @@ async def collect_kodex_distributions(
     return await _collect(source, settings, _collection_range(start_date_text, end_date_text))
 
 
+async def confirm_corporate_action_ex_dates(
+    symbols: tuple[str, ...] = (_DEFAULT_TARGET.symbol, _DEFAULT_ETF_TARGET.symbol),
+) -> tuple[int, int]:
+    settings = Settings()
+    database_url = settings.database_url.get_secret_value()
+    calendar = PostgresMarketCalendarRepository.from_url(database_url)
+    store = PostgresExDateStore.from_url(database_url)
+    resolver = ExDateResolver(calendar=calendar, store=store)
+    resolved = 0
+    skipped = 0
+    try:
+        for symbol in symbols:
+            resolution = await resolver.resolve(symbol, datetime.now(UTC))
+            resolved += resolution.resolved
+            skipped += resolution.skipped
+    finally:
+        await calendar.close()
+        await store.close()
+    return resolved, skipped
+
+
+async def build_adjusted_dataset(
+    symbol: str,
+    method_text: str,
+    range_start_text: str,
+    price_cutoff_text: str,
+) -> str:
+    settings = Settings()
+    store = PostgresAdjustmentStore.from_url(settings.database_url.get_secret_value())
+    request = AdjustmentRequest(
+        symbol=symbol,
+        method=AdjustmentMethod(method_text),
+        range_start=date.fromisoformat(range_start_text),
+        price_cutoff_date=date.fromisoformat(price_cutoff_text),
+        knowledge_cutoff_at=datetime.now(UTC),
+    )
+    try:
+        record = await store.build_dataset(request, datetime.now(UTC))
+    finally:
+        await store.close()
+    return str(record.dataset_id)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     _ = parser.add_argument("--symbol")
     _ = parser.add_argument("--corp-code", default=_DEFAULT_TARGET.corp_code)
     _ = parser.add_argument("--fund-id", default=_DEFAULT_ETF_TARGET.fund_id)
     _ = parser.add_argument("--etf-distributions", action="store_true")
+    _ = parser.add_argument("--confirm-ex-dates", action="store_true")
+    _ = parser.add_argument(
+        "--build-adjusted",
+        choices=("split_adjusted", "total_return"),
+    )
     _ = parser.add_argument("--start-date")
     _ = parser.add_argument("--end-date")
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.etf_distributions:
+    if arguments.confirm_ex_dates:
+        _ = anyio.run(
+            confirm_corporate_action_ex_dates,
+            (_DEFAULT_TARGET.symbol, _DEFAULT_ETF_TARGET.symbol)
+            if arguments.symbol is None
+            else (arguments.symbol,),
+        )
+    elif arguments.build_adjusted is not None:
+        if arguments.symbol is None or arguments.start_date is None or arguments.end_date is None:
+            parser.error("--build-adjusted requires --symbol, --start-date and --end-date")
+        _ = anyio.run(
+            build_adjusted_dataset,
+            arguments.symbol,
+            arguments.build_adjusted,
+            arguments.start_date,
+            arguments.end_date,
+        )
+    elif arguments.etf_distributions:
         _ = anyio.run(
             collect_kodex_distributions,
             arguments.symbol or _DEFAULT_ETF_TARGET.symbol,

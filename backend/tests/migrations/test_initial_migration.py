@@ -44,3 +44,12 @@ def test_initial_migration_renders_reproducible_postgres_sql(
     assert "CONSTRAINT ck_corporate_action_amounts" in migration_sql
     assert "CONSTRAINT ck_corporate_action_version" in migration_sql
     assert "CONSTRAINT ck_corporate_action_validity" in migration_sql
+    assert "CREATE TABLE market.adjustment_dataset" in migration_sql
+    assert "CONSTRAINT ck_adjustment_dataset_method" in migration_sql
+    assert "CONSTRAINT ck_adjustment_dataset_status" in migration_sql
+    assert "CREATE UNIQUE INDEX uq_adjustment_dataset_inputs" in migration_sql
+    assert "CREATE TABLE market.adjustment_dataset_action" in migration_sql
+    assert "CONSTRAINT ck_adjustment_dataset_action_factors" in migration_sql
+    assert "CREATE TABLE market.adjusted_market_bar" in migration_sql
+    assert "CONSTRAINT uq_adjusted_market_bar_date UNIQUE" in migration_sql
+    assert "CONSTRAINT ck_adjusted_market_bar_factors" in migration_sql

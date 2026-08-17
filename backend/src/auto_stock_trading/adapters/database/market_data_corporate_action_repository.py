@@ -139,7 +139,7 @@ async def _read(
 ) -> tuple[VersionedCorporateAction, ...]:
     async with sessions() as session:
         rows = tuple((await session.scalars(statement)).all())
-    return tuple(_versioned_corporate_action(row) for row in rows)
+    return tuple(versioned_corporate_action(row) for row in rows)
 
 
 def _new_corporate_action_row(
@@ -199,7 +199,7 @@ def _corporate_action_facts_match(row: CorporateActionRow, action: CorporateActi
     )
 
 
-def _versioned_corporate_action(row: CorporateActionRow) -> VersionedCorporateAction:
+def versioned_corporate_action(row: CorporateActionRow) -> VersionedCorporateAction:
     return VersionedCorporateAction(
         action=CorporateAction(
             action_type=CorporateActionType(row.action_type),
@@ -223,6 +223,7 @@ def _versioned_corporate_action(row: CorporateActionRow) -> VersionedCorporateAc
             available_at=row.available_at,
             received_at=row.received_at,
         ),
+        corporate_action_id=row.id,
         action_key=row.action_key,
         version=row.version,
         valid_from=row.valid_from,

@@ -107,6 +107,7 @@ class CorporateActionBundle:
 @dataclass(frozen=True, slots=True)
 class VersionedCorporateAction:
     action: CorporateAction
+    corporate_action_id: UUID
     action_key: UUID
     version: int
     valid_from: datetime

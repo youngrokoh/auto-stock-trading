@@ -29,7 +29,7 @@ Taskiq scheduler ── Valkey 작업 큐
 
 시장 달력은 `domain/market_data/calendar_models.py`의 불변 도메인 타입, `calendar_logic.py`의 스케줄 판정, `adapters/exchanges/krx_market_calendar.py`의 연간 일정, `krx_trading_hours_notices.py`와 `krx_trading_hours_contracts.py`의 보도자료·PDF 경계, `krx_composite_calendar.py`의 합성, `adapters/brokers/kis_market_calendar.py`의 당일 확인, `application/market_calendar.py`의 범위 수집·확인, `adapters/database/market_calendar_*`의 행·매핑·SQL·저장소로 분리했다. 기존 호출자는 `domain/market_data/calendar.py` 호환 모듈을 통해 같은 공개 타입을 사용한다.
 
-기업행사 사실은 `domain/market_data/corporate_actions.py`의 불변 도메인 타입·불변조건 검증, `adapters/database/market_data_corporate_action_repository.py`의 버전 저장·point-in-time 조회, `adapters/disclosures/`의 OpenDART 현금배당 어댑터와 KODEX 분배금 어댑터, `application/corporate_actions.py`의 공통 수집 유스케이스와 `adapters/database/market_data_corporate_action_store.py`의 원본·정규화 저장으로 분리했다. `worker/corporate_actions.py`는 예약 없는 수동 수집 진입점이다. 배당·분배락일 확정과 수정주가 계산기는 아직 구현 전이다.
+기업행사 사실은 `domain/market_data/corporate_actions.py`의 불변 도메인 타입·불변조건 검증, `adapters/database/market_data_corporate_action_repository.py`의 버전 저장·point-in-time 조회, `adapters/disclosures/`의 OpenDART 현금배당 어댑터와 KODEX 분배금 어댑터, `application/corporate_actions.py`의 공통 수집 유스케이스와 `adapters/database/market_data_corporate_action_store.py`의 원본·정규화 저장으로 분리했다. 배당·분배락일 확정은 `application/corporate_action_exdates.py`의 달력 기반 리졸버와 `adapters/database/market_data_exdate_store.py`가, 수정주가는 `domain/market_data/adjustments.py`의 순수 계산기와 `adapters/database/market_data_adjustment_*`의 행·레코드·저장소가 담당한다. `worker/corporate_actions.py`는 수집·락일 확정·데이터셋 생성의 예약 없는 수동 진입점이다.
 
 ## 저장소 구조
 
@@ -113,3 +113,5 @@ infra/
 다섯 번째 리비전 `20260816_0005`는 `market.market_bar`를 비수정 사실 버전 저장소로 전환한다. 기존 행은 버전 1의 검증 대기 사실로 보존하고, 버전 유일키와 현재 행 부분 유일 인덱스, 비수정·확정·유효기간 제약조건을 추가한다.
 
 여섯 번째 리비전 `20260816_0006`은 `market.corporate_action`을 추가한다. 논리 기업행사별 사실 버전과 현재 행 하나, 출처 사건·버전 유일성과 유형·생애주기·품질 상태·시간 정밀도·금액·유효기간 제약조건을 DB에서 검증한다.
+
+일곱 번째 리비전 `20260817_0007`은 `market.adjustment_dataset`, `market.adjustment_dataset_action`, `market.adjusted_market_bar`를 추가한다. 발행 입력 유일성은 `building`·`published` 상태에만 적용되는 부분 유일 인덱스로 강제하고, 방식·상태·기간·양수 계수 제약조건을 DB에서 검증한다.

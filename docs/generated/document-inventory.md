@@ -31,7 +31,7 @@
 | [Phase 1 Clone / Design-System Fidelity Gate](../qa/evidence/phase-1/design-system-fidelity-gate.md) | `docs/qa/evidence/phase-1/design-system-fidelity-gate.md` | 미지정 |
 | [1단계 검증 기록](../qa/phase-1-verification.md) | `docs/qa/phase-1-verification.md` | 기술 검증 통과 · 시각 디자인 사용자 미승인 |
 | [1단계 시각 QA 감사 기록](../qa/phase-1-visual-review.md) | `docs/qa/phase-1-visual-review.md` | 프로토타입 품질 통과 · 시각 디자인 사용자 미승인 |
-| [2단계 시장 데이터 수직 슬라이스 검증](../qa/phase-2-market-data-verification.md) | `docs/qa/phase-2-market-data-verification.md` | 자동·로컬 통합·실제 KIS 모의환경·실전 달력 읽기·실제 KRX 일정·scheduler·실제 DART 배당·KODEX 분배금 수집 검증 완료, 사용자 화면 대조 대기 |
+| [2단계 시장 데이터 수직 슬라이스 검증](../qa/phase-2-market-data-verification.md) | `docs/qa/phase-2-market-data-verification.md` | 자동·로컬 통합·실제 KIS 모의환경·실전 달력 읽기·실제 KRX 일정·scheduler·실제 DART 배당·KODEX 분배금 수집·락일 확정·수정주가 생성 경계 검증 완료, 사용자 화면 대조 대기 |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

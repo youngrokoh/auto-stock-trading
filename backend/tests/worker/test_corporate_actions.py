@@ -76,6 +76,42 @@ def test_cli_routes_dart_dividend_collection_by_default() -> None:
     collect.assert_awaited_once_with("005930", "00126380", "2026-01-01", "2026-08-17")
 
 
+def test_cli_routes_ex_date_confirmation() -> None:
+    confirm = AsyncMock(return_value=(2, 1))
+    argv = ["corporate_actions", "--confirm-ex-dates"]
+
+    with (
+        patch.object(corporate_actions, "confirm_corporate_action_ex_dates", new=confirm),
+        patch.object(sys, "argv", argv),
+    ):
+        corporate_actions.main()
+
+    confirm.assert_awaited_once_with(("005930", "069500"))
+
+
+def test_cli_routes_adjusted_dataset_build() -> None:
+    build = AsyncMock(return_value="dataset-id")
+    argv = [
+        "corporate_actions",
+        "--build-adjusted",
+        "total_return",
+        "--symbol",
+        "069500",
+        "--start-date",
+        "2026-08-03",
+        "--end-date",
+        "2026-08-14",
+    ]
+
+    with (
+        patch.object(corporate_actions, "build_adjusted_dataset", new=build),
+        patch.object(sys, "argv", argv),
+    ):
+        corporate_actions.main()
+
+    build.assert_awaited_once_with("069500", "total_return", "2026-08-03", "2026-08-14")
+
+
 def test_dart_key_file_error_does_not_expose_the_file_path(tmp_path: Path) -> None:
     settings = Settings(
         environment=Environment.TEST,

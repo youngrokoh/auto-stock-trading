@@ -166,6 +166,20 @@ uv run python -m auto_stock_trading.worker.corporate_actions \
 
 기본 대상은 KODEX 200 `069500`(펀드 `2ETF01`)이며 `--symbol`과 `--fund-id`로 바꿀 수 있다. 응답 원본은 append-only로 보존되고, 지급기준일·세전 주당분배금·실지급일이 지급 완료(`confirmed`) 사실 버전으로 저장된다. 같은 범위를 반복 실행해도 새 사실 버전이 생기지 않는다.
 
+수집된 배당·분배금의 배당락일은 검증된 시장 달력으로 확정하고, 수정주가 데이터셋은 확정된 일봉에서 생성한다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.corporate_actions --confirm-ex-dates
+uv run python -m auto_stock_trading.worker.corporate_actions \
+  --build-adjusted total_return \
+  --symbol 069500 \
+  --start-date 2026-08-03 \
+  --end-date 2026-08-14
+```
+
+락일 확정은 달력이 없는 기간을 건너뛰고 `pending`으로 남긴다. 데이터셋 생성은 범위의 모든 거래일 일봉이 `confirmed`여야 하며, 조건을 만족하지 못하면 `market.adjustment_dataset`에 `failed`와 오류 코드만 남기고 발행하지 않는다.
+
 KIS 모의투자 REST API는 초당 1건 제한을 적용하므로 Valkey 호출 게이트가 같은 환경과 자격증명을 사용하는 모든 worker의 인증·시세 요청을 최소 1.05초 간격으로 예약한다. 접근 토큰은 만료 1분 전까지 Valkey에서 재사용하며 동시에 토큰이 필요해도 분산 잠금을 획득한 worker 하나만 발급한다. Valkey를 사용할 수 없으면 호출 제한 위반을 막기 위해 새 KIS 요청을 보내지 않고 수집을 실패 처리한다. 자세한 반복 실행은 [모의환경 검증 런북](kis-paper-verification.md)을 따른다.
 
 ## 프론트엔드만 실행
