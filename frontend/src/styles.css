@@ -398,6 +398,10 @@ select:focus-visible {
   background: var(--color-line);
 }
 
+.kpi-grid--seven {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
 .cell {
   min-width: 0;
   background: var(--color-panel);
@@ -765,6 +769,32 @@ select:focus-visible {
   font-size: var(--font-size-coord);
 }
 
+.figure-bar--revenue {
+  color: var(--color-accent);
+  fill: var(--color-accent);
+}
+
+.figure-bar--operating {
+  color: var(--color-up);
+  fill: var(--color-up);
+}
+
+.figure-bar--net {
+  color: var(--color-text-label);
+  fill: var(--color-text-label);
+}
+
+.figure-bar__baseline {
+  stroke: var(--color-line);
+  stroke-width: 1;
+}
+
+.table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  border-bottom: var(--border-width) solid var(--color-row-line);
+}
+
 /* ── 컨트롤 ────────────────────────────────────────────────── */
 
 .control-row {
@@ -778,6 +808,7 @@ select:focus-visible {
 
 .control-group {
   display: inline-flex;
+  flex-wrap: wrap;
   margin: 0;
   padding: 0;
   border: var(--border-width) solid var(--color-line);
@@ -787,6 +818,7 @@ select:focus-visible {
 .control-group button {
   min-width: 44px;
   min-height: 30px;
+  padding: 0 9px;
   border: 0;
   background: transparent;
   color: var(--color-text-muted);
@@ -857,6 +889,10 @@ select:focus-visible {
 
   .kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .kpi-grid--seven .cell:last-child {
+    grid-column: 1 / -1;
   }
 }
 

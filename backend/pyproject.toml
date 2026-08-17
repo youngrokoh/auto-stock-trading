@@ -44,6 +44,7 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["ALL"]
+allowed-confusables = ["×", "÷"]
 ignore = [
   "COM812",
   "CPY001",

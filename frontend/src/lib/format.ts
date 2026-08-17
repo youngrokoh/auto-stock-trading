@@ -35,6 +35,21 @@ export const formatSignedDecimal = (value: string): string => {
 
 export const formatSignedPercent = (value: string): string => `${formatSignedDecimal(value)}%`;
 
+const TRILLION = 1_000_000_000_000;
+const HUNDRED_MILLION = 100_000_000;
+
+export const formatKoreanAmount = (value: string): string => {
+  const numeric = Number.parseFloat(value);
+  const magnitude = Math.abs(numeric);
+  if (magnitude >= TRILLION) {
+    return `${formatDecimal((numeric / TRILLION).toFixed(1))}조`;
+  }
+  if (magnitude >= HUNDRED_MILLION) {
+    return `${formatDecimal((numeric / HUNDRED_MILLION).toFixed(0))}억`;
+  }
+  return formatDecimal(value);
+};
+
 export const formatKstDateTime = (value: string): string =>
   KST_FORMATTER.format(new Date(value)).replace(",", "");
 

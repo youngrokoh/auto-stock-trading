@@ -4,7 +4,7 @@
 - 작성일: 2026-08-17
 - 승인: 사용자가 2026-08-17에 연결·개별 동시 저장, 최근 5개년 사업보고서 + 당해 분·반기 수집 범위와 이 계약을 구현 기준으로 승인
 - 관련 정책: [시장 데이터 및 시점 정책](../spec/market-data-policy.md)
-- 관련 계약: [기업행사·수정주가 데이터 계약](corporate-action-adjusted-price-data-contract.md)
+- 관련 계약: [기업행사·수정주가 데이터 계약](corporate-action-adjusted-price-data-contract.md), [재무 지표 정의 계약](financial-indicator-contract.md)
 - 관련 로드맵: [구현 로드맵](../plan/implementation-roadmap.md) 4단계
 
 ## 목적

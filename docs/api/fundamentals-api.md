@@ -3,17 +3,29 @@
 - 상태: 구현됨
 - 구현일: 2026-08-17
 - 기준 경로: `/api/fundamentals`
-- 관련 계약: [재무제표 데이터 계약](../data/financial-statement-data-contract.md)
+- 관련 계약: [재무제표 데이터 계약](../data/financial-statement-data-contract.md), [재무 지표 정의 계약](../data/financial-indicator-contract.md)
 
 ## 범위
 
-OpenDART에서 수집한 재무제표 사실 버전을 읽기 전용으로 제공한다. 재무비율·성장성 지표 계산과 수급·공시 연결 API는 후속 단계다.
+OpenDART에서 수집한 재무제표 사실 버전과 그 사실에서 파생한 성장성·수익성·안정성 지표를 읽기 전용으로 제공한다. 가치지표(PER·PBR)와 수급·공시 연결 API는 후속 단계다.
 
 | 메서드 | 경로 | 응답 |
 |---|---|---|
 | `GET` | `/api/fundamentals/instruments/{symbol}/financial-reports` | 현재 버전 보고서 목록 (사업연도·유형·연결구분 순) |
 | `GET` | `/api/fundamentals/instruments/{symbol}/financial-reports/history` | 논리 보고서의 정정 이력 전체 (`bsns_year`·`reprt_code`·`fs_div` 쿼리 필수) |
 | `GET` | `/api/fundamentals/financial-reports/{report_id}` | 보고서 버전의 계정 라인 (원문 순번 순) |
+| `GET` | `/api/fundamentals/instruments/{symbol}/indicators` | 연간 보고서별 지표와 실적 원문 값 (사업연도 오름차순, `fs_div` 쿼리 기본 `CFS`) |
+
+## 재무 지표 응답
+
+[재무 지표 정의 계약](../data/financial-indicator-contract.md)을 따른다.
+
+- 연간 사업보고서(`11011`)의 현재 버전에서만 조회 시점에 계산하며 저장하지 않는다.
+- 연도 항목은 `bsns_year`, `reprt_code`, `fs_div`, 근거 `rcept_no`, `currency`, `version`을 포함한다.
+- 지표 항목은 키·이름·분류(`growth`·`profitability`·`stability`), 단위(`percent`), 수식 문자열, 입력 계정(이름·`sj_div`·`account_id`·기간·금액), 값 또는 실패 사유 코드(`MISSING_ACCOUNT`·`AMBIGUOUS_ACCOUNT`·`MISSING_AMOUNT`·`ZERO_DENOMINATOR`)를 포함한다.
+- 실적 원문 값(`figures`)은 매출액·영업이익·당기순이익·지배주주순이익·자산·부채·자본 금액을 계정 출처와 함께 원문 그대로 제공한다.
+- 개별(`OFS`) 조회에서 지배주주 계정이 없는 ROE는 계약대로 값 없이 `MISSING_ACCOUNT`를 반환한다.
+- 미등록 종목은 404, 잘못된 `fs_div`는 422다.
 
 ## 출처와 버전
 

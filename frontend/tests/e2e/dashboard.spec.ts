@@ -61,6 +61,36 @@ test("시장 데이터 화면이 실데이터 시세·차트·표를 제공한�
   expect(consoleErrors).toEqual([]);
 });
 
+test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공한다", async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto("/analysis");
+
+  await expect(page.getByRole("heading", { name: "기업 분석" })).toBeVisible();
+  await expect(page.getByText("A1 · 매출액 (원)")).toBeVisible();
+  await expect(page.getByText("A5 · ROE (지배주주)")).toBeVisible();
+  await expect(page.getByText("사업보고서 · 접수번호").first()).toBeVisible();
+  await expect(page.getByRole("img", { name: "연간 실적 막대 차트" })).toBeVisible();
+  await expect(page.getByText("연도별 지표")).toBeVisible();
+  await expect(page.getByText("매출액증가율").first()).toBeVisible();
+  await expect(
+    page.getByText("PER·PBR·EPS·BPS는 상장주식수 정규화 수집 후 제공합니다."),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "손익계산서" }).click();
+  await expect(page.getByRole("button", { name: "손익계산서" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByText("매출액", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "개별" }).click();
+  await expect(page.getByText("지배주주 계정 없음")).toBeVisible();
+
+  await expectNoSecretsAndNoOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});
+
 test("구성요소 갤러리가 승인된 프리미티브 상태를 표시한다", async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
 

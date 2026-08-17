@@ -28,11 +28,12 @@ export const CoordinateCell = ({
 
 type KpiGridProps = Readonly<{
   children: ReactNode;
+  columns?: 6 | 7;
   label: string;
 }>;
 
-export const KpiGrid = ({ children, label }: KpiGridProps) => (
-  <section aria-label={label} className="kpi-grid">
+export const KpiGrid = ({ children, columns = 6, label }: KpiGridProps) => (
+  <section aria-label={label} className={columns === 7 ? "kpi-grid kpi-grid--seven" : "kpi-grid"}>
     {children}
   </section>
 );

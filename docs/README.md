@@ -117,6 +117,7 @@ Taskiq worker ── Valkey
 - [기업행사·수정주가 데이터 계약](data/corporate-action-adjusted-price-data-contract.md)
 - [국내 분봉 데이터 계약](data/minute-bar-data-contract.md)
 - [재무제표 데이터 계약](data/financial-statement-data-contract.md)
+- [재무 지표 정의 계약](data/financial-indicator-contract.md)
 
 #### Operations
 

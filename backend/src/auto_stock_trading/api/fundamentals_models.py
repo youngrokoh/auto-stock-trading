@@ -50,3 +50,48 @@ class FinancialReportDetailResponse(FundamentalsResponse):
     source: str = "DART"
     report: FinancialReportResponse
     lines: tuple[FinancialStatementLineResponse, ...]
+
+
+class IndicatorInputResponse(FundamentalsResponse):
+    name: str
+    sj_div: str
+    account_id: str
+    period: str
+    amount: Decimal | None
+
+
+class IndicatorResponse(FundamentalsResponse):
+    key: str
+    name: str
+    category: str
+    unit: str = "percent"
+    formula: str
+    inputs: tuple[IndicatorInputResponse, ...]
+    value: Decimal | None
+    unavailable_reason: str | None
+
+
+class FinancialFigureResponse(FundamentalsResponse):
+    key: str
+    name: str
+    sj_div: str
+    account_id: str
+    amount: Decimal | None
+
+
+class AnnualIndicatorsResponse(FundamentalsResponse):
+    bsns_year: int
+    reprt_code: str
+    fs_div: str
+    rcept_no: str
+    currency: str
+    version: int
+    figures: tuple[FinancialFigureResponse, ...]
+    indicators: tuple[IndicatorResponse, ...]
+
+
+class FinancialIndicatorsResponse(FundamentalsResponse):
+    symbol: str
+    source: str = "DART"
+    fs_div: str
+    years: tuple[AnnualIndicatorsResponse, ...]
