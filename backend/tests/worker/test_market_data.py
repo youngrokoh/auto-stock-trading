@@ -1,5 +1,6 @@
+import sys
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import anyio
 import pytest
@@ -59,6 +60,40 @@ def test_kis_secret_file_error_does_not_expose_the_file_path(tmp_path: Path) -> 
         _ = market_data.load_kis_credentials(settings)
 
     assert str(missing_file) not in str(error.value)
+
+
+def test_daily_bar_confirmation_requires_server_side_kis_credentials() -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        kis_app_key=None,
+        kis_app_secret=None,
+    )
+
+    with (
+        patch("auto_stock_trading.worker.market_data.Settings", return_value=settings),
+        pytest.raises(KisConfigurationError, match="AUTO_STOCK_KIS_APP_KEY"),
+    ):
+        _ = anyio.run(market_data.confirm_seed_daily_bars, "2026-08-12", "2026-08-13")
+
+
+def test_cli_routes_daily_bar_confirmation() -> None:
+    confirm = AsyncMock(return_value=(2, 0))
+    argv = [
+        "market_data",
+        "--confirm-daily-bars",
+        "--start-date",
+        "2026-08-12",
+        "--end-date",
+        "2026-08-13",
+    ]
+
+    with (
+        patch.object(market_data, "confirm_seed_daily_bars", new=confirm),
+        patch.object(sys, "argv", argv),
+    ):
+        market_data.main()
+
+    confirm.assert_awaited_once_with("2026-08-12", "2026-08-13")
 
 
 def test_kis_calendar_confirmation_rejects_the_paper_environment() -> None:

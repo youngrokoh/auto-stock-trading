@@ -101,6 +101,8 @@ def test_cli_routes_adjusted_dataset_build() -> None:
         "2026-08-03",
         "--end-date",
         "2026-08-14",
+        "--knowledge-cutoff",
+        "2026-08-17T00:00:00+00:00",
     ]
 
     with (
@@ -109,7 +111,13 @@ def test_cli_routes_adjusted_dataset_build() -> None:
     ):
         corporate_actions.main()
 
-    build.assert_awaited_once_with("069500", "total_return", "2026-08-03", "2026-08-14")
+    build.assert_awaited_once_with(
+        "069500",
+        "total_return",
+        "2026-08-03",
+        "2026-08-14",
+        "2026-08-17T00:00:00+00:00",
+    )
 
 
 def test_dart_key_file_error_does_not_expose_the_file_path(tmp_path: Path) -> None:

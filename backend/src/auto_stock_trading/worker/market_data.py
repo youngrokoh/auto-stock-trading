@@ -18,7 +18,7 @@ from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAda
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
-from auto_stock_trading.application.market_data import MarketDataCollector
+from auto_stock_trading.application.market_data import DailyBarConfirmer, MarketDataCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker import market_calendar
@@ -41,18 +41,17 @@ class Arguments(argparse.Namespace):
     end_date: str | None = None
     calendar_year: int | None = None
     confirm_calendar_today: bool = False
+    confirm_daily_bars: bool = False
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
     return _load_kis_credentials(settings)
 
 
-async def collect_seed_market_data(
-    start_date_text: str | None = None,
-    end_date_text: str | None = None,
-) -> tuple[str, ...]:
-    settings = Settings()
-    credentials = load_kis_credentials(settings)
+def _seed_collection_range(
+    start_date_text: str | None,
+    end_date_text: str | None,
+) -> tuple[date, date]:
     end_date = (
         date.fromisoformat(end_date_text)
         if end_date_text is not None
@@ -63,6 +62,13 @@ async def collect_seed_market_data(
         if start_date_text is not None
         else end_date - timedelta(days=30)
     )
+    return start_date, end_date
+
+
+def _seed_source_and_store(
+    settings: Settings,
+) -> tuple[KisMarketDataAdapter, PostgresMarketDataRepository]:
+    credentials = load_kis_credentials(settings)
     http_client = KisHttpClient(
         create_kis_http_client(settings.kis_base_url),
         credentials,
@@ -75,12 +81,21 @@ async def collect_seed_market_data(
             ),
         ),
     )
-    instrument_details_available = settings.kis_environment is KisEnvironment.LIVE
     source = KisMarketDataAdapter(
         http_client,
-        instrument_details_available=instrument_details_available,
+        instrument_details_available=settings.kis_environment is KisEnvironment.LIVE,
     )
     store = PostgresMarketDataRepository.from_url(settings.database_url.get_secret_value())
+    return source, store
+
+
+async def collect_seed_market_data(
+    start_date_text: str | None = None,
+    end_date_text: str | None = None,
+) -> tuple[str, ...]:
+    settings = Settings()
+    start_date, end_date = _seed_collection_range(start_date_text, end_date_text)
+    source, store = _seed_source_and_store(settings)
     collector = MarketDataCollector(source, store)
     try:
         for target in _TARGETS:
@@ -89,6 +104,27 @@ async def collect_seed_market_data(
         await source.close()
         await store.close()
     return tuple(target.symbol for target in _TARGETS)
+
+
+async def confirm_seed_daily_bars(
+    start_date_text: str | None = None,
+    end_date_text: str | None = None,
+) -> tuple[int, int]:
+    settings = Settings()
+    start_date, end_date = _seed_collection_range(start_date_text, end_date_text)
+    source, store = _seed_source_and_store(settings)
+    confirmer = DailyBarConfirmer(source, store)
+    confirmed = 0
+    pending = 0
+    try:
+        for target in _TARGETS:
+            result = await confirmer.confirm(target, start_date, end_date, datetime.now(UTC))
+            confirmed += result.confirmed
+            pending += result.pending
+    finally:
+        await source.close()
+        await store.close()
+    return confirmed, pending
 
 
 collect_seed_market_data_task = broker.task(task_name="collect_seed_market_data")(
@@ -110,8 +146,11 @@ def main() -> None:
     _ = parser.add_argument("--end-date")
     _ = parser.add_argument("--calendar-year", type=int)
     _ = parser.add_argument("--confirm-calendar-today", action="store_true")
+    _ = parser.add_argument("--confirm-daily-bars", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.confirm_calendar_today:
+    if arguments.confirm_daily_bars:
+        _ = anyio.run(confirm_seed_daily_bars, arguments.start_date, arguments.end_date)
+    elif arguments.confirm_calendar_today:
         _ = anyio.run(run_claimed_kis_market_calendar_confirmation)
     elif arguments.calendar_year is not None:
         _ = anyio.run(run_claimed_krx_market_calendar, arguments.calendar_year)

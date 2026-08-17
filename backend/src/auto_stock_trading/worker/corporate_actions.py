@@ -56,6 +56,7 @@ class Arguments(argparse.Namespace):
     build_adjusted: str | None = None
     start_date: str | None = None
     end_date: str | None = None
+    knowledge_cutoff: str | None = None
 
 
 def load_dart_api_key(settings: Settings) -> SecretStr:
@@ -159,6 +160,7 @@ async def build_adjusted_dataset(
     method_text: str,
     range_start_text: str,
     price_cutoff_text: str,
+    knowledge_cutoff_text: str | None = None,
 ) -> str:
     settings = Settings()
     store = PostgresAdjustmentStore.from_url(settings.database_url.get_secret_value())
@@ -167,7 +169,11 @@ async def build_adjusted_dataset(
         method=AdjustmentMethod(method_text),
         range_start=date.fromisoformat(range_start_text),
         price_cutoff_date=date.fromisoformat(price_cutoff_text),
-        knowledge_cutoff_at=datetime.now(UTC),
+        knowledge_cutoff_at=(
+            datetime.fromisoformat(knowledge_cutoff_text)
+            if knowledge_cutoff_text is not None
+            else datetime.now(UTC)
+        ),
     )
     try:
         record = await store.build_dataset(request, datetime.now(UTC))
@@ -189,6 +195,7 @@ def main() -> None:
     )
     _ = parser.add_argument("--start-date")
     _ = parser.add_argument("--end-date")
+    _ = parser.add_argument("--knowledge-cutoff")
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.confirm_ex_dates:
         _ = anyio.run(
@@ -206,6 +213,7 @@ def main() -> None:
             arguments.build_adjusted,
             arguments.start_date,
             arguments.end_date,
+            arguments.knowledge_cutoff,
         )
     elif arguments.etf_distributions:
         _ = anyio.run(

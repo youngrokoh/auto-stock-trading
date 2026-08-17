@@ -20,6 +20,7 @@ from auto_stock_trading.application.market_data import MarketDataCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.settings.runtime import Settings
 from tests.brokers.kis_fixture import create_fixture_adapter
+from tests.market_data.db_cleanup import purge_instruments
 
 
 def test_collection_recovers_and_upserts_normalized_market_data() -> None:
@@ -34,9 +35,7 @@ def test_collection_recovers_and_upserts_normalized_market_data() -> None:
             target = InstrumentTarget("005930", ProductType.STOCK)
             started_at = datetime(2026, 8, 14, 1, tzinfo=UTC)
             try:
-                _ = await connection.execute(
-                    delete(InstrumentRow).where(InstrumentRow.symbol == target.symbol)
-                )
+                await purge_instruments(connection, (target.symbol,))
                 _ = await connection.execute(
                     delete(RawApiResponseRow).where(
                         RawApiResponseRow.request_fingerprint.like(f"%:{target.symbol}%")

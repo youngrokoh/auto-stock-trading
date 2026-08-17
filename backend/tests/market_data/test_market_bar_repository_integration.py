@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import anyio
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from auto_stock_trading.adapters.database.market_data_repository import (
@@ -19,6 +19,7 @@ from auto_stock_trading.domain.market_data.models import (
 )
 from auto_stock_trading.settings.runtime import Settings
 from tests.brokers.kis_fixture import create_fixture_adapter
+from tests.market_data.db_cleanup import purge_instruments
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -181,7 +182,7 @@ async def _initial_bundle(
     adapter: KisMarketDataAdapter,
 ) -> MarketDataBundle:
     target = InstrumentTarget("005930", ProductType.STOCK)
-    _ = await connection.execute(delete(InstrumentRow).where(InstrumentRow.symbol == target.symbol))
+    await purge_instruments(connection, (target.symbol,))
     bundle = await adapter.fetch_bundle(target, date(2026, 8, 12), date(2026, 8, 13))
     await repository.save_bundle(bundle)
     return bundle

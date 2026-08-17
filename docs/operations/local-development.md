@@ -121,6 +121,18 @@ uv run python -m auto_stock_trading.worker.market_data \
 
 현재 대상은 삼성전자 `005930`과 KODEX 200 `069500`이다. 자격증명이 없으면 비밀 값을 출력하지 않고 명시적인 설정 오류로 종료한다.
 
+수집된 일봉은 정규장 종료 후 재조회로 확정한다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.market_data \
+  --confirm-daily-bars \
+  --start-date 2026-07-01 \
+  --end-date 2026-08-14
+```
+
+서울 기준 해당 거래일 15:40 이후에 저장된 관측과 재조회 응답이 정확히 일치한 일봉만 `confirmed`가 된다. 장중에 처음 수집된 일봉은 이 명령을 한 번 더 실행해야 확정되고, 재조회 값이 다르면 확정 대신 새 `pending` 정정 버전이 남는다. 수정주가 데이터셋 생성(`--build-adjusted`)은 범위의 모든 일봉이 확정된 뒤에만 발행되며, 재현 가능한 발행이 필요하면 `--knowledge-cutoff`로 지식 기준시각을 고정한다.
+
 KRX 공식 연간 일정은 자격증명 없이 수집한다.
 
 ```bash

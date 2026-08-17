@@ -142,6 +142,7 @@ EtfReferenceDataAdapter
 - PostgreSQL 주문 상태를 기준으로 재시작과 메시지 유실을 복구한다.
 - 모델 학습처럼 CPU 사용량이 큰 작업은 별도 프로세스로 격리한다.
 - ListQueueBroker의 블로킹 대기가 유휴 상태에서도 유지되도록 Valkey 연결의 `socket_timeout`을 `None`으로 지정한다.
+- `confirm_seed_daily_bars`는 KIS 일봉을 재조회해 서울 기준 15:40 이후의 두 관측이 일치한 `pending` 일봉만 `confirmed`로 전환한다. 장중 첫 관측은 확정 근거가 아니고, 재조회 값이 다르면 확정하지 않고 새 `pending` 정정 버전을 남긴다.
 - `collect_seed_market_data`는 삼성전자와 KODEX 200의 종목정보·현재가·비수정 일봉을 수집한다. `collect_krx_market_calendar`는 KRX 연간 휴장일과 임시 거래시간 공지를 합성해 적재하고 `confirm_today_market_calendar`는 실전 KIS로 오늘 거래 가능 상태를 1회 확인한다. `collect_dart_cash_dividends`와 `collect_kodex_distributions`는 각각 DART 현금배당 공시와 KODEX 분배금 이력을 기업행사 사실 버전으로 저장하며 아직 예약 없이 수동으로 실행한다.
 - 시장 달력 저장소는 누락·미확인·충돌·오래된 확인을 fail-closed로 판정한다. 승인된 [ADR-0006](../decisions/0006-market-calendar-scheduling.md)에 따라 서울 기준 KRX 선행 수집, KIS 당일 보완 확인과 PostgreSQL 영속 실행 claim을 구현했다. 기본 Compose의 단일 scheduler 프로필은 KRX 예약만 켠다. 실전 `CTCA0903R` 읽기 전용 검증 후 사용자가 승인한 `compose.kis-live-calendar.yaml`을 함께 적용할 때만 KIS 자동 확인을 활성화한다.
 - 기본 Compose는 자격증명 없이 실행한다. 실제 모의검증은 `compose.kis-paper.yaml`에서 `.secrets/` 파일을 Docker secret으로 worker에만 마운트하며 환경을 `paper`로 강제한다.

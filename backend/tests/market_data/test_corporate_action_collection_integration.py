@@ -26,6 +26,7 @@ from auto_stock_trading.application.corporate_actions import CorporateActionColl
 from auto_stock_trading.settings.runtime import Settings
 from tests.disclosures.dart_fixture import create_fixture_adapter
 from tests.disclosures.kodex_fixture import create_fixture_adapter as create_kodex_adapter
+from tests.market_data.db_cleanup import purge_instruments
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -197,7 +198,7 @@ async def _collect_kodex(connection: AsyncConnection) -> CorporateActionBundle:
 
 async def _remove_instrument(sessions: Sessions, symbol: str = _TARGET.symbol) -> None:
     async with sessions.begin() as session:
-        _ = await session.execute(delete(InstrumentRow).where(InstrumentRow.symbol == symbol))
+        await purge_instruments(session, (_TARGET.symbol, _ETF_TARGET.symbol, symbol))
         _ = await session.execute(
             delete(CorporateActionRow).where(CorporateActionRow.source.in_(("DART", "KODEX")))
         )
