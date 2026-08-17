@@ -7,6 +7,7 @@ from auto_stock_trading.api.market_data_models import (
     DailyBarResponse,
     DailyBarsResponse,
     InstrumentResponse,
+    InstrumentsResponse,
     MinuteBarResponse,
     MinuteBarsResponse,
     QuoteResponse,
@@ -14,29 +15,23 @@ from auto_stock_trading.api.market_data_models import (
 
 if TYPE_CHECKING:
     from auto_stock_trading.application.market_data import MarketDataReader
+    from auto_stock_trading.domain.market_data.models import Instrument
 
 
 def create_market_data_router(reader: MarketDataReader) -> APIRouter:
     router = APIRouter(prefix="/api/market-data/instruments", tags=["market-data"])
 
+    async def instrument_list() -> InstrumentsResponse:
+        results = await reader.instruments()
+        return InstrumentsResponse(
+            instruments=tuple(_instrument_response(result) for result in results)
+        )
+
     async def instrument(symbol: str) -> InstrumentResponse:
         result = await reader.instrument(symbol)
         if result is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
-        return InstrumentResponse(
-            country=result.country,
-            exchange=result.exchange,
-            symbol=result.symbol,
-            product_type=result.product_type,
-            currency=result.currency,
-            name=result.name,
-            english_name=result.english_name,
-            listed_on=result.listed_on,
-            delisted_on=result.delisted_on,
-            trading_status=result.trading_status,
-            source=result.source,
-            source_as_of=result.source_as_of,
-        )
+        return _instrument_response(result)
 
     async def quote(symbol: str) -> QuoteResponse:
         result = await reader.quote(symbol)
@@ -70,8 +65,7 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
                 "start_date must not be after end_date",
             )
         results = await reader.daily_bars(symbol, start_date, end_date)
-        if not results and await reader.instrument(symbol) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
+        await _ensure_known_instrument(reader, symbol, has_results=bool(results))
         bars = tuple(
             DailyBarResponse(
                 trading_date=result.bar.trading_date,
@@ -103,8 +97,7 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
 
     async def minute_bars(symbol: str, trading_date: date) -> MinuteBarsResponse:
         results = await reader.minute_bars(symbol, trading_date)
-        if not results and await reader.instrument(symbol) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
+        await _ensure_known_instrument(reader, symbol, has_results=bool(results))
         bars = tuple(
             MinuteBarResponse(
                 bar_started_at=result.bar.bar_started_at,
@@ -130,6 +123,12 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
             bars=bars,
         )
 
+    router.add_api_route(
+        "",
+        instrument_list,
+        methods=["GET"],
+        description="수집 대상으로 등록된 종목 목록을 종목코드 순으로 반환한다.",
+    )
     router.add_api_route("/{symbol}", instrument, methods=["GET"])
     router.add_api_route("/{symbol}/quote", quote, methods=["GET"])
     router.add_api_route("/{symbol}/daily-bars", daily_bars, methods=["GET"])
@@ -144,3 +143,30 @@ def create_market_data_router(reader: MarketDataReader) -> APIRouter:
         ),
     )
     return router
+
+
+async def _ensure_known_instrument(
+    reader: MarketDataReader,
+    symbol: str,
+    *,
+    has_results: bool,
+) -> None:
+    if not has_results and await reader.instrument(symbol) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
+
+
+def _instrument_response(result: Instrument) -> InstrumentResponse:
+    return InstrumentResponse(
+        country=result.country,
+        exchange=result.exchange,
+        symbol=result.symbol,
+        product_type=result.product_type,
+        currency=result.currency,
+        name=result.name,
+        english_name=result.english_name,
+        listed_on=result.listed_on,
+        delisted_on=result.delisted_on,
+        trading_status=result.trading_status,
+        source=result.source,
+        source_as_of=result.source_as_of,
+    )

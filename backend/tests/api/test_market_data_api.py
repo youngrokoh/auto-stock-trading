@@ -28,6 +28,11 @@ class StubProbe:
 
 @final
 class StubMarketDataReader:
+    async def instruments(self) -> tuple[Instrument, ...]:
+        result = await self.instrument("005930")
+        assert result is not None
+        return (result,)
+
     async def instrument(self, symbol: str) -> Instrument | None:
         if symbol != "005930":
             return None
@@ -148,6 +153,31 @@ def _client() -> TestClient:
         market_data_reader_factory=StubMarketDataReader,
     )
     return TestClient(app)
+
+
+def test_instrument_list_exposes_collected_instruments() -> None:
+    with _client() as client:
+        response = client.get("/api/market-data/instruments")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "instruments": [
+            {
+                "country": "KR",
+                "exchange": "XKRX",
+                "symbol": "005930",
+                "product_type": "stock",
+                "currency": "KRW",
+                "name": "삼성전자",
+                "english_name": "Samsung Electronics",
+                "listed_on": "1975-06-11",
+                "delisted_on": None,
+                "trading_status": "active",
+                "source": "KIS",
+                "source_as_of": "2026-08-14",
+            }
+        ]
+    }
 
 
 def test_market_data_read_endpoints_include_source_and_as_of() -> None:

@@ -126,6 +126,7 @@ Taskiq worker ── Valkey
 - [1단계 검증 기록](qa/phase-1-verification.md)
 - [1단계 시각 QA 감사 기록](qa/phase-1-visual-review.md)
 - [2단계 시장 데이터 수직 슬라이스 검증](qa/phase-2-market-data-verification.md)
+- [3단계 시장 대시보드 검증](qa/phase-3-market-dashboard-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions

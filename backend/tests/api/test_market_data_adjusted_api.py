@@ -53,6 +53,11 @@ class StubProbe:
 
 @final
 class StubMarketDataReader:
+    async def instruments(self) -> tuple[Instrument, ...]:
+        result = await self.instrument(_SYMBOL)
+        assert result is not None
+        return (result,)
+
     async def instrument(self, symbol: str) -> Instrument | None:
         if symbol != _SYMBOL:
             return None

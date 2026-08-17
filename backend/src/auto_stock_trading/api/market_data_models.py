@@ -24,6 +24,10 @@ class InstrumentResponse(MarketDataResponse):
     source_as_of: date
 
 
+class InstrumentsResponse(MarketDataResponse):
+    instruments: tuple[InstrumentResponse, ...]
+
+
 class QuoteResponse(MarketDataResponse):
     symbol: str
     price: Decimal

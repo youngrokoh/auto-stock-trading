@@ -5,9 +5,9 @@ export default defineConfig({
   fullyParallel: true,
   outputDir: "test-results",
   projects: [
-    { name: "mobile", use: { viewport: { height: 812, width: 375 } } },
+    { name: "mobile", use: { viewport: { height: 844, width: 390 } } },
     { name: "tablet", use: { viewport: { height: 1024, width: 768 } } },
-    { name: "desktop", use: { viewport: { height: 900, width: 1280 } } },
+    { name: "desktop", use: { viewport: { height: 908, width: 1360 } } },
   ],
   reporter: [["list"], ["html", { open: "never" }]],
   testDir: "./tests/e2e",

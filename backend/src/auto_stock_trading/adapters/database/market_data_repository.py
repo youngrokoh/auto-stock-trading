@@ -166,6 +166,13 @@ class PostgresMarketDataRepository:
         async with self._sessions.begin() as session:
             _ = await session.execute(statement)
 
+    async def instruments(self) -> tuple[Instrument, ...]:
+        async with self._sessions() as session:
+            rows = tuple(
+                (await session.scalars(select(InstrumentRow).order_by(InstrumentRow.symbol))).all()
+            )
+        return tuple(_instrument(row) for row in rows)
+
     async def instrument(self, symbol: str) -> Instrument | None:
         async with self._sessions() as session:
             row = await session.scalar(
@@ -174,22 +181,7 @@ class PostgresMarketDataRepository:
                 .order_by(InstrumentRow.updated_at.desc())
                 .limit(1)
             )
-        if row is None:
-            return None
-        return Instrument(
-            country=row.country,
-            exchange=row.exchange,
-            symbol=row.symbol,
-            product_type=ProductType(row.product_type),
-            currency=row.currency,
-            name=row.name,
-            english_name=row.english_name,
-            listed_on=row.listed_on,
-            delisted_on=row.delisted_on,
-            trading_status=row.trading_status,
-            source=row.source,
-            source_as_of=row.source_as_of,
-        )
+        return _instrument(row) if row is not None else None
 
     async def quote(self, symbol: str) -> Quote | None:
         async with self._sessions() as session:
@@ -240,3 +232,20 @@ class PostgresMarketDataRepository:
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
+
+
+def _instrument(row: InstrumentRow) -> Instrument:
+    return Instrument(
+        country=row.country,
+        exchange=row.exchange,
+        symbol=row.symbol,
+        product_type=ProductType(row.product_type),
+        currency=row.currency,
+        name=row.name,
+        english_name=row.english_name,
+        listed_on=row.listed_on,
+        delisted_on=row.delisted_on,
+        trading_status=row.trading_status,
+        source=row.source,
+        source_as_of=row.source_as_of,
+    )

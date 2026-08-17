@@ -1,13 +1,10 @@
-type StatusKind = "disabled" | "loading" | "ok" | "unavailable" | "warning";
+type BadgeKind = "accent" | "danger" | "down" | "neutral" | "ok" | "up" | "warn";
 
 type StatusBadgeProps = Readonly<{
-  kind: StatusKind;
+  kind: BadgeKind;
   label: string;
 }>;
 
 export const StatusBadge = ({ kind, label }: StatusBadgeProps) => (
-  <span className={`status-badge status-badge--${kind}`}>
-    <span className="status-badge__dot" aria-hidden="true" />
-    {label}
-  </span>
+  <span className={kind === "neutral" ? "badge" : `badge badge--${kind}`}>{label}</span>
 );

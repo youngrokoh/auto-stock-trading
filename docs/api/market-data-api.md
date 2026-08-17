@@ -11,6 +11,7 @@
 
 | 메서드 | 경로 | 응답 |
 |---|---|---|
+| `GET` | `/api/market-data/instruments` | 수집 대상 종목 목록 (종목코드 순) |
 | `GET` | `/api/market-data/instruments/{symbol}` | 종목 기본정보와 상품 유형 |
 | `GET` | `/api/market-data/instruments/{symbol}/quote` | 저장된 최신 현재가 |
 | `GET` | `/api/market-data/instruments/{symbol}/daily-bars` | 거래일 오름차순 비수정 일봉 |
