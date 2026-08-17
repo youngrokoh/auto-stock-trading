@@ -1,71 +1,18 @@
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from auto_stock_trading.domain.market_data.adjustment_datasets import (
+    AdjustedBarRecord,
+    AdjustmentDatasetRecord,
+    DatasetActionRecord,
+)
 from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
-    from decimal import Decimal
-    from uuid import UUID
-
     from auto_stock_trading.adapters.database.market_data_adjustment_rows import (
         AdjustedMarketBarRow,
         AdjustmentDatasetActionRow,
         AdjustmentDatasetRow,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class AdjustmentRequest:
-    symbol: str
-    method: AdjustmentMethod
-    range_start: date
-    price_cutoff_date: date
-    knowledge_cutoff_at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class AdjustmentDatasetRecord:
-    dataset_id: UUID
-    symbol: str
-    method: AdjustmentMethod
-    interval: str
-    range_start: date
-    price_cutoff_date: date
-    knowledge_cutoff_at: datetime
-    algorithm_version: str
-    input_bar_version_hash: str
-    action_version_hash: str
-    status: str
-    generated_at: datetime
-    superseded_at: datetime | None
-    failure_code: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class AdjustedBarRecord:
-    dataset_id: UUID
-    source_bar_id: UUID
-    trading_date: date
-    open_price: Decimal
-    high_price: Decimal
-    low_price: Decimal
-    close_price: Decimal
-    volume: int
-    trading_value: Decimal
-    price_factor: Decimal
-    volume_factor: Decimal
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetActionRecord:
-    dataset_id: UUID
-    corporate_action_id: UUID
-    action_key: UUID
-    action_version: int
-    event_date: date
-    event_price_factor: Decimal
-    event_volume_factor: Decimal
 
 
 def dataset_record(row: AdjustmentDatasetRow, symbol: str) -> AdjustmentDatasetRecord:
@@ -87,7 +34,11 @@ def dataset_record(row: AdjustmentDatasetRow, symbol: str) -> AdjustmentDatasetR
     )
 
 
-def adjusted_bar_record(row: AdjustedMarketBarRow) -> AdjustedBarRecord:
+def adjusted_bar_record(
+    row: AdjustedMarketBarRow,
+    source: str,
+    source_bar_version: int,
+) -> AdjustedBarRecord:
     return AdjustedBarRecord(
         dataset_id=row.dataset_id,
         source_bar_id=row.source_bar_id,
@@ -100,10 +51,12 @@ def adjusted_bar_record(row: AdjustedMarketBarRow) -> AdjustedBarRecord:
         trading_value=row.trading_value,
         price_factor=row.price_factor,
         volume_factor=row.volume_factor,
+        source=source,
+        source_bar_version=source_bar_version,
     )
 
 
-def dataset_action_record(row: AdjustmentDatasetActionRow) -> DatasetActionRecord:
+def dataset_action_record(row: AdjustmentDatasetActionRow, source: str) -> DatasetActionRecord:
     return DatasetActionRecord(
         dataset_id=row.dataset_id,
         corporate_action_id=row.corporate_action_id,
@@ -112,4 +65,5 @@ def dataset_action_record(row: AdjustmentDatasetActionRow) -> DatasetActionRecor
         event_date=row.event_date,
         event_price_factor=row.event_price_factor,
         event_volume_factor=row.event_volume_factor,
+        source=source,
     )

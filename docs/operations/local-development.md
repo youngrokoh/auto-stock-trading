@@ -192,6 +192,17 @@ uv run python -m auto_stock_trading.worker.corporate_actions \
 
 락일 확정은 달력이 없는 기간을 건너뛰고 `pending`으로 남긴다. 데이터셋 생성은 범위의 모든 거래일 일봉이 `confirmed`여야 하며, 조건을 만족하지 못하면 `market.adjustment_dataset`에 `failed`와 오류 코드만 남기고 발행하지 않는다.
 
+발행된 데이터셋과 기업행사는 API 서버에서 읽기 전용으로 조회한다.
+
+```bash
+curl "http://localhost:8000/api/market-data/instruments/069500/corporate-actions?include_history=true"
+curl "http://localhost:8000/api/market-data/instruments/069500/adjusted-daily-bars?method=total_return"
+curl "http://localhost:8000/api/market-data/adjusted-datasets/{dataset_id}"
+curl "http://localhost:8000/api/market-data/corporate-actions/{action_key}/adjusted-datasets"
+```
+
+기업행사 조회는 `knowledge_cutoff_at`(시간대 오프셋 필수)으로 당시 알 수 있었던 버전을 선택하는 point-in-time 조회를 지원한다. 자세한 응답 계약은 [시장 데이터 읽기 API](../api/market-data-api.md)를 따른다.
+
 KIS 모의투자 REST API는 초당 1건 제한을 적용하므로 Valkey 호출 게이트가 같은 환경과 자격증명을 사용하는 모든 worker의 인증·시세 요청을 최소 1.05초 간격으로 예약한다. 접근 토큰은 만료 1분 전까지 Valkey에서 재사용하며 동시에 토큰이 필요해도 분산 잠금을 획득한 worker 하나만 발급한다. Valkey를 사용할 수 없으면 호출 제한 위반을 막기 위해 새 KIS 요청을 보내지 않고 수집을 실패 처리한다. 자세한 반복 실행은 [모의환경 검증 런북](kis-paper-verification.md)을 따른다.
 
 ## 프론트엔드만 실행

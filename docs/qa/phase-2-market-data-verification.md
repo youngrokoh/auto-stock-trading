@@ -270,6 +270,23 @@ python3 scripts/docs_guard.py check
 
 `knowledge_cutoff_at`이 다른 반복 발행은 계약대로 별도 point-in-time 데이터셋을 만든다. 재현 가능한 발행이 필요하면 worker의 `--knowledge-cutoff`로 지식 기준시각을 고정한다. KIS 수정주가와의 대조(계약 검증 시나리오 9)는 현재 종목의 사건이 현금 분배뿐이라 KIS 수정주가와 원주가의 차이가 없을 것으로 예상되므로, 액면분할 이력이 있는 종목을 수집 대상에 추가할 때 수행한다.
 
+## 실제 수정주가 읽기 API 검증 (2026-08-17)
+
+로컬 API 서버를 실제 PostgreSQL에 연결하고 새 읽기 엔드포인트를 실데이터로 확인했다.
+
+| 항목 | 값 |
+|---|---|
+| 최신 발행 조회 | `GET /instruments/069500/adjusted-daily-bars?method=total_return` → `published` 데이터셋, 32개 수정 일봉 |
+| 계약 필수 필드 | `method`, `range_start`, `price_cutoff_date`, `knowledge_cutoff_at`, `algorithm_version=krx-t2-adjust-v1`, 두 입력 해시, 데이터셋 ID 모두 응답에 포함 |
+| 계수·종가 대조 | `2026-07-29` 수정 종가 `89422`, 가격계수 `0.9979577032531667` — 발행 검증 값과 일치 |
+| 계보·출처 | 일봉마다 `source=KIS`, `source_bar_id`, `source_bar_version=1`, 반영 기업행사 `action_version=2`·`source=KODEX` 노출 |
+| 기업행사 조회 | 현재(069500 분배금 1건 `verified`, 005930 2026년 배당 2건 `verified`), `include_history`로 `pending`→`verified` 두 버전 확인 |
+| point-in-time | 수집 시각(02:26 UTC) 이전 `knowledge_cutoff_at`은 빈 결과 — 미래정보 누출 없음 |
+| 데이터셋 ID·영향 조회 | ID 조회와 `corporate-actions/{action_key}/adjusted-datasets`가 동일 사실 버전을 반영한 발행 이력 반환 |
+| 오류 처리 | 미등록 종목·미지 데이터셋 `404`, 잘못된 `method`·시간대 없는 cutoff·`include_history`+cutoff 조합 `422` |
+
+락일 확정 전 버전은 `ex_date`가 없어 기간 필터에 나타나지 않으므로 이력 검증은 기간 없는 조회로 수행했다. 응답에는 자격증명이나 연결 URL이 없다.
+
 ## 남은 사용자 확인
 
 KIS 모의투자 앱 또는 웹 화면에서 삼성전자와 KODEX 200의 값과 마지막 거래일을 육안 대조한다. 기술 검증과 원본 보안 검증은 완료됐으며 화면 대조 결과에는 시세 전문이나 키를 기록하지 않는다.

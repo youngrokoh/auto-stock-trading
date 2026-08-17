@@ -4,25 +4,41 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from auto_stock_trading.adapters.database.market_data_adjustment_reader import (
+    PostgresAdjustedPriceReader,
+)
+from auto_stock_trading.adapters.database.market_data_corporate_action_reader import (
+    PostgresCorporateActionReader,
+)
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
 from auto_stock_trading.adapters.health import PostgresHealthProbe, ValkeyHealthProbe
 from auto_stock_trading.api.health import create_health_router
 from auto_stock_trading.api.market_data import create_market_data_router
+from auto_stock_trading.api.market_data_adjusted import create_market_data_adjusted_router
+from auto_stock_trading.application.adjusted_prices import (
+    AdjustedPriceReader,
+    CorporateActionReader,
+)
 from auto_stock_trading.application.health import HealthProbe, HealthService
 from auto_stock_trading.application.market_data import MarketDataReader
 from auto_stock_trading.settings.runtime import Settings
 
 ProbeFactory = Callable[[], HealthProbe]
 MarketDataReaderFactory = Callable[[], MarketDataReader]
+CorporateActionReaderFactory = Callable[[], CorporateActionReader]
+AdjustedPriceReaderFactory = Callable[[], AdjustedPriceReader]
 
 
-def create_app(
+def create_app(  # noqa: PLR0913
     settings: Settings | None = None,
+    *,
     database_probe_factory: ProbeFactory | None = None,
     cache_probe_factory: ProbeFactory | None = None,
     market_data_reader_factory: MarketDataReaderFactory | None = None,
+    corporate_action_reader_factory: CorporateActionReaderFactory | None = None,
+    adjusted_price_reader_factory: AdjustedPriceReaderFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -38,6 +54,18 @@ def create_app(
         )
     )
     market_data_reader = reader_factory()
+    action_reader_factory = corporate_action_reader_factory or (
+        lambda: PostgresCorporateActionReader.from_url(
+            runtime_settings.database_url.get_secret_value()
+        )
+    )
+    corporate_action_reader = action_reader_factory()
+    adjusted_reader_factory = adjusted_price_reader_factory or (
+        lambda: PostgresAdjustedPriceReader.from_url(
+            runtime_settings.database_url.get_secret_value()
+        )
+    )
+    adjusted_price_reader = adjusted_reader_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -46,6 +74,8 @@ def create_app(
         finally:
             await health_service.close()
             await market_data_reader.close()
+            await corporate_action_reader.close()
+            await adjusted_price_reader.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -61,6 +91,13 @@ def create_app(
     )
     app.include_router(create_health_router(health_service, runtime_settings))
     app.include_router(create_market_data_router(market_data_reader))
+    app.include_router(
+        create_market_data_adjusted_router(
+            market_data_reader,
+            corporate_action_reader,
+            adjusted_price_reader,
+        )
+    )
     return app
 
 

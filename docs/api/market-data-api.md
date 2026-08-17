@@ -7,15 +7,35 @@
 
 ## 범위
 
-2단계 첫 수직 슬라이스는 KIS 국내주식 시세 응답을 정규화해 종목정보, 최신 현재가, 버전된 비수정 일봉을 읽기 전용으로 제공한다. 시장 달력은 worker와 내부 저장소까지 구현했으며 아직 HTTP 읽기 API로 노출하지 않는다. 주문·계좌·실시간 스트림·분봉 API는 포함하지 않는다.
+2단계 첫 수직 슬라이스는 KIS 국내주식 시세 응답을 정규화해 종목정보, 최신 현재가, 버전된 비수정 일봉을 읽기 전용으로 제공한다. 2026-08-17에 [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md)의 필수 조회 계약을 따르는 기업행사·수정주가 읽기 API를 추가했다. 시장 달력은 worker와 내부 저장소까지 구현했으며 아직 HTTP 읽기 API로 노출하지 않는다. 주문·계좌·실시간 스트림·분봉 API는 포함하지 않는다.
 
 | 메서드 | 경로 | 응답 |
 |---|---|---|
 | `GET` | `/api/market-data/instruments/{symbol}` | 종목 기본정보와 상품 유형 |
 | `GET` | `/api/market-data/instruments/{symbol}/quote` | 저장된 최신 현재가 |
 | `GET` | `/api/market-data/instruments/{symbol}/daily-bars` | 거래일 오름차순 비수정 일봉 |
+| `GET` | `/api/market-data/instruments/{symbol}/corporate-actions` | 기업행사 사실 버전 (현재·이력·시점 조회) |
+| `GET` | `/api/market-data/instruments/{symbol}/adjusted-daily-bars` | 최신 발행 수정주가 데이터셋과 파생 일봉 |
+| `GET` | `/api/market-data/adjusted-datasets/{dataset_id}` | 데이터셋 ID로 수정 일봉·계수·기업행사 계보 |
+| `GET` | `/api/market-data/corporate-actions/{action_key}/adjusted-datasets` | 기업행사가 반영된 데이터셋 목록 |
 
 일봉 조회는 선택적인 `start_date`, `end_date` 쿼리를 `YYYY-MM-DD` 형식으로 받는다. 시작일이 종료일보다 늦으면 `422`, 종목이 없으면 `404`를 반환한다. 등록된 종목에 조회 구간 데이터가 없으면 빈 `bars`를 반환한다.
+
+## 기업행사·수정주가 읽기
+
+기업행사 조회는 선택적인 `start_date`, `end_date`와 함께 다음 모드를 지원한다.
+
+- 기본은 `action_key`별 현재 버전만 반환한다.
+- `knowledge_cutoff_at`(시간대 오프셋 필수)은 `available_at <= knowledge_cutoff_at`에서 당시 알 수 있었던 최신 버전을 선택한다. 시간대 없는 값은 `422`다.
+- `include_history=true`는 정정·취소 이력 전체를 버전 순으로 반환하며 `knowledge_cutoff_at`과 함께 쓰면 `422`다.
+- 각 항목은 `action_key`, `version`, `valid_from`, `superseded_at`, 생애주기·품질 상태, 출처와 `available_at`을 포함한다. 락일 확정 전 버전은 `ex_date`가 없어 기간 필터(`coalesce(ex_date, effective_date)`)에 걸리지 않으므로 이력 확인은 기간 없이 조회한다.
+
+수정주가 조회는 `method` 쿼리로 `split_adjusted` 또는 `total_return`을 요구하며 다른 값은 `422`다. 응답의 `dataset`은 `method`, `interval`, `range_start`, `price_cutoff_date`, `knowledge_cutoff_at`, `algorithm_version`, 두 입력 해시(`input_bar_version_hash`, `action_version_hash`), 상태와 생성·대체 시각을 항상 포함한다. 원본·수정 여부는 불리언 하나로 표현하지 않고 데이터셋 메타데이터로만 구분한다. 발행된 데이터셋이 없으면 `404`다.
+
+- `bars`의 각 일봉은 수정 OHLCV·거래량·거래대금과 개별 `price_factor`·`volume_factor`, 근거 비수정 일봉의 `source`, `source_bar_id`, `source_bar_version` 계보를 노출한다.
+- `applied_actions`는 반영된 기업행사의 `action_key`, `action_version`, 사건일, 사건 계수와 출처를 노출한다.
+- 데이터셋 ID 조회는 감사·재현을 위해 `failed`·`superseded` 상태도 반환한다. 기업행사별 데이터셋 목록은 해당 사실 버전이 반영된 발행 이력을 생성 시각 순으로 반환한다.
+- `split_adjusted`는 주식 수 변화 사건만 반영해 사건일 이전 가격에 1/주식수승수, 거래량에 주식수승수를 누적 적용한다. `total_return`은 여기에 현금배당·ETF 분배금을 락일 직전 종가 기준 `(P - D) / P` 가격계수로 추가 반영한다. 두 계열 모두 비수정 확정 일봉의 파생값이며 체결가로 사용할 수 없다. 계산식은 OpenAPI 경로 설명에도 명시된다.
 
 ## 출처와 시각
 
@@ -66,4 +86,4 @@ Taskiq 등록 이름은 `collect_seed_market_data`다. 실행 서버에는 `AUTO
 - 모의투자 REST 요청은 현재 초당 1건 제한에 맞춰 최소 1.05초 간격으로 실행한다.
 - 접근 토큰과 호출 간격은 Valkey에서 같은 자격증명의 worker가 공유한다.
 - 현재가 `as_of`는 체결시각이 아니라 수신시각이다. 향후 실시간 스트림에서는 거래소 시각을 별도 저장한다.
-- 수정주가 파생 데이터셋, 분봉, 기업행사와 시장 달력 HTTP API는 아직 구현하지 않았다. KRX 임시 거래시간 공지는 수능일·연초 개장일 형식을 지원하며 새로운 임시 변경 유형은 계약과 테스트를 추가하기 전 fail-closed로 처리한다.
+- 분봉과 시장 달력 HTTP API는 아직 구현하지 않았다. 수정주가·기업행사 읽기 API는 구현했으며 KIS 수정주가 대조는 분할 이력 종목 확보 시 수행한다. KRX 임시 거래시간 공지는 수능일·연초 개장일 형식을 지원하며 새로운 임시 변경 유형은 계약과 테스트를 추가하기 전 fail-closed로 처리한다.

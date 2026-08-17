@@ -13,6 +13,7 @@ from auto_stock_trading.domain.market_data.corporate_actions import (
     CorporateActionInvariant,
     CorporateActionLifecycle,
     CorporateActionQuality,
+    CorporateActionRange,
     CorporateActionType,
     InvalidCorporateActionError,
     TimePrecision,
@@ -21,7 +22,7 @@ from auto_stock_trading.domain.market_data.corporate_actions import (
 )
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import datetime
     from uuid import UUID
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -33,13 +34,6 @@ class CorporateActionEvidence:
     action_key: UUID
     instrument_id: UUID
     raw_response_id: UUID
-
-
-@dataclass(frozen=True, slots=True)
-class CorporateActionRange:
-    symbol: str
-    start_date: date | None
-    end_date: date | None
 
 
 async def save_corporate_action(session: AsyncSession, evidence: CorporateActionEvidence) -> None:

@@ -105,6 +105,13 @@ class CorporateActionBundle:
 
 
 @dataclass(frozen=True, slots=True)
+class CorporateActionRange:
+    symbol: str
+    start_date: date | None
+    end_date: date | None
+
+
+@dataclass(frozen=True, slots=True)
 class VersionedCorporateAction:
     action: CorporateAction
     corporate_action_id: UUID

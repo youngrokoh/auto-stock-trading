@@ -11,15 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from auto_stock_trading.adapters.database.market_calendar_rows import MarketCalendarRow
-from auto_stock_trading.adapters.database.market_data_adjustment_records import (
-    AdjustedBarRecord,
-    AdjustmentDatasetRecord,
-    AdjustmentRequest,
-    DatasetActionRecord,
-    adjusted_bar_record,
-    dataset_action_record,
-    dataset_record,
-)
+from auto_stock_trading.adapters.database.market_data_adjustment_records import dataset_record
 from auto_stock_trading.adapters.database.market_data_adjustment_rows import (
     AdjustedMarketBarRow,
     AdjustmentDatasetActionRow,
@@ -46,7 +38,6 @@ from auto_stock_trading.domain.market_data.adjustments import (
     AdjustmentError,
     AdjustmentFailure,
     AdjustmentInputs,
-    AdjustmentMethod,
     AdjustmentPlan,
     InputBar,
     action_version_hash,
@@ -58,6 +49,10 @@ from auto_stock_trading.domain.market_data.models import BarFinality
 if TYPE_CHECKING:
     from datetime import date, datetime
 
+    from auto_stock_trading.domain.market_data.adjustment_datasets import (
+        AdjustmentDatasetRecord,
+        AdjustmentRequest,
+    )
     from auto_stock_trading.domain.market_data.corporate_actions import VersionedCorporateAction
 
 _INTERVAL: Final = "1d"
@@ -122,81 +117,9 @@ class PostgresAdjustmentStore:
             raise
         return await self._publish(request, instrument.id, generated_at, plan)
 
-    async def read_latest_published(
-        self,
-        symbol: str,
-        method: AdjustmentMethod,
-    ) -> AdjustmentDatasetRecord | None:
-        statement = (
-            self._dataset_statement(symbol)
-            .where(
-                AdjustmentDatasetRow.method == method.value,
-                AdjustmentDatasetRow.status == "published",
-            )
-            .order_by(
-                AdjustmentDatasetRow.price_cutoff_date.desc(),
-                AdjustmentDatasetRow.generated_at.desc(),
-            )
-            .limit(1)
-        )
-        async with self._sessions() as session:
-            row = (await session.execute(statement)).tuples().first()
-        return dataset_record(row[0], row[1]) if row is not None else None
-
-    async def read_datasets_for_symbol(self, symbol: str) -> tuple[AdjustmentDatasetRecord, ...]:
-        statement = self._dataset_statement(symbol).order_by(AdjustmentDatasetRow.generated_at)
-        async with self._sessions() as session:
-            rows = (await session.execute(statement)).tuples().all()
-        return tuple(dataset_record(row[0], row[1]) for row in rows)
-
-    async def read_datasets_for_action(
-        self,
-        action_key: UUID,
-    ) -> tuple[AdjustmentDatasetRecord, ...]:
-        statement = (
-            select(AdjustmentDatasetRow, InstrumentRow.symbol)
-            .join(
-                AdjustmentDatasetActionRow,
-                AdjustmentDatasetActionRow.dataset_id == AdjustmentDatasetRow.id,
-            )
-            .join(InstrumentRow, AdjustmentDatasetRow.instrument_id == InstrumentRow.id)
-            .where(AdjustmentDatasetActionRow.action_key == action_key)
-            .order_by(AdjustmentDatasetRow.generated_at)
-        )
-        async with self._sessions() as session:
-            rows = (await session.execute(statement)).tuples().all()
-        return tuple(dataset_record(row[0], row[1]) for row in rows)
-
-    async def read_adjusted_bars(self, dataset_id: UUID) -> tuple[AdjustedBarRecord, ...]:
-        statement = (
-            select(AdjustedMarketBarRow)
-            .where(AdjustedMarketBarRow.dataset_id == dataset_id)
-            .order_by(AdjustedMarketBarRow.trading_date)
-        )
-        async with self._sessions() as session:
-            rows = tuple((await session.scalars(statement)).all())
-        return tuple(adjusted_bar_record(row) for row in rows)
-
-    async def read_dataset_actions(self, dataset_id: UUID) -> tuple[DatasetActionRecord, ...]:
-        statement = (
-            select(AdjustmentDatasetActionRow)
-            .where(AdjustmentDatasetActionRow.dataset_id == dataset_id)
-            .order_by(AdjustmentDatasetActionRow.event_date, AdjustmentDatasetActionRow.action_key)
-        )
-        async with self._sessions() as session:
-            rows = tuple((await session.scalars(statement)).all())
-        return tuple(dataset_action_record(row) for row in rows)
-
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
-
-    def _dataset_statement(self, symbol: str) -> Select[tuple[AdjustmentDatasetRow, str]]:
-        return (
-            select(AdjustmentDatasetRow, InstrumentRow.symbol)
-            .join(InstrumentRow, AdjustmentDatasetRow.instrument_id == InstrumentRow.id)
-            .where(InstrumentRow.symbol == symbol)
-        )
 
     async def _open_dates(
         self,

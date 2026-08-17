@@ -9,9 +9,6 @@ from pydantic import SecretStr
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
 )
-from auto_stock_trading.adapters.database.market_data_adjustment_records import (
-    AdjustmentRequest,
-)
 from auto_stock_trading.adapters.database.market_data_adjustment_store import (
     PostgresAdjustmentStore,
 )
@@ -38,6 +35,7 @@ from auto_stock_trading.application.corporate_actions import (
     CorporateActionCollector,
     CorporateActionSource,
 )
+from auto_stock_trading.domain.market_data.adjustment_datasets import AdjustmentRequest
 from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
 from auto_stock_trading.settings.runtime import Settings
 

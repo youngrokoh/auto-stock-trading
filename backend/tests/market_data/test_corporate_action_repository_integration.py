@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from auto_stock_trading.adapters.database.market_data_corporate_action_repository import (
     CorporateActionEvidence,
-    CorporateActionRange,
     read_corporate_action_history,
     read_corporate_actions_as_of,
     read_current_corporate_actions,
@@ -26,6 +25,7 @@ from auto_stock_trading.domain.market_data.corporate_actions import (
     CorporateAction,
     CorporateActionLifecycle,
     CorporateActionQuality,
+    CorporateActionRange,
     CorporateActionType,
     InvalidCorporateActionError,
     TimePrecision,

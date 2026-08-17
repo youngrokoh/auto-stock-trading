@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
 )
-from auto_stock_trading.adapters.database.market_data_adjustment_records import (
-    AdjustmentRequest,
+from auto_stock_trading.adapters.database.market_data_adjustment_reader import (
+    PostgresAdjustedPriceReader,
 )
 from auto_stock_trading.adapters.database.market_data_adjustment_store import (
     PostgresAdjustmentStore,
@@ -29,6 +29,7 @@ from auto_stock_trading.adapters.database.market_data_rows import (
     RawApiResponseRow,
     SyncStatusRow,
 )
+from auto_stock_trading.domain.market_data.adjustment_datasets import AdjustmentRequest
 from auto_stock_trading.domain.market_data.adjustments import (
     ADJUSTMENT_ALGORITHM_VERSION,
     AdjustmentError,
@@ -109,11 +110,12 @@ def test_total_return_dataset_is_published_with_lineage() -> None:
         record = await _build(connection, _request())
 
         # Then
-        store = PostgresAdjustmentStore.from_connection(connection)
-        adjusted = await store.read_adjusted_bars(record.dataset_id)
-        actions = await store.read_dataset_actions(record.dataset_id)
-        latest = await store.read_latest_published(_SYMBOL, AdjustmentMethod.TOTAL_RETURN)
-        await store.close()
+        reader = PostgresAdjustedPriceReader.from_connection(connection)
+        adjusted = await reader.read_adjusted_bars(record.dataset_id)
+        actions = await reader.read_dataset_actions(record.dataset_id)
+        latest = await reader.read_latest_published(_SYMBOL, AdjustmentMethod.TOTAL_RETURN)
+        by_id = await reader.read_dataset(record.dataset_id)
+        await reader.close()
         assert record.status == "published"
         assert record.algorithm_version == ADJUSTMENT_ALGORITHM_VERSION
         assert len(record.input_bar_version_hash) == 64
@@ -124,11 +126,17 @@ def test_total_return_dataset_is_published_with_lineage() -> None:
         assert by_date[date(2026, 9, 24)].close_price == Decimal("1030.00000000")
         assert by_date[date(2026, 9, 24)].price_factor == Decimal("1.0000000000000000")
         assert by_date[date(2026, 9, 21)].volume == 100
+        assert by_date[date(2026, 9, 21)].source == "KIS"
+        assert by_date[date(2026, 9, 21)].source_bar_version == 1
         assert len(actions) == 1
         assert actions[0].event_date == date(2026, 9, 24)
         assert actions[0].event_price_factor == Decimal("0.9705882352941176")
+        assert actions[0].source == "DART"
         assert latest is not None
         assert latest.dataset_id == record.dataset_id
+        assert by_id is not None
+        assert by_id.symbol == _SYMBOL
+        assert by_id.dataset_id == record.dataset_id
 
     anyio.run(_run_scenario, scenario)
 
@@ -150,9 +158,9 @@ def test_same_inputs_reuse_the_published_dataset() -> None:
         second = await _build(connection, _request())
 
         # Then
-        store = PostgresAdjustmentStore.from_connection(connection)
-        datasets = await store.read_datasets_for_symbol(_SYMBOL)
-        await store.close()
+        reader = PostgresAdjustedPriceReader.from_connection(connection)
+        datasets = await reader.read_datasets_for_symbol(_SYMBOL)
+        await reader.close()
         assert second.dataset_id == first.dataset_id
         assert len(datasets) == 1
 
@@ -180,10 +188,10 @@ def test_knowledge_cutoff_selects_action_versions() -> None:
         after = await _build(connection, _request(knowledge_cutoff_at=_GENERATED_AT))
 
         # Then
-        store = PostgresAdjustmentStore.from_connection(connection)
-        before_bars = await store.read_adjusted_bars(before.dataset_id)
-        after_bars = await store.read_adjusted_bars(after.dataset_id)
-        await store.close()
+        reader = PostgresAdjustedPriceReader.from_connection(connection)
+        before_bars = await reader.read_adjusted_bars(before.dataset_id)
+        after_bars = await reader.read_adjusted_bars(after.dataset_id)
+        await reader.close()
         assert before.dataset_id != after.dataset_id
         assert before.action_version_hash != after.action_version_hash
         before_by_date = {item.trading_date: item for item in before_bars}
@@ -211,16 +219,19 @@ def test_bar_correction_creates_new_dataset_and_preserves_the_old_one() -> None:
         second = await _build(connection, _request(AdjustmentMethod.SPLIT_ADJUSTED))
 
         # Then
-        store = PostgresAdjustmentStore.from_connection(connection)
-        datasets = await store.read_datasets_for_symbol(_SYMBOL)
-        old_bars = await store.read_adjusted_bars(first.dataset_id)
-        await store.close()
+        reader = PostgresAdjustedPriceReader.from_connection(connection)
+        datasets = await reader.read_datasets_for_symbol(_SYMBOL)
+        old_bars = await reader.read_adjusted_bars(first.dataset_id)
+        new_bars = await reader.read_adjusted_bars(second.dataset_id)
+        await reader.close()
         assert second.dataset_id != first.dataset_id
         assert second.input_bar_version_hash != first.input_bar_version_hash
         statuses = {item.dataset_id: item.status for item in datasets}
         assert statuses[first.dataset_id] == "superseded"
         assert statuses[second.dataset_id] == "published"
         assert len(old_bars) == 5
+        corrected = {item.trading_date: item for item in new_bars}[date(2026, 9, 25)]
+        assert corrected.source_bar_version == 2
 
     anyio.run(_run_scenario, scenario)
 
@@ -241,9 +252,9 @@ def test_unconfirmed_bar_records_failed_dataset_and_sync_error() -> None:
             _ = await _build(connection, _request(AdjustmentMethod.SPLIT_ADJUSTED))
 
         # Then
-        store = PostgresAdjustmentStore.from_connection(connection)
-        datasets = await store.read_datasets_for_symbol(_SYMBOL)
-        await store.close()
+        reader = PostgresAdjustedPriceReader.from_connection(connection)
+        datasets = await reader.read_datasets_for_symbol(_SYMBOL)
+        await reader.close()
         status = await _sync_row(sessions)
         assert error.value.failure is AdjustmentFailure.UNCONFIRMED_BAR
         assert len(datasets) == 1
