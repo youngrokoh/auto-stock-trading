@@ -2,6 +2,10 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
 
+from auto_stock_trading.adapters.database.fundamental_rows import (
+    FinancialReportRow,
+    FinancialStatementLineRow,
+)
 from auto_stock_trading.adapters.database.market_data_adjustment_rows import (
     AdjustmentDatasetRow,
 )
@@ -17,6 +21,17 @@ async def purge_instruments(
 ) -> None:
     instrument_ids = (
         select(InstrumentRow.id).where(InstrumentRow.symbol.in_(symbols)).scalar_subquery()
+    )
+    report_ids = (
+        select(FinancialReportRow.id)
+        .where(FinancialReportRow.instrument_id.in_(instrument_ids))
+        .scalar_subquery()
+    )
+    _ = await executor.execute(
+        delete(FinancialStatementLineRow).where(FinancialStatementLineRow.report_id.in_(report_ids))
+    )
+    _ = await executor.execute(
+        delete(FinancialReportRow).where(FinancialReportRow.instrument_id.in_(instrument_ids))
     )
     _ = await executor.execute(
         delete(AdjustmentDatasetRow).where(AdjustmentDatasetRow.instrument_id.in_(instrument_ids))

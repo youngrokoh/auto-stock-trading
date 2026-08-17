@@ -63,6 +63,19 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT ck_minute_bar_confirmation",
         "CONSTRAINT ck_minute_bar_version",
         "CONSTRAINT ck_minute_bar_validity",
+        "CREATE TABLE fundamental.financial_report",
+        "CONSTRAINT uq_financial_report_version UNIQUE",
+        "CONSTRAINT uq_financial_report_receipt UNIQUE",
+        "CREATE UNIQUE INDEX uq_financial_report_current",
+        "CONSTRAINT ck_financial_report_reprt_code",
+        "CONSTRAINT ck_financial_report_fs_div",
+        "CONSTRAINT ck_financial_report_year",
+        "CONSTRAINT ck_financial_report_version",
+        "CONSTRAINT ck_financial_report_validity",
+        "CREATE TABLE fundamental.financial_statement_line",
+        "CONSTRAINT uq_financial_statement_line_seq UNIQUE",
+        "CONSTRAINT ck_financial_statement_line_seq",
+        "CONSTRAINT ck_financial_statement_line_sj_div",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

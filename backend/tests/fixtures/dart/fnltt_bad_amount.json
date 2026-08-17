@@ -1,0 +1,25 @@
+{
+  "status": "000",
+  "message": "정상",
+  "list": [
+    {
+      "rcept_no": "20260310002820",
+      "reprt_code": "11011",
+      "bsns_year": "2025",
+      "corp_code": "00126380",
+      "sj_div": "BS",
+      "sj_nm": "재무상태표",
+      "account_id": "ifrs-full_Assets",
+      "account_nm": "자산총계",
+      "account_detail": "-",
+      "thstrm_nm": "제 57 기",
+      "thstrm_amount": "abc",
+      "frmtrm_nm": "제 56 기",
+      "frmtrm_amount": "514531948000000",
+      "bfefrmtrm_nm": "제 55 기",
+      "bfefrmtrm_amount": "455905980000000",
+      "ord": "1",
+      "currency": "KRW"
+    }
+  ]
+}

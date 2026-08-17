@@ -203,6 +203,19 @@ curl "http://localhost:8000/api/market-data/corporate-actions/{action_key}/adjus
 
 기업행사 조회는 `knowledge_cutoff_at`(시간대 오프셋 필수)으로 당시 알 수 있었던 버전을 선택하는 point-in-time 조회를 지원한다. 자세한 응답 계약은 [시장 데이터 읽기 API](../api/market-data-api.md)를 따른다.
 
+## 재무제표 수집
+
+승인된 [재무제표 데이터 계약](../data/financial-statement-data-contract.md)에 따라 OpenDART 전체 재무제표(최근 5개년 사업보고서 + 당해 분·반기 × 연결·개별)를 수집한다.
+
+```bash
+cd backend
+AUTO_STOCK_DART_API_KEY_FILE=../.secrets/dart-api-key \
+  uv run python -m auto_stock_trading.worker.fundamentals
+curl "http://localhost:8000/api/fundamentals/instruments/005930/financial-reports"
+```
+
+미제출 기간은 건너뛰고, 같은 접수번호 재수집은 버전을 늘리지 않으며 정정 공시는 이전 버전을 보존한 새 버전이 된다.
+
 ## 분봉 수집
 
 검증된 시장 달력이 결정한 최신 거래 세션의 1분봉을 수집한다. 정규장 종료 후 같은 명령을 두 번 실행하면 두 관측이 일치한 분봉이 `confirmed`가 된다.

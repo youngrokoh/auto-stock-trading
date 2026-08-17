@@ -5,11 +5,13 @@
 | 문서 | 경로 | 상태 |
 |---|---|---|
 | [Auto Stock Trading](../README.md) | `docs/README.md` | 미지정 |
+| [기업 재무 읽기 API](../api/fundamentals-api.md) | `docs/api/fundamentals-api.md` | 구현됨 |
 | [내부 상태 확인 API](../api/health-api.md) | `docs/api/health-api.md` | 구현됨 |
 | [시장 데이터 읽기 API](../api/market-data-api.md) | `docs/api/market-data-api.md` | 구현됨 |
 | [프로젝트 실행 구조](../architecture/project-structure.md) | `docs/architecture/project-structure.md` | 구현됨 |
 | [상세 기술 스택](../architecture/tech-stack.md) | `docs/architecture/tech-stack.md` | 승인 |
 | [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md) | `docs/data/corporate-action-adjusted-price-data-contract.md` | 승인 |
+| [재무제표 데이터 계약](../data/financial-statement-data-contract.md) | `docs/data/financial-statement-data-contract.md` | 구현 기준 |
 | [국내 시장 달력 데이터 계약](../data/market-calendar-data-contract.md) | `docs/data/market-calendar-data-contract.md` | 구현 기준 |
 | [국내 분봉 데이터 계약](../data/minute-bar-data-contract.md) | `docs/data/minute-bar-data-contract.md` | 구현 기준 |
 | [ADR-0001: 모듈형 모놀리스 채택](../decisions/0001-modular-monolith.md) | `docs/decisions/0001-modular-monolith.md` | 승인 |
@@ -34,6 +36,7 @@
 | [1단계 시각 QA 감사 기록](../qa/phase-1-visual-review.md) | `docs/qa/phase-1-visual-review.md` | 프로토타입 품질 통과 · 시각 디자인 사용자 미승인 |
 | [2단계 시장 데이터 수직 슬라이스 검증](../qa/phase-2-market-data-verification.md) | `docs/qa/phase-2-market-data-verification.md` | 자동·로컬 통합·실제 KIS 모의환경·실전 달력 읽기·실제 KRX 일정·scheduler·실제 DART 배당·KODEX 분배금 수집·락일 확정·일봉 재조회 확정·실제 수정주가 발행 검증 완료, 사용자 화면 대조 대기 |
 | [3단계 시장 대시보드 검증](../qa/phase-3-market-dashboard-verification.md) | `docs/qa/phase-3-market-dashboard-verification.md` | 검증 완료 (1차 구현 범위) |
+| [4단계 기업 재무 데이터 검증](../qa/phase-4-fundamentals-verification.md) | `docs/qa/phase-4-fundamentals-verification.md` | 검증 완료 (수집·저장·읽기 API 범위) |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

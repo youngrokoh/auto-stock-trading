@@ -1,10 +1,8 @@
 # Auto Stock Trading
 
-국내 주식·ETF 데이터 수집, 기업 분석, 퀀트 전략 연구와 안전한 자동매매 실행을 단계적으로 구축하는 웹 프로젝트다. 현재 2단계에서는 KIS 국내주식·ETF 종목정보, 현재가와 비수정 일봉의 수집·저장·읽기 수직 슬라이스와 `XKRX` 시장 달력 자동 수집 기반을 제공한다.
+국내 주식·ETF 데이터 수집, 기업 분석, 퀀트 전략 연구와 안전한 자동매매 실행을 단계적으로 구축하는 웹 프로젝트다. 현재 KIS 시세·비수정 일봉·분봉, `XKRX` 시장 달력, 기업행사·수정주가 데이터셋과 OpenDART 재무제표의 수집·버전 저장·읽기 API, 그리고 승인 디자인(Research Grid + Night Watch)으로 구현한 운영 개요·시장 데이터 화면을 제공한다.
 
-![자동매매 운영 대시보드](qa/evidence/phase-1/dashboard-desktop.png)
-
-> 현재 실행 화면은 기능성 프로토타입이다. 사용자는 [클로드 화면 디자인 사양](design/claude-design/screen-design-spec.md)을 최종 방향으로 승인했지만 React 화면에는 아직 적용되지 않았다. 다음 작업과 구현 상태는 [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)를 기준으로 한다.
+> 웹 화면은 승인된 [클로드 화면 디자인 사양](design/claude-design/screen-design-spec.md)의 토큰·프리미티브로 구현되어 있다. 다음 작업과 구현 상태는 [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)를 기준으로 한다.
 
 ## 현재 구현 범위
 
@@ -14,13 +12,15 @@
 - 원본 응답과 정규화 데이터를 분리한 PostgreSQL 저장소
 - 종목정보·최신 현재가·버전·확정 상태가 포함된 비수정 일봉 읽기 API
 - 동일 사실 재수집과 정정 이력을 구분해 보존하는 비수정 일봉 저장소
-- KRX 공식 일정과 KIS 당일 확인을 결합한 버전형 `XKRX` 시장 달력
-- PostgreSQL 실행 claim과 서울 기준 Taskiq 시장 달력 scheduler
-- Caddy가 제공하는 React 운영 대시보드와 API 프록시
-- 모바일·태블릿·데스크톱 Playwright 검증
+- KRX 공식 일정과 KIS 당일 확인을 결합한 버전형 `XKRX` 시장 달력과 Taskiq scheduler
+- 검증된 세션 창 기반 비수정 1분봉 수집·재관측 확정
+- DART·KODEX 공식 자료 기반 기업행사 사실 버전과 수정주가 파생 데이터셋
+- OpenDART 재무제표(연결·개별) 사실 버전 수집과 읽기 API
+- 승인 디자인으로 구현한 운영 개요·시장 데이터 화면(캔들·보조지표 차트, 좌표 셀, 안전 배너)
+- 모바일·태블릿·데스크톱(390/768/1360px) Playwright 검증
 - 코드와 문서 변경을 함께 검사하는 문서 동기화 게이트
 
-주문, 계좌, 분봉·기업행사·수정주가, 전략과 AI 모델은 아직 구현하지 않았다. KIS 모의 시세 수집과 실전 읽기 전용 시장 달력 확인은 검증했지만 실전거래는 승인된 [전환 게이트](spec/paper-to-live-gate.md)를 통과하기 전까지 비활성 상태를 유지한다.
+주문, 계좌, 전략과 AI 모델은 아직 구현하지 않았다. 실전거래는 승인된 [전환 게이트](spec/paper-to-live-gate.md)를 통과하기 전까지 비활성 상태를 유지한다.
 
 ## 실행
 
@@ -109,12 +109,14 @@ Taskiq worker ── Valkey
 
 - [내부 상태 확인 API](api/health-api.md)
 - [시장 데이터 읽기 API](api/market-data-api.md)
+- [기업 재무 읽기 API](api/fundamentals-api.md)
 
 #### Data
 
 - [국내 시장 달력 데이터 계약](data/market-calendar-data-contract.md)
 - [기업행사·수정주가 데이터 계약](data/corporate-action-adjusted-price-data-contract.md)
 - [국내 분봉 데이터 계약](data/minute-bar-data-contract.md)
+- [재무제표 데이터 계약](data/financial-statement-data-contract.md)
 
 #### Operations
 
@@ -127,6 +129,7 @@ Taskiq worker ── Valkey
 - [1단계 시각 QA 감사 기록](qa/phase-1-visual-review.md)
 - [2단계 시장 데이터 수직 슬라이스 검증](qa/phase-2-market-data-verification.md)
 - [3단계 시장 대시보드 검증](qa/phase-3-market-dashboard-verification.md)
+- [4단계 기업 재무 데이터 검증](qa/phase-4-fundamentals-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions

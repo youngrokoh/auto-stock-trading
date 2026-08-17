@@ -12,6 +12,11 @@
       "docs": ["docs/spec/market-data-policy.md", "docs/spec/product-scope.md", "docs/architecture/tech-stack.md", "docs/architecture/project-structure.md", "docs/api/market-data-api.md", "docs/data/corporate-action-adjusted-price-data-contract.md", "docs/operations/local-development.md", "docs/qa/phase-2-market-data-verification.md", "docs/plan/current-status.md"]
     },
     {
+      "name": "fundamentals",
+      "code": ["backend/src/auto_stock_trading/domain/fundamentals/**", "backend/src/auto_stock_trading/adapters/database/fundamental_*", "backend/src/auto_stock_trading/application/financial_statements.py", "backend/src/auto_stock_trading/api/fundamentals*", "backend/src/auto_stock_trading/worker/fundamentals.py", "backend/tests/fundamentals/**", "backend/tests/api/test_fundamentals_api.py", "backend/tests/worker/test_fundamentals.py", "backend/tests/disclosures/test_opendart_financials.py", "backend/migrations/versions/*fundamental*"],
+      "docs": ["docs/data/financial-statement-data-contract.md", "docs/api/fundamentals-api.md", "docs/qa/phase-4-fundamentals-verification.md", "docs/architecture/project-structure.md", "docs/plan/current-status.md"]
+    },
+    {
       "name": "strategy-features-and-ml",
       "code": ["backend/src/auto_stock_trading/domain/strategies/**", "backend/src/auto_stock_trading/application/backtests/**", "backend/src/auto_stock_trading/features/**", "backend/src/auto_stock_trading/ml/**", "backend/tests/strategies/**", "backend/tests/features/**", "backend/tests/ml/**"],
       "docs": ["docs/plan/implementation-roadmap.md", "docs/spec/product-scope.md", "docs/spec/paper-to-live-gate.md", "docs/decisions/0004-ai-execution-separation.md"]
