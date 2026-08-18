@@ -277,8 +277,8 @@ bun run lint
 bun run typecheck
 bun run test
 bun run build
-bun run e2e                      # 구조·빈 상태 검증 (CI와 동일)
-E2E_EXPECT_DATA=1 bun run e2e     # 실수집 데이터가 있는 로컬에서 실데이터 검증
+bun run e2e                      # 빈 DB 전용: 구조·빈 상태 검증 (CI와 동일)
+E2E_EXPECT_DATA=1 bun run e2e     # 실수집 데이터가 있는 로컬 DB에서는 이 모드를 사용
 ```
 
 브라우저 테스트 전에 API와 Vite 개발 서버가 각각 8000, 5173 포트에서 실행되어 있어야 한다.
