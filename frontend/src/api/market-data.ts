@@ -1,8 +1,10 @@
 import {
+  type AdjustedDailyBars,
   type CorporateActions,
   type DailyBars,
   type Instruments,
   type InvestorFlows,
+  parseAdjustedDailyBars,
   parseCorporateActions,
   parseDailyBars,
   parseInstruments,
@@ -40,4 +42,12 @@ export const fetchCorporateActions = async (symbol: string): Promise<CorporateAc
 export const fetchInvestorFlows = async (symbol: string, limit: number): Promise<InvestorFlows> =>
   parseInvestorFlows(
     await fetchJson(`/api/market-data/instruments/${symbol}/investor-flows?limit=${String(limit)}`),
+  );
+
+export const fetchAdjustedDailyBars = async (
+  symbol: string,
+  method: "split_adjusted" | "total_return",
+): Promise<AdjustedDailyBars> =>
+  parseAdjustedDailyBars(
+    await fetchJson(`/api/market-data/instruments/${symbol}/adjusted-daily-bars?method=${method}`),
   );

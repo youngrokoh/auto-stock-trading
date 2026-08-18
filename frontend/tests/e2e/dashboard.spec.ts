@@ -143,6 +143,40 @@ test("ETF 탐색 화면이 순위와 상세를 기준시각과 함께 제공한�
   expect(consoleErrors).toEqual([]);
 });
 
+test("전략 연구 화면이 저장된 백테스트 실행을 계보와 함께 제공한다", async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto("/strategy");
+
+  await expect(page.getByRole("heading", { name: "전략 연구" })).toBeVisible();
+  await expect(page.getByText("A1 · 총수익률 (비용 후)")).toBeVisible();
+  await expect(page.getByText("실전 반영 불가")).toBeVisible();
+  await expect(page.getByText("누적 수익 곡선 · 드로다운")).toBeVisible();
+  await expect(page.getByText("워크포워드 구간")).toBeVisible();
+  await expect(page.getByText("검증·입력 계보")).toBeVisible();
+  if (expectData) {
+    await expect(page.getByRole("img", { name: "누적 수익 곡선 차트" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "드로다운 차트" })).toBeVisible();
+    await expect(page.getByText("미래정보 누출 검사 통과")).toBeVisible();
+    await expect(page.getByText("신호·체결 기록")).toBeVisible();
+    await expect(page.getByText("비용 전 수익률")).toBeVisible();
+    await expect(page.getByText("일봉 버전 해시")).toBeVisible();
+
+    const select = page.getByLabel("실행 선택");
+    const options = select.locator("option");
+    expect(await options.count()).toBeGreaterThan(0);
+    const lastValue = await options.last().getAttribute("value");
+    await select.selectOption(lastValue ?? "");
+    await expect(page.getByRole("img", { name: "누적 수익 곡선 차트" })).toBeVisible();
+  } else {
+    await expect(page.getByText("백테스트 실행 전")).toBeVisible();
+    await expect(page.getByText("저장된 백테스트 실행이 없습니다.")).toBeVisible();
+  }
+
+  await expectNoSecretsAndNoOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});
+
 test("구성요소 갤러리가 승인된 프리미티브 상태를 표시한다", async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
 

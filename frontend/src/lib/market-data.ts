@@ -126,6 +126,54 @@ const investorFlowsSchema = z.strictObject({
   value_unit: z.literal("million_krw"),
 });
 
+const adjustedDatasetSchema = z.strictObject({
+  action_version_hash: z.string().min(1),
+  algorithm_version: z.string().min(1),
+  dataset_id: z.uuid(),
+  failure_code: z.string().nullable(),
+  generated_at: isoDateTime,
+  input_bar_version_hash: z.string().min(1),
+  interval: z.literal("1d"),
+  knowledge_cutoff_at: isoDateTime,
+  method: z.enum(["split_adjusted", "total_return"]),
+  price_cutoff_date: isoDate,
+  range_start: isoDate,
+  status: z.string().min(1),
+  superseded_at: isoDateTime.nullable(),
+  symbol: z.string().min(1),
+});
+
+const adjustedDailyBarSchema = z.strictObject({
+  close_price: decimal,
+  high_price: decimal,
+  low_price: decimal,
+  open_price: decimal,
+  price_factor: decimal,
+  source: z.string().min(1),
+  source_bar_id: z.uuid(),
+  source_bar_version: z.number().int().positive(),
+  trading_date: isoDate,
+  trading_value: decimal,
+  volume: z.number().int().nonnegative(),
+  volume_factor: decimal,
+});
+
+const appliedCorporateActionSchema = z.strictObject({
+  action_key: z.uuid(),
+  action_version: z.number().int().positive(),
+  corporate_action_id: z.uuid(),
+  event_date: isoDate,
+  event_price_factor: decimal,
+  event_volume_factor: decimal,
+  source: z.string().min(1),
+});
+
+const adjustedDailyBarsSchema = z.strictObject({
+  applied_actions: z.array(appliedCorporateActionSchema).readonly(),
+  bars: z.array(adjustedDailyBarSchema).readonly(),
+  dataset: adjustedDatasetSchema,
+});
+
 export type Instrument = z.infer<typeof instrumentSchema>;
 export type Instruments = z.infer<typeof instrumentsSchema>;
 export type Quote = z.infer<typeof quoteSchema>;
@@ -135,6 +183,8 @@ export type CorporateAction = z.infer<typeof corporateActionSchema>;
 export type CorporateActions = z.infer<typeof corporateActionsSchema>;
 export type InvestorFlow = z.infer<typeof investorFlowSchema>;
 export type InvestorFlows = z.infer<typeof investorFlowsSchema>;
+export type AdjustedDailyBar = z.infer<typeof adjustedDailyBarSchema>;
+export type AdjustedDailyBars = z.infer<typeof adjustedDailyBarsSchema>;
 
 export const parseInstruments = (input: unknown): Instruments => instrumentsSchema.parse(input);
 export const parseQuote = (input: unknown): Quote => quoteSchema.parse(input);
@@ -143,3 +193,5 @@ export const parseCorporateActions = (input: unknown): CorporateActions =>
   corporateActionsSchema.parse(input);
 export const parseInvestorFlows = (input: unknown): InvestorFlows =>
   investorFlowsSchema.parse(input);
+export const parseAdjustedDailyBars = (input: unknown): AdjustedDailyBars =>
+  adjustedDailyBarsSchema.parse(input);

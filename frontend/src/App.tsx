@@ -6,6 +6,7 @@ import { Etf } from "./pages/etf";
 import { Market } from "./pages/market";
 import { Overview } from "./pages/overview";
 import { Showcase } from "./pages/showcase";
+import { Strategy } from "./pages/strategy";
 
 type AppProps = Readonly<{
   queryClient: QueryClient;
@@ -20,6 +21,9 @@ const screenFor = (pathname: string) => {
   }
   if (pathname === "/etf") {
     return <Etf />;
+  }
+  if (pathname === "/strategy") {
+    return <Strategy />;
   }
   if (pathname === "/showcase") {
     return <Showcase />;
