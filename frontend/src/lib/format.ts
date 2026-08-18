@@ -16,7 +16,8 @@ const trimDecimal = (value: string): string => {
 };
 
 export const formatDecimal = (value: string): string => {
-  const normalized = trimDecimal(value);
+  const plain = /[eE]/.test(value) ? String(Number(value)) : value;
+  const normalized = trimDecimal(plain);
   const negative = normalized.startsWith("-");
   const unsigned = negative ? normalized.slice(1) : normalized;
   const [whole = "0", fraction] = unsigned.split(".");

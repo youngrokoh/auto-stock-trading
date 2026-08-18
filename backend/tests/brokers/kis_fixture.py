@@ -8,6 +8,7 @@ from auto_stock_trading.adapters.brokers.kis_coordination import (
     InMemoryKisRequestCoordinator,
     KisCoordinationConfig,
 )
+from auto_stock_trading.adapters.brokers.kis_etf_nav import ETF_PRICE_ENDPOINT
 from auto_stock_trading.adapters.brokers.kis_http import KisCredentials, KisHttpClient
 from auto_stock_trading.adapters.brokers.kis_investor_flows import INVESTOR_FLOWS_ENDPOINT
 from auto_stock_trading.adapters.brokers.kis_market_data import (
@@ -46,6 +47,7 @@ class KisFixtureHandler:
             QUOTE_ENDPOINT: "quote",
             DAILY_BARS_ENDPOINT: "daily_bars",
             INVESTOR_FLOWS_ENDPOINT: "investor",
+            ETF_PRICE_ENDPOINT: "etfprice",
         }
         suffix = suffix_by_path.get(request.url.path)
         if suffix is None:

@@ -49,6 +49,8 @@ class BrokerOperation(StrEnum):
     MINUTE_BARS = "minute_bars"
     MARKET_CALENDAR = "market_calendar"
     INVESTOR_FLOWS = "investor_flows"
+    ETF_MASTER = "etf_master"
+    ETF_NAV = "etf_nav"
 
 
 @dataclass(frozen=True, slots=True)

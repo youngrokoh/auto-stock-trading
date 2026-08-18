@@ -795,6 +795,21 @@ select:focus-visible {
   border-bottom: var(--border-width) solid var(--color-row-line);
 }
 
+.link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.link-button:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 .disclosure-list {
   margin: 0;
   padding: 0;

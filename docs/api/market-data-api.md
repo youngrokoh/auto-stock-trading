@@ -17,6 +17,8 @@
 | `GET` | `/api/market-data/instruments/{symbol}/daily-bars` | 거래일 오름차순 비수정 일봉 |
 | `GET` | `/api/market-data/instruments/{symbol}/minute-bars` | 거래일별 시각 오름차순 비수정 1분봉 |
 | `GET` | `/api/market-data/instruments/{symbol}/investor-flows` | 일자별 개인·외국인·기관 순매수 (거래일 내림차순, `limit` 기본 30) |
+| `GET` | `/api/market-data/etfs` | 국내 ETF 마스터 전체와 최신 NAV 스냅샷 |
+| `GET` | `/api/market-data/etfs/{symbol}` | 단일 ETF 상세(마스터·스냅샷·분배율) |
 | `GET` | `/api/market-data/instruments/{symbol}/corporate-actions` | 기업행사 사실 버전 (현재·이력·시점 조회) |
 | `GET` | `/api/market-data/instruments/{symbol}/adjusted-daily-bars` | 최신 발행 수정주가 데이터셋과 파생 일봉 |
 | `GET` | `/api/market-data/adjusted-datasets/{dataset_id}` | 데이터셋 ID로 수정 일봉·계수·기업행사 계보 |
@@ -49,6 +51,15 @@
 `value_unit: million_krw`)을 원본 그대로 제공하며, 세 주체 합계는 기타 주체가 없어 0이
 아니다. 서울 기준 당일 데이터는 잠정치라 저장하지 않고, 출처는 KIS이며 최근 약 30거래일만
 제공되므로 수집 시점부터 축적한다. 행은 `received_at`·`version`을 포함한다.
+
+## ETF 목록과 NAV
+
+[ETF 탐색 데이터 계약](../data/etf-exploration-data-contract.md)을 따른다. 목록은 KIS 공식
+마스터 파일의 현재 버전 사실이고, 스냅샷은 KIS ETF 현재가(`FHPST02400000`)의 최신값이다.
+괴리율(`divergence_rate`)·추적오차·운용사·추적배수·대표지수는 원본 필드 그대로이며
+순자산총액 단위는 억원(`net_asset_unit: hundred_million_krw`)이다. 상세 응답의 분배율은
+`최근 12개월 주당 분배금 합계 ÷ 현재가 × 100` 수식으로 분배금 이력이 저장된 ETF만 계산하고
+수식·기간·건수를 함께 노출한다.
 
 ## 출처와 시각
 

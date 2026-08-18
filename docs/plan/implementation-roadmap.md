@@ -158,7 +158,8 @@ AI나 실전 주문부터 시작하지 않는다. 데이터의 시점 정확성�
 - 완료: [재무 지표 정의 계약](../data/financial-indicator-contract.md)과 지표 계산·기업 분석 화면
 - 완료: 상장주식수 버전 사실 수집과 가치지표(EPS 원문·PER·시가총액)
 - 완료: [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md)과 KIS 투자자별 매매·DART 공시 목록 수집·읽기 API·화면
-- 다음 작업: 5단계 ETF 탐색과 순위
+- 완료(1차): [ETF 탐색 데이터 계약](../data/etf-exploration-data-contract.md)과 ETF 마스터·NAV 스냅샷·순위·화면
+- 다음 작업: 6단계 백테스트 엔진과 규칙형 전략
 
 구현 내용:
 
@@ -230,6 +231,8 @@ api_sync_status
 - 동일 지표가 화면과 백엔드에서 같은 정의를 사용한다.
 
 ### 5단계: ETF 탐색과 순위
+
+2026-08-18에 1차 구현을 완료했다([검증 기록](../qa/phase-5-etf-verification.md)). 승인된 [ETF 탐색 데이터 계약](../data/etf-exploration-data-contract.md)에 따라 KIS 공식 마스터 파일 기반 국내 ETF 1,163종목 버전 사실, ETF 현재가 원본 필드(NAV·괴리율·추적오차·추적배수·운용사·대표지수·순자산) 전량 스냅샷, 분배율(분배금 이력 보유 ETF), 스냅샷 기반 순위와 ETF 탐색 화면(3a)을 제공한다. 거래대금·기간수익률·투자자별 순위, NAV·구성종목 이력, 상장폐지 처리, 미국 ETF는 후속이다.
 
 구현 내용:
 

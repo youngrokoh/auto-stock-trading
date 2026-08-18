@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     dart_api_key: SecretStr | None = None
     dart_api_key_file: Path | None = None
     dart_base_url: str = "https://opendart.fss.or.kr"
+    kis_master_base_url: str = "https://new.real.download.dws.co.kr"
     kodex_base_url: str = "https://www.samsungfund.com"
     krx_base_url: str = "https://global.krx.co.kr"
     krx_open_base_url: str = "https://open.krx.co.kr"

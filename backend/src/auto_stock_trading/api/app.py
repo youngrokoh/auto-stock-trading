@@ -16,6 +16,7 @@ from auto_stock_trading.adapters.database.market_data_adjustment_reader import (
 from auto_stock_trading.adapters.database.market_data_corporate_action_reader import (
     PostgresCorporateActionReader,
 )
+from auto_stock_trading.adapters.database.market_data_etf_reader import PostgresEtfReader
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
@@ -24,11 +25,13 @@ from auto_stock_trading.api.fundamentals import create_fundamentals_router
 from auto_stock_trading.api.health import create_health_router
 from auto_stock_trading.api.market_data import create_market_data_router
 from auto_stock_trading.api.market_data_adjusted import create_market_data_adjusted_router
+from auto_stock_trading.api.market_data_etf import create_market_data_etf_router
 from auto_stock_trading.application.adjusted_prices import (
     AdjustedPriceReader,
     CorporateActionReader,
 )
 from auto_stock_trading.application.disclosures import DisclosureReader
+from auto_stock_trading.application.etf import EtfReader
 from auto_stock_trading.application.financial_statements import FinancialReportReader
 from auto_stock_trading.application.health import HealthProbe, HealthService
 from auto_stock_trading.application.market_data import MarketDataReader
@@ -40,6 +43,7 @@ CorporateActionReaderFactory = Callable[[], CorporateActionReader]
 AdjustedPriceReaderFactory = Callable[[], AdjustedPriceReader]
 FinancialReportReaderFactory = Callable[[], FinancialReportReader]
 DisclosureReaderFactory = Callable[[], DisclosureReader]
+EtfReaderFactory = Callable[[], EtfReader]
 
 
 def create_app(  # noqa: PLR0913
@@ -52,6 +56,7 @@ def create_app(  # noqa: PLR0913
     adjusted_price_reader_factory: AdjustedPriceReaderFactory | None = None,
     financial_report_reader_factory: FinancialReportReaderFactory | None = None,
     disclosure_reader_factory: DisclosureReaderFactory | None = None,
+    etf_reader_factory: EtfReaderFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -89,6 +94,10 @@ def create_app(  # noqa: PLR0913
         lambda: PostgresDisclosureReader.from_url(runtime_settings.database_url.get_secret_value())
     )
     disclosure_reader = disclosure_factory()
+    etf_factory = etf_reader_factory or (
+        lambda: PostgresEtfReader.from_url(runtime_settings.database_url.get_secret_value())
+    )
+    etf_reader = etf_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -101,6 +110,7 @@ def create_app(  # noqa: PLR0913
             await adjusted_price_reader.close()
             await financial_report_reader.close()
             await disclosure_reader.close()
+            await etf_reader.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -123,6 +133,7 @@ def create_app(  # noqa: PLR0913
             adjusted_price_reader,
         )
     )
+    app.include_router(create_market_data_etf_router(etf_reader, corporate_action_reader))
     app.include_router(
         create_fundamentals_router(market_data_reader, financial_report_reader, disclosure_reader)
     )

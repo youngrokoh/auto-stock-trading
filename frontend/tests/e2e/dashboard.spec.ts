@@ -98,6 +98,29 @@ test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공�
   expect(consoleErrors).toEqual([]);
 });
 
+test("ETF 탐색 화면이 순위와 상세를 기준시각과 함께 제공한다", async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto("/etf");
+
+  await expect(page.getByRole("heading", { name: "ETF 탐색" })).toBeVisible();
+  await expect(page.getByText("A1 · ETF 종목 수")).toBeVisible();
+  await expect(page.getByText("1,163").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "B 순위표" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "괴리율" })).toBeVisible();
+
+  await page.getByRole("button", { name: "괴리율" }).click();
+  await expect(page.getByRole("button", { name: "괴리율" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByText("선택 ETF 상세")).toBeVisible();
+  await expect(page.getByText("최근 12개월 분배율")).toBeVisible();
+
+  await expectNoSecretsAndNoOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});
+
 test("구성요소 갤러리가 승인된 프리미티브 상태를 표시한다", async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
 

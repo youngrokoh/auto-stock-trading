@@ -1,6 +1,6 @@
 # Auto Stock Trading
 
-국내 주식·ETF 데이터 수집, 기업 분석, 퀀트 전략 연구와 안전한 자동매매 실행을 단계적으로 구축하는 웹 프로젝트다. 현재 KIS 시세·비수정 일봉·분봉·상장주식수·투자자별 수급, `XKRX` 시장 달력, 기업행사·수정주가 데이터셋, OpenDART 재무제표·재무 지표·공시 목록의 수집·버전 저장·읽기 API, 그리고 승인 디자인(Research Grid + Night Watch)으로 구현한 운영 개요·시장 데이터·기업 분석 화면을 제공한다.
+국내 주식·ETF 데이터 수집, 기업 분석, 퀀트 전략 연구와 안전한 자동매매 실행을 단계적으로 구축하는 웹 프로젝트다. 현재 KIS 시세·비수정 일봉·분봉·상장주식수·투자자별 수급·ETF 마스터·NAV, `XKRX` 시장 달력, 기업행사·수정주가 데이터셋, OpenDART 재무제표·재무 지표·공시 목록의 수집·버전 저장·읽기 API, 그리고 승인 디자인(Research Grid + Night Watch)으로 구현한 운영 개요·시장 데이터·기업 분석·ETF 탐색 화면을 제공한다.
 
 > 웹 화면은 승인된 [클로드 화면 디자인 사양](design/claude-design/screen-design-spec.md)의 토큰·프리미티브로 구현되어 있다. 다음 작업과 구현 상태는 [현재 프로젝트 상태와 다음 세션 인계](plan/current-status.md)를 기준으로 한다.
 
@@ -18,7 +18,8 @@
 - OpenDART 재무제표(연결·개별) 사실 버전 수집과 읽기 API
 - 수식·기준·접수번호 출처를 명시한 재무·가치 지표와 상장주식수 버전 사실
 - KIS 투자자별 수급(당일 제외 버전 사실)과 DART 공시 목록 수집·읽기 API
-- 승인 디자인으로 구현한 운영 개요·시장 데이터·기업 분석 화면(캔들·보조지표·실적 차트, 좌표 셀, 안전 배너)
+- KIS 공식 마스터 파일 기반 국내 ETF 전체 목록과 NAV·괴리율 스냅샷·분배율
+- 승인 디자인으로 구현한 운영 개요·시장 데이터·기업 분석·ETF 탐색 화면(캔들·보조지표·실적 차트, 좌표 셀, 안전 배너)
 - 모바일·태블릿·데스크톱(390/768/1360px) Playwright 검증
 - 코드와 문서 변경을 함께 검사하는 문서 동기화 게이트
 
@@ -121,6 +122,7 @@ Taskiq worker ── Valkey
 - [재무제표 데이터 계약](data/financial-statement-data-contract.md)
 - [재무 지표 정의 계약](data/financial-indicator-contract.md)
 - [수급·공시 연결 데이터 계약](data/investor-flow-disclosure-contract.md)
+- [ETF 탐색 데이터 계약](data/etf-exploration-data-contract.md)
 
 #### Operations
 
@@ -134,6 +136,7 @@ Taskiq worker ── Valkey
 - [2단계 시장 데이터 수직 슬라이스 검증](qa/phase-2-market-data-verification.md)
 - [3단계 시장 대시보드 검증](qa/phase-3-market-dashboard-verification.md)
 - [4단계 기업 재무 데이터 검증](qa/phase-4-fundamentals-verification.md)
+- [5단계 ETF 탐색 검증](qa/phase-5-etf-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions

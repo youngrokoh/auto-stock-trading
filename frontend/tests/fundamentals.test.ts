@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatKoreanAmount } from "../src/lib/format";
+import { formatDecimal, formatKoreanAmount } from "../src/lib/format";
 import {
   parseDisclosures,
   parseFinancialIndicators,
@@ -196,6 +196,14 @@ describe("formatKoreanAmount", () => {
   it("억 단위와 그 미만을 처리한다", () => {
     expect(formatKoreanAmount("898000000000")).toBe("8,980억");
     expect(formatKoreanAmount("150")).toBe("150");
+  });
+});
+
+describe("formatDecimal", () => {
+  it("지수 표기를 일반 표기로 정규화한다", () => {
+    expect(formatDecimal("0E-8")).toBe("0");
+    expect(formatDecimal("-0E-8")).toBe("0");
+    expect(formatDecimal("1.5E+2")).toBe("150");
   });
 });
 

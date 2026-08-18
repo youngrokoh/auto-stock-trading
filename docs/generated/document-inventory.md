@@ -11,6 +11,7 @@
 | [프로젝트 실행 구조](../architecture/project-structure.md) | `docs/architecture/project-structure.md` | 구현됨 |
 | [상세 기술 스택](../architecture/tech-stack.md) | `docs/architecture/tech-stack.md` | 승인 |
 | [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md) | `docs/data/corporate-action-adjusted-price-data-contract.md` | 승인 |
+| [ETF 탐색 데이터 계약](../data/etf-exploration-data-contract.md) | `docs/data/etf-exploration-data-contract.md` | 구현 기준 |
 | [재무 지표 정의 계약](../data/financial-indicator-contract.md) | `docs/data/financial-indicator-contract.md` | 구현 기준 |
 | [재무제표 데이터 계약](../data/financial-statement-data-contract.md) | `docs/data/financial-statement-data-contract.md` | 구현 기준 |
 | [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md) | `docs/data/investor-flow-disclosure-contract.md` | 구현 기준 |
@@ -39,6 +40,7 @@
 | [2단계 시장 데이터 수직 슬라이스 검증](../qa/phase-2-market-data-verification.md) | `docs/qa/phase-2-market-data-verification.md` | 자동·로컬 통합·실제 KIS 모의환경·실전 달력 읽기·실제 KRX 일정·scheduler·실제 DART 배당·KODEX 분배금 수집·락일 확정·일봉 재조회 확정·실제 수정주가 발행 검증 완료, 사용자 화면 대조 대기 |
 | [3단계 시장 대시보드 검증](../qa/phase-3-market-dashboard-verification.md) | `docs/qa/phase-3-market-dashboard-verification.md` | 검증 완료 (1차 구현 범위) |
 | [4단계 기업 재무 데이터 검증](../qa/phase-4-fundamentals-verification.md) | `docs/qa/phase-4-fundamentals-verification.md` | 검증 완료 (수집·저장·읽기 API·지표 계산·가치지표·수급·공시 연결·기업 분석 화면 범위) |
+| [5단계 ETF 탐색 검증](../qa/phase-5-etf-verification.md) | `docs/qa/phase-5-etf-verification.md` | 검증 완료 (마스터·NAV 스냅샷·순위·상세 범위) |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

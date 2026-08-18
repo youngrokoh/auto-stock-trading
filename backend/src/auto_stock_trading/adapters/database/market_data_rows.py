@@ -101,6 +101,66 @@ class QuoteRow(Base):
 
 
 @final
+class EtfProfileRow(Base):
+    __tablename__: str = "etf_profile"
+    __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (
+        UniqueConstraint("symbol", "version", name="uq_etf_profile_version"),
+        Index(
+            "uq_etf_profile_current",
+            "symbol",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+        {"schema": "reference"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(9))
+    isin: Mapped[str] = mapped_column(String(12))
+    name: Mapped[str] = mapped_column(String(80))
+    source: Mapped[str] = mapped_column(String(32))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )
+
+
+@final
+class EtfNavRow(Base):
+    __tablename__: str = "etf_nav"
+    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+        UniqueConstraint("symbol", "source", name="uq_etf_nav_latest_source"),
+        {"schema": "market"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(9))
+    price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    change_percent: Mapped[Decimal] = mapped_column(Numeric(16, 8))
+    volume: Mapped[int] = mapped_column(BigInteger)
+    previous_volume: Mapped[int] = mapped_column(BigInteger)
+    nav: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    divergence_rate: Mapped[Decimal] = mapped_column(Numeric(16, 8))
+    tracking_error: Mapped[Decimal] = mapped_column(Numeric(16, 8))
+    tracking_multiple: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    net_asset_total: Mapped[int] = mapped_column(BigInteger)
+    listed_shares: Mapped[int] = mapped_column(BigInteger)
+    manager: Mapped[str] = mapped_column(String(80))
+    index_name: Mapped[str] = mapped_column(String(120))
+    listing_date: Mapped[date | None] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    source: Mapped[str] = mapped_column(String(32))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )
+
+
+@final
 class InvestorFlowRow(Base):
     __tablename__: str = "investor_flow"
     __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (

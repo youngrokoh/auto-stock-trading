@@ -9,6 +9,7 @@ from auto_stock_trading.adapters.brokers.kis_coordination import (
     ValkeyKisRequestCoordinator,
     kis_coordination_scope,
 )
+from auto_stock_trading.adapters.brokers.kis_etf_nav import KisEtfNavAdapter
 from auto_stock_trading.adapters.brokers.kis_http import (
     KisCredentials,
     KisHttpClient,
@@ -16,10 +17,15 @@ from auto_stock_trading.adapters.brokers.kis_http import (
 )
 from auto_stock_trading.adapters.brokers.kis_investor_flows import KisInvestorFlowAdapter
 from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAdapter
+from auto_stock_trading.adapters.brokers.kis_master_files import (
+    KisEtfMasterAdapter,
+    create_master_http_client,
+)
 from auto_stock_trading.adapters.brokers.kis_minute_bars import KisMinuteBarAdapter
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
 )
+from auto_stock_trading.adapters.database.market_data_etf_store import PostgresEtfStore
 from auto_stock_trading.adapters.database.market_data_investor_flow_store import (
     PostgresInvestorFlowStore,
 )
@@ -29,6 +35,7 @@ from auto_stock_trading.adapters.database.market_data_minute_bar_store import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.application.etf import EtfMasterCollector, EtfNavSweeper
 from auto_stock_trading.application.investor_flows import InvestorFlowCollector
 from auto_stock_trading.application.market_data import DailyBarConfirmer, MarketDataCollector
 from auto_stock_trading.application.minute_bars import MinuteBarCollector
@@ -57,6 +64,8 @@ class Arguments(argparse.Namespace):
     confirm_daily_bars: bool = False
     collect_minute_bars: bool = False
     collect_investor_flows: bool = False
+    collect_etf_master: bool = False
+    collect_etf_nav: bool = False
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
@@ -220,6 +229,45 @@ collect_seed_investor_flows_task = broker.task(task_name="collect_seed_investor_
 )
 
 
+async def collect_etf_master() -> tuple[int, int]:
+    settings = Settings()
+    source = KisEtfMasterAdapter(create_master_http_client(settings.kis_master_base_url))
+    store = PostgresEtfStore.from_url(settings.database_url.get_secret_value())
+    collector = EtfMasterCollector(source, store)
+    try:
+        result = await collector.collect(datetime.now(UTC))
+    finally:
+        await source.close()
+        await store.close()
+    return result.observed, result.saved
+
+
+async def collect_etf_nav() -> tuple[int, int]:
+    settings = Settings()
+    credentials = load_kis_credentials(settings)
+    http_client = KisHttpClient(
+        create_kis_http_client(settings.kis_base_url),
+        credentials,
+        ValkeyKisRequestCoordinator.from_url(
+            settings.valkey_url.get_secret_value(),
+            kis_coordination_scope(
+                settings.kis_environment.value,
+                credentials.app_key,
+                credentials.app_secret,
+            ),
+        ),
+    )
+    source = KisEtfNavAdapter(http_client)
+    store = PostgresEtfStore.from_url(settings.database_url.get_secret_value())
+    sweeper = EtfNavSweeper(source, store)
+    try:
+        result = await sweeper.collect(datetime.now(UTC))
+    finally:
+        await source.close()
+        await store.close()
+    return result.collected, result.failed
+
+
 async def collect_krx_market_calendar(year: int | None = None) -> int:
     return await market_calendar.collect_krx_market_calendar(year, Settings())
 
@@ -237,8 +285,14 @@ def main() -> None:
     _ = parser.add_argument("--confirm-daily-bars", action="store_true")
     _ = parser.add_argument("--collect-minute-bars", action="store_true")
     _ = parser.add_argument("--collect-investor-flows", action="store_true")
+    _ = parser.add_argument("--collect-etf-master", action="store_true")
+    _ = parser.add_argument("--collect-etf-nav", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.collect_investor_flows:
+    if arguments.collect_etf_master:
+        _ = anyio.run(collect_etf_master)
+    elif arguments.collect_etf_nav:
+        _ = anyio.run(collect_etf_nav)
+    elif arguments.collect_investor_flows:
         _ = anyio.run(collect_seed_investor_flows)
     elif arguments.collect_minute_bars:
         _ = anyio.run(collect_seed_minute_bars)

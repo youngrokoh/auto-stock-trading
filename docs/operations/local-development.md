@@ -226,6 +226,15 @@ uv run python -m auto_stock_trading.worker.market_data --collect-minute-bars
 uv run python -m auto_stock_trading.worker.market_data --collect-minute-bars   # 재수집으로 확정
 ```
 
+ETF 마스터(비인증 KIS 공식 파일)와 전량 NAV 스냅샷은 아래로 수집한다. NAV 전량 수집은
+모의환경 호출 간격 때문에 약 21분이 걸리고 개별 종목 실패는 기록 후 계속된다.
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.market_data --collect-etf-master
+uv run python -m auto_stock_trading.worker.market_data --collect-etf-nav   # KIS 모의 키 필요
+```
+
 투자자별 수급(개인·외국인·기관 순매수)은 같은 자격증명으로 수집한다. 서울 기준 당일 행은
 저장하지 않고, KIS가 최근 약 30거래일만 반환하므로 거래일마다 수집해 축적한다.
 

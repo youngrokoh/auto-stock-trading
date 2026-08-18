@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-type ScreenKey = "overview" | "market" | "analysis";
+type ScreenKey = "overview" | "market" | "analysis" | "etf";
 
 type NavEntry = Readonly<{
   href?: string;
@@ -25,10 +25,10 @@ const primaryNav: readonly NavEntry[] = [
   { href: "/", icon: Gauge, key: "overview", label: "운영 개요" },
   { href: "/market", icon: CandlestickChart, key: "market", label: "시장 데이터" },
   { href: "/analysis", icon: Building2, key: "analysis", label: "기업 분석" },
+  { href: "/etf", icon: Landmark, key: "etf", label: "ETF 탐색" },
 ] as const;
 
 const upcomingNav: readonly NavEntry[] = [
-  { icon: Landmark, label: "ETF 탐색", note: "5단계" },
   { icon: FlaskConical, label: "전략 연구", note: "6단계" },
   { icon: ScrollText, label: "모의매매 콘솔", note: "7단계" },
   { icon: SlidersHorizontal, label: "설정과 감사", note: "이후" },
@@ -38,7 +38,7 @@ const tabNav: readonly NavEntry[] = [
   { href: "/", icon: Gauge, key: "overview", label: "운영" },
   { href: "/market", icon: CandlestickChart, key: "market", label: "시장" },
   { href: "/analysis", icon: Building2, key: "analysis", label: "기업" },
-  { icon: FlaskConical, label: "전략", note: "준비 중" },
+  { href: "/etf", icon: Landmark, key: "etf", label: "ETF" },
   { icon: ScrollText, label: "매매", note: "준비 중" },
 ] as const;
 

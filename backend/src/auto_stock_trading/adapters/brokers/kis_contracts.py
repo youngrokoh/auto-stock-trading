@@ -73,6 +73,30 @@ class KisInvestorResponse(KisContract):
     output: tuple[KisInvestorRow, ...]
 
 
+class KisEtfPriceOutput(KisContract):
+    stck_prpr: str
+    prdy_ctrt: str
+    acml_vol: str
+    prdy_vol: str
+    nav: str
+    dprt: str
+    trc_errt: str
+    etf_trc_ert_mltp: str
+    etf_ntas_ttam: str
+    lstn_stcn: str
+    mbcr_name: str
+    etf_rprs_bstp_kor_isnm: str
+    stck_lstn_date: str
+    crcd: str
+
+
+class KisEtfPriceResponse(KisContract):
+    rt_cd: str
+    msg_cd: str
+    msg1: str
+    output: KisEtfPriceOutput
+
+
 class KisDailySummary(KisContract):
     stck_shrn_iscd: str = ""
     hts_kor_isnm: str = ""
