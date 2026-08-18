@@ -1,15 +1,16 @@
 # 7단계 주문 계획·위험검사 검증
 
-- 상태: 검증 완료 (계획 계층 범위, 실계좌 잔고 조회와 모의매매 콘솔 화면 포함) · 주문 허용시간 내 계획 생성만 다음 거래일 대기
+- 상태: 검증 완료 (계획 계층, 실계좌 잔고 조회, 모의매매 콘솔 화면, 주문 제출 계층의 차단·동기화 경로) · 실제 주문 제출·체결은 다음 거래일 장중 대기
 - 검증일: 2026-08-18
-- 관련 결정: [ADR-0007](../decisions/0007-paper-order-planning-and-risk.md)
-- 관련 계약: [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md)
+- 관련 결정: [ADR-0007](../decisions/0007-paper-order-planning-and-risk.md), [ADR-0008](../decisions/0008-paper-order-submission.md)
+- 관련 계약: [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md), [주문 제출·체결 동기화 계약](../data/order-submission-contract.md)
 - 관련 API: [모의투자 주문 계획 읽기 API](../api/trading-api.md)
 
 ## 범위
 
-이 단계는 증권사에 주문을 보내지 않는다. `PLANNED` 주문 생성까지의 경로(계좌 조회 → 목표 포지션 →
-결정적 위험검사 → 주문 계획 저장 → 자동매매 상태 머신)만 검증한다.
+계획 계층(계좌 조회 → 목표 포지션 → 결정적 위험검사 → 주문 계획 저장 → 자동매매 상태 머신)과
+모의매매 콘솔 화면, 그리고 주문 제출 계층(제출·체결 동기화·취소)의 검증을 함께 기록한다. 실제 주문
+전송은 주문 허용시간 안에서만 가능하므로 아래에 절차와 대기 항목으로 남긴다.
 
 ## 자동 검증 (2026-08-18)
 
@@ -70,6 +71,43 @@ worker CLI와 실제 PostgreSQL로 확인했다.
 제어 경계는 사용자 결정대로 유지했다. 화면에는 일시정지·비상정지 버튼이 없고 자동매매 상태와
 전이 이력만 표시하며, 상태 변경은 `worker/execution/planning.py --automation <state>` 안내로만 남긴다.
 
+## 주문 제출 계층 검증 (2026-08-18 21:50~22:10 KST · 주문 미전송)
+
+승인된 [ADR-0008](../decisions/0008-paper-order-submission.md)에 따라 제출·동기화·취소를 구현하고,
+장 마감 시간이라 **증권사에 주문을 보내지 않는 경로만** 실환경에서 확인했다.
+
+| 항목 | 결과 |
+|---|---|
+| 모의 TR 실측 | 일별주문체결조회 `VTTC8001R`은 모의환경에서 동작(`rt_cd=0`, 내역 없으면 `msg_cd=70070000`, `output1` 빈 배열, `output2` 5개 합계 필드). 정정취소가능주문조회 `VTTC8036R`은 **모의 미지원**(`rt_cd=1`, `msg_cd=90000000`)이라 미체결 판정을 일별주문체결의 잔여 수량으로 설계했다 |
+| 비활성 상태 제출 | `blocked block_code=AUTOMATION_NOT_RUNNING submitted=0`. 증권사 호출 없음 |
+| 허용시간 밖 제출 | 자동매매를 `RUNNING`으로 두고 22:04 KST에 실행해도 `blocked block_code=MARKET_CLOSED submitted=0`. 증권사 호출 없음 |
+| 체결 동기화 (실호출) | `updated=0 problems=0 paused=False`. 조회 원본이 `operations.raw_api_response`(`order_fills`, 274바이트)에 저장되고 요청 지문은 계좌 해시 `4aec6939a6d3`만 포함. 저장된 원본에 계좌번호·계좌번호+상품코드 문자열이 없음을 프로그램으로 확인 |
+| 비상정지 | `state=emergency_stop cancel_requested=0 cancel_failed=0`(미체결 주문 없음). 보유 청산 시도 없음. 검증 후 `disabled`로 되돌렸다 |
+| 자동화 검증 | 백엔드 439건(체결 동기화 순수 함수 14건, 제출 유스케이스 17건, 주문 어댑터 9건, 저장 통합 4건 추가), 프런트 vitest 54건 |
+
+### 다음 거래일 장중 검증 절차 (주문 전송 포함)
+
+```bash
+cd backend
+export AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-paper-app-key
+export AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-paper-app-secret
+export AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE=../.secrets/kis-paper-account-number
+export AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE=../.secrets/kis-paper-account-product
+uv run python -m auto_stock_trading.worker.execution.planning --account-snapshot
+uv run python -m auto_stock_trading.worker.execution.planning --automation armed
+uv run python -m auto_stock_trading.worker.execution.planning --automation running
+uv run python -m auto_stock_trading.worker.execution.planning --symbol 005930 --side buy
+uv run python -m auto_stock_trading.worker.execution.submission --submit --plan-id <plan_id>
+uv run python -m auto_stock_trading.worker.execution.submission --submit --plan-id <plan_id>   # 재실행이 두 번 보내지 않음
+uv run python -m auto_stock_trading.worker.execution.submission --sync
+uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop   # 미체결 취소 시도
+uv run python -m auto_stock_trading.worker.execution.submission --sync             # 취소 확정
+uv run python -m auto_stock_trading.worker.execution.planning --automation disabled
+```
+
+확인할 것: 제출 응답의 `ODNO`·`KRX_FWDG_ORD_ORGNO` 저장, `output1` 필드명 계약 일치, 부분체결·전량
+체결·취소의 상태 전이, 재실행 시 주문 수 불변, 콘솔 화면 B·C 표의 실데이터 표시.
+
 ## 다음 거래일 대기 항목
 
 - **주문 허용시간 내 계획 생성**: 09:05~15:15 KST의 거래일에 아래를 실행하면 `PLANNED` 주문이 생성된다.
@@ -113,7 +151,7 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 
 ## 남은 범위
 
-- 주문 제출·정정·취소·체결 동기화와 증권사 미체결 대조(`ACCOUNT_NOT_RECONCILED`의 실제 판정)
-- 콘솔 화면의 주문·포지션 표 실데이터 대조(계획 생성과 실제 보유가 생긴 뒤)
+- 실제 주문 전송·체결·취소의 장중 검증(위 절차)과 콘솔 화면 B·C 표 실데이터 대조
+- 주문 정정(수량·가격 변경)과 실시간 체결통보(웹소켓), 자동 스케줄 제출
 - 서버 재시작 후 상태 복구 시나리오 테스트(현재는 거래일 변경 복귀만 검증)
 - 주문·위험 이벤트 알림(웹·메신저)

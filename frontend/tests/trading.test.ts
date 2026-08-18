@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   automationLabel,
+  eventTypeLabel,
+  hasFillInformation,
+  isAlertEvent,
   limitLabel,
   orderStateLabel,
   parseAutomation,
@@ -43,6 +46,8 @@ const ordersPayload = {
   environment: "paper",
   orders: [
     {
+      average_fill_price: null,
+      broker_order_id: null,
       client_order_id: "a".repeat(32),
       created_at: "2026-08-19T01:11:00Z",
       filled_quantity: 0,
@@ -57,6 +62,7 @@ const ordersPayload = {
       sequence: 1,
       side: "buy",
       state: "planned",
+      submitted_at: null,
       symbol: "005930",
       trading_date: "2026-08-19",
     },
@@ -152,6 +158,29 @@ describe("상태 이름", () => {
     expect(orderStateLabel("planned")).toBe("계획");
     expect(orderStateLabel("partially_filled")).toBe("부분체결");
     expect(orderStateLabel("rejected")).toBe("거절");
+  });
+});
+
+describe("이벤트와 체결 정보", () => {
+  it("이벤트 유형 이름을 한국어로 표시한다", () => {
+    expect(eventTypeLabel("state_change")).toBe("상태 전이");
+    expect(eventTypeLabel("api_failure")).toBe("API 실패");
+    expect(eventTypeLabel("reconcile_problem")).toBe("대조 불일치");
+    expect(eventTypeLabel("unknown_type")).toBe("unknown_type");
+  });
+
+  it("상태 전이가 아닌 이벤트는 주의로 표시한다", () => {
+    expect(isAlertEvent("state_change")).toBe(false);
+    expect(isAlertEvent("api_failure")).toBe(true);
+    expect(isAlertEvent("reconcile_problem")).toBe(true);
+  });
+
+  it("제출 이후 상태만 체결 정보를 가진다", () => {
+    expect(hasFillInformation("planned")).toBe(false);
+    expect(hasFillInformation("rejected")).toBe(false);
+    expect(hasFillInformation("submitted")).toBe(true);
+    expect(hasFillInformation("partially_filled")).toBe(true);
+    expect(hasFillInformation("filled")).toBe(true);
   });
 });
 

@@ -129,6 +129,7 @@ Taskiq worker ── Valkey
 - [ETF 탐색 데이터 계약](data/etf-exploration-data-contract.md)
 - [백테스트·규칙형 전략 계약](data/backtest-strategy-contract.md)
 - [주문 계획·위험검사 데이터 계약](data/order-planning-risk-contract.md)
+- [주문 제출·체결 동기화 계약](data/order-submission-contract.md)
 
 #### Operations
 
@@ -156,6 +157,7 @@ Taskiq worker ── Valkey
 - [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](decisions/0005-kis-token-and-rate-coordination.md)
 - [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](decisions/0006-market-calendar-scheduling.md)
 - [ADR-0007: 모의투자 주문 계획과 위험검사 경계](decisions/0007-paper-order-planning-and-risk.md)
+- [ADR-0008: 모의투자 주문 제출·체결 동기화 경계](decisions/0008-paper-order-submission.md)
 
 #### Governance
 

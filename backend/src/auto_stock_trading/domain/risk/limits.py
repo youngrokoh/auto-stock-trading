@@ -2,7 +2,13 @@ from dataclasses import dataclass
 from datetime import time
 from decimal import Decimal
 from enum import StrEnum
-from typing import Final
+from typing import TYPE_CHECKING, Final
+from zoneinfo import ZoneInfo
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+_SEOUL: Final = ZoneInfo("Asia/Seoul")
 
 
 class RiskRule(StrEnum):
@@ -81,3 +87,9 @@ PAPER_RISK_LIMITS: Final = RiskLimits(
     quote_max_age_seconds=10,
     price_band=Decimal("0.01"),
 )
+
+
+def within_order_window(now: datetime, limits: RiskLimits) -> bool:
+    """정책 §4의 주문 허용시간. 위험검사와 주문 제출이 같은 정의를 쓴다."""
+    clock = now.astimezone(_SEOUL).time()
+    return limits.order_window_start <= clock <= limits.order_window_end

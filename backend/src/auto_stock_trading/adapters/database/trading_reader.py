@@ -334,6 +334,9 @@ def _entry(row: OrderRow, symbol: str, trading_date: date) -> OrderListEntry:
         reference_received_at=row.reference_received_at,
         state=OrderState(row.state),
         reject_code=row.reject_code,
+        broker_order_id=row.broker_order_id,
+        submitted_at=row.submitted_at,
+        average_fill_price=row.average_fill_price,
     )
 
 

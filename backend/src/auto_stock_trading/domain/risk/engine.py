@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from auto_stock_trading.domain.orders.models import AutomationState, OrderSide
 from auto_stock_trading.domain.orders.pricing import round_to_tick, within_price_band
-from auto_stock_trading.domain.risk.limits import BlockCode, RiskRule
+from auto_stock_trading.domain.risk.limits import BlockCode, RiskRule, within_order_window
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -141,8 +141,7 @@ class _PlanState:
 
 
 def _within_order_window(request: PlanRequest) -> bool:
-    clock = request.now.astimezone(_SEOUL).time()
-    return request.limits.order_window_start <= clock <= request.limits.order_window_end
+    return within_order_window(request.now, request.limits)
 
 
 def _pause_rule(request: PlanRequest) -> RiskRule | None:

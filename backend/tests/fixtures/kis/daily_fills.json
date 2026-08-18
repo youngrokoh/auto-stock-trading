@@ -1,0 +1,58 @@
+{
+  "rt_cd": "0",
+  "msg_cd": "KIOK0000",
+  "msg1": "정상처리 되었습니다.",
+  "ctx_area_fk100": "",
+  "ctx_area_nk100": "",
+  "output1": [
+    {
+      "ord_dt": "20260819",
+      "ord_gno_brno": "00950",
+      "odno": "0000117057",
+      "orgn_odno": "",
+      "ord_dvsn_name": "지정가",
+      "sll_buy_dvsn_cd": "02",
+      "sll_buy_dvsn_cd_name": "현금매수",
+      "pdno": "005930",
+      "prdt_name": "삼성전자",
+      "ord_qty": "3",
+      "ord_unpr": "71800",
+      "ord_tmd": "101153",
+      "tot_ccld_qty": "1",
+      "avg_prvs": "71800.0000",
+      "cncl_yn": "N",
+      "tot_ccld_amt": "71800",
+      "rmn_qty": "2",
+      "rjct_qty": "0",
+      "ccld_cndt_name": "일반"
+    },
+    {
+      "ord_dt": "20260819",
+      "ord_gno_brno": "00950",
+      "odno": "0000117058",
+      "orgn_odno": "",
+      "ord_dvsn_name": "지정가",
+      "sll_buy_dvsn_cd": "02",
+      "sll_buy_dvsn_cd_name": "현금매수",
+      "pdno": "005930",
+      "prdt_name": "삼성전자",
+      "ord_qty": "1",
+      "ord_unpr": "71800",
+      "ord_tmd": "101154",
+      "tot_ccld_qty": "0",
+      "avg_prvs": "0.0000",
+      "cncl_yn": "Y",
+      "tot_ccld_amt": "0",
+      "rmn_qty": "0",
+      "rjct_qty": "0",
+      "ccld_cndt_name": "일반"
+    }
+  ],
+  "output2": {
+    "tot_ord_qty": "4",
+    "tot_ccld_qty": "1",
+    "tot_ccld_amt": "71800",
+    "prsm_tlex_smtl": "0",
+    "pchs_avg_pric": "71800.0000"
+  }
+}

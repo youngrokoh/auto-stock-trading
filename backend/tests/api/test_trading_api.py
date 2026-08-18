@@ -201,6 +201,9 @@ class StubTradingReader:
                 reference_received_at=order.reference_received_at,
                 state=order.state,
                 reject_code=order.reject_code,
+                broker_order_id="0000117057" if order.sequence == 1 else None,
+                submitted_at=_NOW if order.sequence == 1 else None,
+                average_fill_price=Decimal(100_000) if order.sequence == 1 else None,
             )
             for order in plan.orders
         )
@@ -424,6 +427,9 @@ def test_order_list_exposes_stored_fill_quantity_and_plan_reference() -> None:
                 "reference_received_at": "2026-08-18T04:00:00Z",
                 "state": "planned",
                 "reject_code": None,
+                "broker_order_id": "0000117057",
+                "submitted_at": "2026-08-18T04:00:00Z",
+                "average_fill_price": "100000",
             },
             {
                 "client_order_id": "b" * 32,
@@ -442,6 +448,9 @@ def test_order_list_exposes_stored_fill_quantity_and_plan_reference() -> None:
                 "reference_received_at": None,
                 "state": "rejected",
                 "reject_code": "DATA_STALE",
+                "broker_order_id": None,
+                "submitted_at": None,
+                "average_fill_price": None,
             },
         ],
     }

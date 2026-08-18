@@ -150,6 +150,10 @@ class OrderRow(Base):
     state: Mapped[str] = mapped_column(String(20), index=True)
     reject_code: Mapped[str | None] = mapped_column(String(40))
     broker_order_id: Mapped[str | None] = mapped_column(String(40))
+    broker_org_no: Mapped[str | None] = mapped_column(String(8))
+    broker_order_time: Mapped[str | None] = mapped_column(String(6))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    average_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 8))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

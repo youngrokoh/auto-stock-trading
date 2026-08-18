@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final, final
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -33,10 +34,13 @@ from auto_stock_trading.adapters.database.trading_rows import (
     OrderRow,
     RiskDecisionRow,
 )
+from auto_stock_trading.application.trading.submission import TrackedOrder
 from auto_stock_trading.domain.orders.models import (
     AutomationState,
+    OrderSide,
     OrderState,
     next_automation_state,
+    next_order_state,
 )
 from auto_stock_trading.domain.orders.records import (
     AutomationRecord,
@@ -49,14 +53,19 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+    from auto_stock_trading.adapters.brokers.kis_orders import BrokerAcknowledgement
     from auto_stock_trading.application.trading.planning import AutomationTransition
+    from auto_stock_trading.domain.market_data.models import RawBrokerResponse
     from auto_stock_trading.domain.orders.account import AccountSnapshotObservation
+    from auto_stock_trading.domain.orders.fills import ReconcileProblem
     from auto_stock_trading.domain.orders.records import OrderPlanRecord, OrderRecord
 
 _SOURCE: Final = "KIS"
 _OPERATION: Final = "account_balance"
 _STATE_CHANGE: Final = "state_change"
 _API_FAILURE: Final = "api_failure"
+_RECONCILE_PROBLEM: Final = "reconcile_problem"
+_FILL_SYNC: Final = "FILL_SYNC"
 _OPEN_STATES: Final = (OrderState.SUBMITTED.value, OrderState.PARTIALLY_FILLED.value)
 _BUY_COUNTED_STATES: Final = (
     OrderState.PLANNED.value,
@@ -283,6 +292,152 @@ class PostgresTradingStore:
             unreconciled_orders=bool(open_orders),
         )
 
+    async def pending_orders(
+        self,
+        environment: str,
+        trading_date: date,
+        plan_id: UUID | None,
+    ) -> tuple[TrackedOrder, ...]:
+        """제출 대상은 그 거래일 계획의 `planned` 주문뿐이다."""
+        statement = _tracked_orders_query(environment, trading_date).where(
+            OrderRow.state == OrderState.PLANNED.value
+        )
+        if plan_id is not None:
+            statement = statement.where(OrderRow.plan_id == plan_id)
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(_tracked(row, symbol, plan) for row, symbol, plan in rows)
+
+    async def open_orders(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> tuple[TrackedOrder, ...]:
+        statement = _tracked_orders_query(environment, trading_date).where(
+            OrderRow.state.in_(_OPEN_STATES)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(_tracked(row, symbol, plan) for row, symbol, plan in rows)
+
+    async def record_submission(
+        self,
+        order_id: UUID,
+        acknowledgement: BrokerAcknowledgement,
+        submitted_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            await _save_raw(session, acknowledgement.raw)
+            await _transition_order(
+                session,
+                _OrderTransition(
+                    order_id=order_id,
+                    state=OrderState.SUBMITTED,
+                    reason_code=acknowledgement.message_code,
+                    occurred_at=submitted_at,
+                    values={
+                        "broker_order_id": acknowledgement.broker_order_id,
+                        "broker_org_no": acknowledgement.broker_org_no,
+                        "broker_order_time": acknowledgement.broker_order_time,
+                        "submitted_at": submitted_at,
+                    },
+                ),
+            )
+
+    async def record_rejection(
+        self,
+        order_id: UUID,
+        acknowledgement: BrokerAcknowledgement,
+        occurred_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            await _save_raw(session, acknowledgement.raw)
+            await _transition_order(
+                session,
+                _OrderTransition(
+                    order_id=order_id,
+                    state=OrderState.REJECTED,
+                    reason_code=acknowledgement.message_code,
+                    occurred_at=occurred_at,
+                    values={"reject_code": acknowledgement.message_code},
+                ),
+            )
+
+    async def apply_fill(
+        self,
+        order_id: UUID,
+        state: OrderState,
+        filled_quantity: int,
+        average_fill_price: Decimal | None,
+        occurred_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            await _transition_order(
+                session,
+                _OrderTransition(
+                    order_id=order_id,
+                    state=state,
+                    reason_code=_FILL_SYNC,
+                    occurred_at=occurred_at,
+                    values={
+                        "filled_quantity": filled_quantity,
+                        "average_fill_price": average_fill_price,
+                    },
+                ),
+            )
+
+    async def record_order_event(
+        self,
+        order_id: UUID,
+        event_type: str,
+        detail: str | None,
+        occurred_at: datetime,
+    ) -> None:
+        """상태를 바꾸지 않는 주문 이벤트(취소 요청·실패)를 append-only로 남긴다."""
+        async with self._sessions.begin() as session:
+            current = await session.scalar(select(OrderRow).where(OrderRow.id == order_id))
+            if current is None:
+                message = f"unknown order {order_id}"
+                raise LookupError(message)
+            session.add(
+                OrderEventRow(
+                    id=uuid4(),
+                    order_id=order_id,
+                    sequence=await _next_event_sequence(session, order_id),
+                    previous_state=current.state,
+                    state=current.state,
+                    reason_code=event_type,
+                    detail=detail,
+                    occurred_at=occurred_at,
+                )
+            )
+
+    async def save_broker_response(self, raw: RawBrokerResponse) -> None:
+        """조회·취소 응답 원본을 append-only로 남긴다. 정규화 상태와 분리한다."""
+        async with self._sessions.begin() as session:
+            await _save_raw(session, raw)
+
+    async def record_reconcile_problem(
+        self,
+        environment: str,
+        broker_order_id: str,
+        problem: ReconcileProblem,
+        occurred_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            session.add(
+                AutomationEventRow(
+                    id=uuid4(),
+                    environment=environment,
+                    event_type=_RECONCILE_PROBLEM,
+                    previous_state=None,
+                    state=None,
+                    reason_code=problem.value,
+                    detail=broker_order_id,
+                    occurred_at=occurred_at,
+                )
+            )
+
     async def save_plan(self, plan: OrderPlanRecord) -> None:
         async with self._sessions.begin() as session:
             session.add(
@@ -311,6 +466,101 @@ class PostgresTradingStore:
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
+
+
+def _tracked_orders_query(
+    environment: str,
+    trading_date: date,
+) -> Select[tuple[OrderRow, str, UUID]]:
+    return (
+        select(OrderRow, InstrumentRow.symbol, OrderPlanRow.id)
+        .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+        .join(InstrumentRow, OrderRow.instrument_id == InstrumentRow.id)
+        .where(
+            OrderPlanRow.environment == environment,
+            OrderPlanRow.trading_date == trading_date,
+        )
+        .order_by(OrderRow.created_at, OrderRow.sequence)
+    )
+
+
+def _tracked(row: OrderRow, symbol: str, plan_id: UUID) -> TrackedOrder:
+    return TrackedOrder(
+        order_id=row.id,
+        plan_id=plan_id,
+        client_order_id=row.client_order_id,
+        symbol=symbol,
+        side=OrderSide(row.side),
+        quantity=row.quantity,
+        filled_quantity=row.filled_quantity,
+        average_fill_price=row.average_fill_price,
+        limit_price=row.limit_price,
+        state=OrderState(row.state),
+        broker_order_id=row.broker_order_id,
+        broker_org_no=row.broker_org_no,
+    )
+
+
+async def _save_raw(session: AsyncSession, raw: RawBrokerResponse) -> None:
+    session.add(
+        RawApiResponseRow(
+            id=uuid4(),
+            source=_SOURCE,
+            operation=raw.operation.value,
+            endpoint=raw.endpoint,
+            request_fingerprint=raw.request_fingerprint,
+            received_at=raw.received_at,
+            payload_json=raw.payload_json,
+        )
+    )
+
+
+async def _next_event_sequence(session: AsyncSession, order_id: UUID) -> int:
+    highest = await session.scalar(
+        select(func.max(OrderEventRow.sequence)).where(OrderEventRow.order_id == order_id)
+    )
+    return (highest or 0) + 1
+
+
+@dataclass(frozen=True, slots=True)
+class _OrderTransition:
+    order_id: UUID
+    state: OrderState
+    reason_code: str | None
+    occurred_at: datetime
+    values: dict[str, object]
+
+
+async def _transition_order(session: AsyncSession, transition: _OrderTransition) -> None:
+    """상태 그래프를 검증한 뒤 현재 상태 1행과 이벤트 로그를 함께 갱신한다."""
+    order_id = transition.order_id
+    current = await session.scalar(select(OrderRow).where(OrderRow.id == order_id))
+    if current is None:
+        message = f"unknown order {order_id}"
+        raise LookupError(message)
+    previous = OrderState(current.state)
+    requested = next_order_state(previous, transition.state)
+    _ = await session.execute(
+        update(OrderRow)
+        .where(OrderRow.id == order_id)
+        .values(
+            state=requested.value,
+            updated_at=transition.occurred_at,
+            **transition.values,
+        )
+    )
+    session.add(
+        OrderEventRow(
+            id=uuid4(),
+            order_id=order_id,
+            sequence=await _next_event_sequence(session, order_id),
+            previous_state=previous.value,
+            state=requested.value,
+            reason_code=transition.reason_code,
+            detail=None,
+            occurred_at=transition.occurred_at,
+        )
+    )
 
 
 async def _instrument_id(session: AsyncSession, symbol: str) -> UUID:

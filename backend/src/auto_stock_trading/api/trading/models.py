@@ -137,6 +137,9 @@ class OrderListEntryResponse(TradingResponse):
     reference_received_at: datetime | None
     state: str
     reject_code: str | None
+    broker_order_id: str | None
+    submitted_at: datetime | None
+    average_fill_price: Decimal | None
 
 
 class OrdersResponse(TradingResponse):

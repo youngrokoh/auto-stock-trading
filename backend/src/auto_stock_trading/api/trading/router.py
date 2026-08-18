@@ -197,6 +197,9 @@ def _entry_response(entry: OrderListEntry) -> OrderListEntryResponse:
         reference_received_at=entry.reference_received_at,
         state=entry.state.value,
         reject_code=entry.reject_code,
+        broker_order_id=entry.broker_order_id,
+        submitted_at=entry.submitted_at,
+        average_fill_price=entry.average_fill_price,
     )
 
 

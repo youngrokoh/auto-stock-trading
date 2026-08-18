@@ -55,6 +55,8 @@ const accountSnapshotsSchema = z.strictObject({
 });
 
 const orderSchema = z.strictObject({
+  average_fill_price: decimal.nullable(),
+  broker_order_id: z.string().nullable(),
   client_order_id: z.string().min(1),
   created_at: isoDateTime,
   filled_quantity: z.number().int(),
@@ -69,6 +71,7 @@ const orderSchema = z.strictObject({
   sequence: z.number().int(),
   side: z.enum(["buy", "sell"]),
   state: z.string().min(1),
+  submitted_at: isoDateTime.nullable(),
   symbol: z.string().min(1),
   trading_date: isoDate,
 });
@@ -188,9 +191,20 @@ const ORDER_STATE_LABELS: Readonly<Record<string, string>> = {
 
 export const orderStateLabel = (state: string): string => ORDER_STATE_LABELS[state] ?? state;
 
-/** 주문 제출 단계가 없는 동안 계획·거절 주문에는 체결 정보가 존재하지 않는다. */
+/** 제출 이후 상태만 증권사 체결 정보를 가진다. 계획·거절 주문에는 체결 사실이 없다. */
 export const hasFillInformation = (state: string): boolean =>
   state === "submitted" || state === "partially_filled" || state === "filled";
+
+const EVENT_LABELS: Readonly<Record<string, string>> = {
+  api_failure: "API 실패",
+  reconcile_problem: "대조 불일치",
+  state_change: "상태 전이",
+};
+
+export const eventTypeLabel = (eventType: string): string => EVENT_LABELS[eventType] ?? eventType;
+
+/** 상태 전이가 아닌 이벤트는 주의를 요구한다(외부 실패·대조 불일치). */
+export const isAlertEvent = (eventType: string): boolean => eventType !== "state_change";
 
 type PositionReturnInput = Readonly<{
   average_price: string;

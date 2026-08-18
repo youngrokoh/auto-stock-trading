@@ -305,12 +305,16 @@ etf_distribution
 
 ### 7단계: 모의투자 자동매매
 
-2026-08-18에 주문 제출 이전 계층을 구현했다([검증 기록](../qa/phase-7-order-planning-verification.md)).
-승인된 [ADR-0007](../decisions/0007-paper-order-planning-and-risk.md)과
+2026-08-18에 주문 제출 이전 계층과 모의매매 콘솔 화면, 주문 제출·체결 동기화 계층을 구현했다
+([검증 기록](../qa/phase-7-order-planning-verification.md)). 승인된
+[ADR-0007](../decisions/0007-paper-order-planning-and-risk.md)과
 [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md)에 따라 KIS 모의 계좌 조회
 (읽기 전용), 목표 포지션 변환, 정책 §3·§4 한도를 코드로 표현한 결정적 위험검사, `PLANNED` 주문 계획
-저장과 감사 기록, 자동매매 상태 머신, 읽기 API와 worker CLI를 제공한다. 증권사 주문 제출·정정·취소·
-체결 동기화와 모의매매 콘솔 화면은 다음 단계다.
+저장과 감사 기록, 자동매매 상태 머신, 읽기 API와 worker CLI를 제공한다. 이어 승인된
+[ADR-0008](../decisions/0008-paper-order-submission.md)과
+[주문 제출·체결 동기화 계약](../data/order-submission-contract.md)에 따라 KIS 모의 주문 제출·취소와
+일별주문체결 기반 상태 확정, 증권사 대조 차단을 구현했다. 제출은 worker CLI 수동 실행만 제공하며
+HTTP 쓰기 경로는 없다. 실시간 체결통보와 자동 스케줄 제출은 후속 결정이다.
 
 구현 내용:
 

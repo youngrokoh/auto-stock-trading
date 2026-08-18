@@ -113,6 +113,9 @@ class OrderListEntry:
     reference_received_at: datetime | None
     state: OrderState
     reject_code: str | None
+    broker_order_id: str | None
+    submitted_at: datetime | None
+    average_fill_price: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)

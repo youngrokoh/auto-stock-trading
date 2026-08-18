@@ -18,6 +18,11 @@ from auto_stock_trading.adapters.brokers.kis_market_data import (
     QUOTE_ENDPOINT,
     KisMarketDataAdapter,
 )
+from auto_stock_trading.adapters.brokers.kis_orders import (
+    DAILY_FILLS_ENDPOINT,
+    ORDER_ENDPOINT,
+    REVISE_CANCEL_ENDPOINT,
+)
 
 _FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "kis"
 
@@ -26,11 +31,23 @@ class KisFixtureHandler:
     token_requests: int
     market_requests: list[httpx2.Request]
     _token_filenames: tuple[str, ...]
+    _order_filename: str
+    _cancel_filename: str
+    _fills_filename: str
 
-    def __init__(self, token_filenames: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        token_filenames: tuple[str, ...],
+        order_filename: str = "order_cash.json",
+        cancel_filename: str = "order_cancel.json",
+        fills_filename: str = "daily_fills.json",
+    ) -> None:
         self.token_requests = 0
         self.market_requests = []
         self._token_filenames = token_filenames
+        self._order_filename = order_filename
+        self._cancel_filename = cancel_filename
+        self._fills_filename = fills_filename
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         if request.url.path == "/oauth2/tokenP":
@@ -38,8 +55,14 @@ class KisFixtureHandler:
             index = min(self.token_requests - 1, len(self._token_filenames) - 1)
             return self._response(request, self._token_filenames[index])
         self.market_requests.append(request)
-        if request.url.path == BALANCE_ENDPOINT:
-            return self._response(request, "account_balance.json")
+        account_filename = {
+            BALANCE_ENDPOINT: "account_balance.json",
+            ORDER_ENDPOINT: self._order_filename,
+            REVISE_CANCEL_ENDPOINT: self._cancel_filename,
+            DAILY_FILLS_ENDPOINT: self._fills_filename,
+        }.get(request.url.path)
+        if account_filename is not None:
+            return self._response(request, account_filename)
         query = parse_qs(request.url.query.decode())
         symbols = query.get("PDNO") or query.get("FID_INPUT_ISCD")
         if not symbols:
@@ -69,8 +92,17 @@ class KisFixtureHandler:
 
 def create_fixture_handler_client(
     token_filenames: tuple[str, ...] = ("token.json",),
+    *,
+    order_filename: str = "order_cash.json",
+    cancel_filename: str = "order_cancel.json",
+    fills_filename: str = "daily_fills.json",
 ) -> tuple[KisHttpClient, KisFixtureHandler]:
-    handler = KisFixtureHandler(token_filenames)
+    handler = KisFixtureHandler(
+        token_filenames,
+        order_filename=order_filename,
+        cancel_filename=cancel_filename,
+        fills_filename=fills_filename,
+    )
     client = httpx2.AsyncClient(
         base_url="https://kis.example.test",
         transport=httpx2.MockTransport(handler),

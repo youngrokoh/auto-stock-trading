@@ -141,6 +141,36 @@ class KisHttpClient:
             payload_json=response.text,
         )
 
+    async def post(
+        self,
+        *,
+        endpoint: str,
+        transaction_id: str,
+        body: dict[str, str],
+        request_fingerprint: str,
+    ) -> KisRawResponse:
+        """주문·취소처럼 쓰기 경로에서만 쓴다. 본문에는 호출자가 만든 값만 담는다."""
+        token = await self._access_token()
+        response = await self._request(
+            "POST",
+            endpoint,
+            headers={
+                "authorization": f"Bearer {token.get_secret_value()}",
+                "appkey": self._credentials.app_key.get_secret_value(),
+                "appsecret": self._credentials.app_secret.get_secret_value(),
+                "tr_id": transaction_id,
+                "custtype": "P",
+                "Content-Type": "application/json",
+            },
+            json=body,
+        )
+        return KisRawResponse(
+            endpoint=endpoint,
+            request_fingerprint=request_fingerprint,
+            received_at=datetime.now(UTC),
+            payload_json=response.text,
+        )
+
     async def close(self) -> None:
         try:
             await self._client.aclose()

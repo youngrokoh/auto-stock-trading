@@ -1,0 +1,10 @@
+{
+  "rt_cd": "1",
+  "msg_cd": "APBK0919",
+  "msg1": "주문가능금액이 부족합니다.",
+  "output": {
+    "KRX_FWDG_ORD_ORGNO": "",
+    "ODNO": "",
+    "ORD_TMD": ""
+  }
+}

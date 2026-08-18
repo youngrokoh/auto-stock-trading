@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from auto_stock_trading.adapters.brokers.kis_orders import BrokerAcknowledgement
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
 from auto_stock_trading.adapters.database.trading_reader import PostgresTradingReader
 from auto_stock_trading.adapters.database.trading_rows import (
@@ -25,6 +26,7 @@ from auto_stock_trading.domain.orders.account import (
     AccountSnapshot,
     AccountSnapshotObservation,
 )
+from auto_stock_trading.domain.orders.fills import ReconcileProblem
 from auto_stock_trading.domain.orders.models import (
     AutomationState,
     InvalidTransitionError,
@@ -109,6 +111,24 @@ def _order(
                 projected_value=Decimal(5_000_000),
                 passed=True,
             ),
+        ),
+    )
+
+
+def _acknowledgement(*, accepted: bool = True) -> BrokerAcknowledgement:
+    return BrokerAcknowledgement(
+        accepted=accepted,
+        broker_order_id="0000117057" if accepted else None,
+        broker_org_no="00950" if accepted else None,
+        broker_order_time="101153" if accepted else None,
+        message_code="APBK0013" if accepted else "APBK0919",
+        message="주문 전송 완료 되었습니다." if accepted else "주문가능금액이 부족합니다.",
+        raw=RawBrokerResponse(
+            operation=BrokerOperation.ORDER_SUBMIT,
+            endpoint="/uapi/domestic-stock/v1/trading/order-cash",
+            request_fingerprint="order_submit:abc123def456:990002:buy:1",
+            received_at=_NOW,
+            payload_json='{"rt_cd":"0"}',
         ),
     )
 
@@ -498,6 +518,119 @@ def test_risk_state_without_snapshot_reports_no_basis() -> None:
         assert state.max_order_amount == Decimal(0)
         assert state.counters.open_orders == 0
         assert state.api_failures == 0
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_submission_records_broker_identifiers_and_state_transition() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(orders=(_order(),))
+        await store.save_plan(plan)
+        (pending,) = await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, plan.plan_id)
+        assert pending.state is OrderState.PLANNED
+
+        await store.record_submission(pending.order_id, _acknowledgement(), _NOW)
+
+        (submitted,) = await store.open_orders(_ENVIRONMENT, _TRADING_DATE)
+        assert submitted.state is OrderState.SUBMITTED
+        assert submitted.broker_order_id == "0000117057"
+        assert submitted.broker_org_no == "00950"
+        assert await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, plan.plan_id) == ()
+        (entry,) = await reader.orders(_ENVIRONMENT, 10)
+        assert entry.state is OrderState.SUBMITTED
+        assert entry.broker_order_id == "0000117057"
+        assert entry.submitted_at == _NOW
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_rejected_submission_stores_the_broker_message_code() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(orders=(_order(),))
+        await store.save_plan(plan)
+        (pending,) = await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, None)
+
+        await store.record_rejection(pending.order_id, _acknowledgement(accepted=False), _NOW)
+
+        loaded = await reader.order_plan(plan.plan_id)
+        assert loaded is not None
+        assert loaded.orders[0].state is OrderState.REJECTED
+        assert loaded.orders[0].reject_code == "APBK0919"
+        assert await store.open_orders(_ENVIRONMENT, _TRADING_DATE) == ()
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_applied_fill_updates_quantity_price_and_event_log() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(orders=(_order(quantity=3),))
+        await store.save_plan(plan)
+        (pending,) = await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, None)
+        await store.record_submission(pending.order_id, _acknowledgement(), _NOW)
+
+        await store.apply_fill(
+            pending.order_id,
+            OrderState.PARTIALLY_FILLED,
+            1,
+            Decimal("71800.00000000"),
+            _NOW + timedelta(minutes=1),
+        )
+
+        (order,) = await store.open_orders(_ENVIRONMENT, _TRADING_DATE)
+        assert order.state is OrderState.PARTIALLY_FILLED
+        assert order.filled_quantity == 1
+        assert order.average_fill_price == Decimal("71800.00000000")
+        (entry,) = await reader.orders(_ENVIRONMENT, 10)
+        assert entry.filled_quantity == 1
+        assert str(entry.average_fill_price) == "71800.00000000"
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_cancel_event_and_reconcile_problem_are_persisted() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(orders=(_order(),))
+        await store.save_plan(plan)
+        (pending,) = await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, None)
+        await store.record_submission(pending.order_id, _acknowledgement(), _NOW)
+
+        await store.record_order_event(
+            pending.order_id,
+            "cancel_requested",
+            "EMERGENCY_STOP",
+            _NOW + timedelta(minutes=2),
+        )
+        await store.record_reconcile_problem(
+            _ENVIRONMENT,
+            "0000999999",
+            ReconcileProblem.UNKNOWN_BROKER_ORDER,
+            _NOW + timedelta(minutes=3),
+        )
+
+        events = await reader.automation_events(_ENVIRONMENT, 10)
+        assert [event.event_type for event in events] == ["reconcile_problem"]
+        assert events[0].reason_code == ReconcileProblem.UNKNOWN_BROKER_ORDER.value
+        assert events[0].detail == "0000999999"
 
     anyio.run(_run_scenario, scenario)
 

@@ -124,6 +124,14 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT uq_order_event_sequence UNIQUE",
         "CREATE TABLE trading.risk_decision",
         "CONSTRAINT uq_risk_decision_rule UNIQUE",
+        'ALTER TABLE trading."order" ADD COLUMN broker_org_no VARCHAR(8)',
+        'ALTER TABLE trading."order" ADD COLUMN broker_order_time VARCHAR(6)',
+        'ALTER TABLE trading."order" ADD COLUMN submitted_at TIMESTAMP WITH TIME ZONE',
+        'ALTER TABLE trading."order" ADD COLUMN average_fill_price NUMERIC(24, 8)',
+        "CREATE UNIQUE INDEX uq_order_broker_order_id",
+        "ck_order_submitted_fields",
+        "ck_order_fill_quantity",
+        "reconcile_problem",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

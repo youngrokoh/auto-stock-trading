@@ -13,10 +13,12 @@ import { SafetyBanner } from "../components/safety-banner";
 import { StatusBadge } from "../components/status-badge";
 import { UsageBar } from "../components/usage-bar";
 import { decimalToNumber, formatDecimal, formatKstDateTime } from "../lib/format";
-import type { AutomationEvent, RiskLimitUsage } from "../lib/trading";
+import type { AutomationEvent, RiskLimitUsage, TradingOrder } from "../lib/trading";
 import {
   automationLabel,
+  eventTypeLabel,
   hasFillInformation,
+  isAlertEvent,
   limitLabel,
   orderStateLabel,
   positionReturnPct,
@@ -76,13 +78,27 @@ const eventMessage = (event: AutomationEvent): string => {
     const to = event.state === null ? "—" : automationLabel(event.state);
     return `${from} → ${to}${event.reason_code === null ? "" : ` · ${event.reason_code}`}`;
   }
+  if (event.event_type === "reconcile_problem") {
+    return `${event.reason_code ?? "불일치"} · 증권사 주문 ${event.detail ?? "—"}`;
+  }
   return event.detail ?? event.event_type;
 };
 
-const eventLabel = (event: AutomationEvent): string =>
-  event.event_type === "api_failure" ? "API 실패" : "상태 전이";
+const eventLabel = (event: AutomationEvent): string => eventTypeLabel(event.event_type);
 
 const clockText = (value: string): string => value.slice(0, 5);
+
+/** 제출되지 않은 주문에는 체결 사실이 없으므로 값을 만들지 않는다. */
+const fillText = (order: TradingOrder): string => {
+  if (!hasFillInformation(order.state)) {
+    return "—";
+  }
+  const quantity = formatDecimal(String(order.filled_quantity));
+  if (order.average_fill_price === null) {
+    return quantity;
+  }
+  return `${quantity} @ ${formatDecimal(order.average_fill_price)}`;
+};
 
 export const Trading = () => {
   const automationQuery = useQuery({
@@ -302,6 +318,9 @@ export const Trading = () => {
                           <td className="is-name">{formatKstDateTime(order.created_at)}</td>
                           <td data-label="주문 ID">
                             <code>{order.client_order_id.slice(0, 12)}…</code>
+                            {order.broker_order_id !== null && (
+                              <small className="cell__sub"> 증권사 {order.broker_order_id}</small>
+                            )}
                           </td>
                           <td data-label="종목">
                             {nameBySymbol.get(order.symbol) ?? order.symbol} {order.symbol}
@@ -313,11 +332,7 @@ export const Trading = () => {
                             {order.side === "buy" ? "매수" : "매도"}
                           </td>
                           <td data-label="수량">{formatDecimal(String(order.quantity))}</td>
-                          <td data-label="체결">
-                            {hasFillInformation(order.state)
-                              ? formatDecimal(String(order.filled_quantity))
-                              : "—"}
-                          </td>
+                          <td data-label="체결">{fillText(order)}</td>
                           <td data-label="지정가">
                             {order.limit_price === null ? "—" : formatDecimal(order.limit_price)}
                           </td>
@@ -547,7 +562,7 @@ export const Trading = () => {
                         </span>
                         <span
                           className={
-                            event.event_type === "api_failure"
+                            isAlertEvent(event.event_type)
                               ? "event-list__level event-list__level--danger"
                               : "event-list__level"
                           }

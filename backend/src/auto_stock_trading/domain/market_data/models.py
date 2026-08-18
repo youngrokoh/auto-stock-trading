@@ -52,6 +52,9 @@ class BrokerOperation(StrEnum):
     ETF_MASTER = "etf_master"
     ETF_NAV = "etf_nav"
     ACCOUNT_BALANCE = "account_balance"
+    ORDER_SUBMIT = "order_submit"
+    ORDER_CANCEL = "order_cancel"
+    ORDER_FILLS = "order_fills"
 
 
 @dataclass(frozen=True, slots=True)
