@@ -1,6 +1,6 @@
 # 7단계 주문 계획·위험검사 검증
 
-- 상태: 검증 완료 (계획 계층 범위) · 실계좌 조회 대조는 계좌번호 secret 대기
+- 상태: 검증 완료 (계획 계층 범위, 실계좌 잔고 조회 포함) · 주문 허용시간 내 계획 생성만 다음 거래일 대기
 - 검증일: 2026-08-18
 - 관련 결정: [ADR-0007](../decisions/0007-paper-order-planning-and-risk.md)
 - 관련 계약: [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md)
@@ -35,35 +35,45 @@ worker CLI와 실제 PostgreSQL로 확인했다.
 | 읽기 API | `GET /api/trading/automation`과 `/order-plans`를 실제 HTTP로 조회해 상태·이벤트 5건·차단 계획 1건을 확인. 응답에 계좌번호 원문이 없음 |
 | 종료 상태 | 검증 후 자동매매를 `disabled`로 되돌렸다 |
 
-## 대기 중인 실계좌 대조
+## 실계좌 잔고 조회 검증 (2026-08-18 17:16~17:22 KST)
 
-KIS 잔고조회(`VTTC8434R`) 필드는 공식 문서 기준으로 구현했고 fixture로 계약 테스트를 했다. 실계좌
-응답 대조는 계좌번호 secret이 있어야 하며, 사용자가 아래 두 파일을 만들면 수행한다. 계좌번호는
-대화·로그·Git·데이터베이스에 남지 않고 해시 참조만 저장된다.
+사용자가 `.secrets/kis-paper-account-number`(8자리)와 `.secrets/kis-paper-account-product`(`01`)를
+제공한 뒤 실제 KIS 모의계좌로 검증했다.
 
-```bash
-# 계좌번호 8자리와 상품코드 2자리(보통 01)
-printf '%s' '<계좌번호8자리>' > .secrets/kis-paper-account-number
-printf '%s' '01' > .secrets/kis-paper-account-product
-chmod 600 .secrets/kis-paper-account-number .secrets/kis-paper-account-product
-```
+| 항목 | 결과 |
+|---|---|
+| 잔고 조회 | `VTTC8434R` 첫 호출에 성공. 계약이 요구하는 `dnca_tot_amt`·`prvs_rcdl_excc_amt`·`scts_evlu_amt`·`tot_evlu_amt`·`nass_amt`가 실제 응답에 모두 존재해 엄격 파싱을 통과했다(응답 `output2`는 24개 필드 제공) |
+| 스냅샷 값 | 예수금 10,000,000원 · 주문가능현금 10,000,000원 · 보유 평가금액 0원 · NAV 10,000,000원. 우리 계산 NAV와 증권사 보고 순자산금액(`nass_amt`)이 일치 |
+| 계좌번호 비노출 | 저장된 원본 응답(945바이트)에 계좌번호와 `계좌번호+상품코드` 문자열이 모두 없음을 프로그램으로 확인. 저장·요청 지문·API 응답에는 해시 참조 `4aec6939a6d3`만 남는다 |
+| 형식 검증 | 자리표시자(`<계좌번호8자리>`)가 파일에 들어간 실수를 재현했고, 계좌번호 8자리·상품코드 2자리 숫자 계약을 로드 시점에 검사해 KIS 호출 전에 실패하도록 고쳤다(값은 오류 메시지에 넣지 않음, 오형식 8건 테스트) |
+| 읽기 API | `GET /api/trading/account-snapshots`가 해시 참조·현금·NAV·보유 목록을 반환 |
+| 주문 허용시간 밖 계획 | 17:22 KST(허용시간 09:05~15:15 밖)에 자동매매를 `RUNNING`으로 두고 실행해도 `MARKET_CLOSED`로 차단되고 계좌·시세 외부 호출이 발생하지 않음. 검증 후 `disabled`로 되돌렸다 |
 
-그 뒤 주문 허용시간(09:05~15:15 Asia/Seoul)에 다음을 실행한다.
+실측에서 발견해 고친 결함: asyncpg가 `numeric(24,0)`의 trailing zero를 지수 표기 `Decimal('1.000E+7')`로
+돌려주어 API가 금액을 `1.000E+7`로 직렬화했다. 읽기 어댑터에서 원화 금액을 정수 표기로 정규화하고
+통합 테스트에 문자열 단언을 추가했다.
 
-```bash
-cd backend
-export AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-paper-app-key
-export AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-paper-app-secret
-export AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE=../.secrets/kis-paper-account-number
-export AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE=../.secrets/kis-paper-account-product
-uv run python -m auto_stock_trading.worker.execution.planning --automation armed
-uv run python -m auto_stock_trading.worker.execution.planning --automation running
-uv run python -m auto_stock_trading.worker.execution.planning --symbol 005930 --side buy
-uv run python -m auto_stock_trading.worker.execution.planning --automation disabled
-```
+## 다음 거래일 대기 항목
 
-응답 필드가 문서와 다르면 엄격 파싱이 즉시 실패하므로, 실패 메시지로 필드 차이를 확인하고 계약을
-사용자 승인 아래 정정한다.
+- **주문 허용시간 내 계획 생성**: 09:05~15:15 KST의 거래일에 아래를 실행하면 `PLANNED` 주문이 생성된다.
+  현재 NAV 10,000,000원 기준 기대값은 종목 한도 10%(1,000,000원)와 주문 1건 한도 5%(500,000원)에 따라
+  삼성전자 1주씩 3건이다.
+
+  ```bash
+  cd backend
+  export AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-paper-app-key
+  export AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-paper-app-secret
+  export AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE=../.secrets/kis-paper-account-number
+  export AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE=../.secrets/kis-paper-account-product
+  uv run python -m auto_stock_trading.worker.execution.planning --account-snapshot
+  uv run python -m auto_stock_trading.worker.execution.planning --automation armed
+  uv run python -m auto_stock_trading.worker.execution.planning --automation running
+  uv run python -m auto_stock_trading.worker.execution.planning --symbol 005930 --side buy
+  uv run python -m auto_stock_trading.worker.execution.planning --automation disabled
+  ```
+
+- **보유 종목 정규화**: 모의계좌에 보유 종목이 없어 잔고 응답 `output1`(보유 수량·평균단가·평가금액)
+  정규화는 fixture 계약 테스트로만 검증됐다. 주문 제출 단계에서 실제 체결이 생기면 실데이터로 대조한다.
 
 ## 정책 해석 기록
 

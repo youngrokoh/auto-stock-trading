@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     from auto_stock_trading.settings.runtime import Settings
 
 
+_ACCOUNT_NUMBER_LENGTH = 8
+_PRODUCT_CODE_LENGTH = 2
+
+
 def load_kis_credentials(settings: Settings) -> KisCredentials:
     return KisCredentials(
         _secret_from(settings.kis_app_key, settings.kis_app_key_file, "AUTO_STOCK_KIS_APP_KEY"),
@@ -25,19 +29,36 @@ def load_kis_credentials(settings: Settings) -> KisCredentials:
 
 
 def load_kis_account(settings: Settings) -> KisAccount:
-    """계좌번호는 secret 파일로만 주입한다. 없으면 fail-closed."""
+    """계좌번호는 secret 파일로만 주입한다. 없거나 형식이 다르면 fail-closed."""
     return KisAccount(
-        number=_secret_from(
-            settings.kis_account_number,
-            settings.kis_account_number_file,
+        number=_digits(
+            _secret_from(
+                settings.kis_account_number,
+                settings.kis_account_number_file,
+                "AUTO_STOCK_KIS_ACCOUNT_NUMBER",
+            ),
+            _ACCOUNT_NUMBER_LENGTH,
             "AUTO_STOCK_KIS_ACCOUNT_NUMBER",
         ),
-        product_code=_secret_from(
-            settings.kis_account_product_code,
-            settings.kis_account_product_code_file,
+        product_code=_digits(
+            _secret_from(
+                settings.kis_account_product_code,
+                settings.kis_account_product_code_file,
+                "AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE",
+            ),
+            _PRODUCT_CODE_LENGTH,
             "AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE",
         ),
     )
+
+
+def _digits(secret: SecretStr, length: int, setting_name: str) -> SecretStr:
+    """값 자체는 메시지에 넣지 않고 자릿수 계약만 검사한다."""
+    value = secret.get_secret_value()
+    if len(value) != length or not value.isdigit():
+        message = f"{setting_name} must be exactly {length} digits"
+        raise KisConfigurationError(message)
+    return secret
 
 
 def _secret_from(direct: SecretStr | None, file_path: Path | None, setting_name: str) -> SecretStr:

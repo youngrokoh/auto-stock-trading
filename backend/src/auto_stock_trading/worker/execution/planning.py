@@ -64,6 +64,7 @@ class Arguments(argparse.Namespace):
     signal_date: str | None = None
     parameters: str = '{"long_period":20,"rsi_overbought":"70","rsi_period":14,"short_period":5}'
     automation: str | None = None
+    account_snapshot: bool = False
 
 
 def _http_client(settings: Settings) -> KisHttpClient:
@@ -103,6 +104,30 @@ async def set_automation_state(state_text: str) -> str:
     finally:
         await store.close()
     return record.state.value
+
+
+async def collect_account_snapshot() -> str:
+    """모의 계좌 잔고를 조회해 append-only 스냅샷으로 저장한다. 주문은 만들지 않는다."""
+    settings = Settings()
+    if settings.kis_environment is not KisEnvironment.PAPER:
+        message = "account snapshots are collected in the paper environment only"
+        raise RuntimeError(message)
+    store = PostgresTradingStore.from_url(settings.database_url.get_secret_value())
+    accounts = KisAccountAdapter(_http_client(settings), load_kis_account(settings), paper=True)
+    try:
+        observation = await accounts.fetch_balance()
+        stored = await store.save_account_snapshot(observation)
+    finally:
+        await accounts.close()
+        await store.close()
+    snapshot = stored.snapshot
+    holdings = ",".join(f"{position.symbol}:{position.quantity}" for position in snapshot.positions)
+    return (
+        f"snapshot_id={stored.snapshot_id} account={snapshot.account_reference} "
+        f"nav={snapshot.nav} cash={snapshot.cash_balance} "
+        f"orderable_cash={snapshot.orderable_cash} positions={snapshot.position_value} "
+        f"broker_net_asset={snapshot.broker_net_asset} holdings={holdings or '-'}"
+    )
 
 
 async def plan_orders(arguments: Arguments) -> str:
@@ -171,7 +196,11 @@ def main() -> None:
         "--automation",
         choices=tuple(state.value for state in AutomationState),
     )
+    _ = parser.add_argument("--account-snapshot", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
+    if arguments.account_snapshot:
+        print(anyio.run(collect_account_snapshot))  # noqa: T201
+        return
     if arguments.automation is not None:
         print(anyio.run(set_automation_state, arguments.automation))  # noqa: T201
         return

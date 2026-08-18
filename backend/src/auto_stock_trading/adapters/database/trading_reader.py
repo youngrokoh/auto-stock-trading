@@ -45,6 +45,11 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 
+def _won(value: Decimal) -> Decimal:
+    """asyncpg가 trailing zero numeric을 지수 표기로 돌려주므로 정수 표기로 정규화한다."""
+    return value.quantize(Decimal(1))
+
+
 def _snapshot(
     row: AccountSnapshotRow,
     positions: tuple[AccountPosition, ...],
@@ -56,11 +61,11 @@ def _snapshot(
             environment=row.environment,
             account_reference=row.account_reference,
             currency=row.currency,
-            cash_balance=row.cash_balance,
-            orderable_cash=row.orderable_cash,
-            position_value=row.position_value,
-            nav=row.nav,
-            broker_net_asset=row.broker_net_asset,
+            cash_balance=_won(row.cash_balance),
+            orderable_cash=_won(row.orderable_cash),
+            position_value=_won(row.position_value),
+            nav=_won(row.nav),
+            broker_net_asset=_won(row.broker_net_asset),
             trading_date=row.trading_date,
             as_of=row.as_of,
             received_at=row.received_at,
@@ -79,8 +84,8 @@ def _plan(row: OrderPlanRow, orders: tuple[OrderRecord, ...]) -> OrderPlanRecord
         signal_date=row.signal_date,
         trading_date=row.trading_date,
         account_snapshot_id=row.account_snapshot_id,
-        nav_basis=row.nav_basis,
-        session_open_nav=row.session_open_nav,
+        nav_basis=None if row.nav_basis is None else _won(row.nav_basis),
+        session_open_nav=None if row.session_open_nav is None else _won(row.session_open_nav),
         automation_state=AutomationState(row.automation_state),
         status=row.status,
         block_code=row.block_code,
@@ -265,8 +270,8 @@ async def _positions(session: AsyncSession, snapshot_id: UUID) -> tuple[AccountP
             orderable_quantity=row.orderable_quantity,
             average_price=row.average_price,
             current_price=row.current_price,
-            evaluation_amount=row.evaluation_amount,
-            profit_loss=row.profit_loss,
+            evaluation_amount=_won(row.evaluation_amount),
+            profit_loss=_won(row.profit_loss),
         )
         for row, symbol in rows
     )

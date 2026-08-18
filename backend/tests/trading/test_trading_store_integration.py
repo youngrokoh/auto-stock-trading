@@ -347,7 +347,9 @@ def test_account_snapshot_round_trips_and_feeds_nav_baselines() -> None:
             Decimal(98_000_000),
             Decimal(100_000_000),
         ]
+        assert [str(item.snapshot.nav) for item in snapshots] == ["98000000", "100000000"]
         stored_first = next(item for item in snapshots if item.snapshot_id == first.snapshot_id)
+        assert str(stored_first.snapshot.cash_balance) == "96000000"
         (position,) = stored_first.snapshot.positions
         assert position.symbol == _SYMBOL
         assert position.quantity == 40
