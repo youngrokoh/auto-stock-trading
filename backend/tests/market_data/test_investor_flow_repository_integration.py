@@ -1,8 +1,10 @@
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import anyio
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from auto_stock_trading.adapters.brokers.kis_investor_flows import KisInvestorFlowAdapter
@@ -17,6 +19,11 @@ from auto_stock_trading.application.investor_flows import InvestorFlowCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.settings.runtime import Settings
 from tests.brokers.kis_fixture import create_fixture_handler_client
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncConnection
 
 _TARGET = InstrumentTarget("005930", ProductType.STOCK)
 _NOW = datetime(2026, 8, 17, 1, 0, tzinfo=UTC)
@@ -33,10 +40,7 @@ def test_investor_flows_are_versioned_and_idempotent() -> None:
             store = PostgresInvestorFlowStore.from_connection(connection)
             collector = InvestorFlowCollector(adapter, store)
             try:
-                instrument_id = await connection.scalar(
-                    select(InstrumentRow.id).where(InstrumentRow.symbol == _TARGET.symbol).limit(1)
-                )
-                assert instrument_id is not None
+                instrument_id = await _ensure_instrument(connection, _TARGET.symbol)
                 _ = await connection.execute(
                     delete(InvestorFlowRow).where(InvestorFlowRow.instrument_id == instrument_id)
                 )
@@ -92,3 +96,32 @@ def test_investor_flows_are_versioned_and_idempotent() -> None:
         await engine.dispose()
 
     anyio.run(run)
+
+
+async def _ensure_instrument(connection: AsyncConnection, symbol: str) -> UUID:
+    existing = await connection.scalar(
+        select(InstrumentRow.id).where(InstrumentRow.symbol == symbol).limit(1)
+    )
+    if existing is not None:
+        return existing
+    instrument_id = uuid4()
+    _ = await connection.execute(
+        insert(InstrumentRow).values(
+            id=instrument_id,
+            country="KR",
+            exchange="XKRX",
+            symbol=symbol,
+            product_type="stock",
+            currency="KRW",
+            name="CI 검증 종목",
+            english_name=None,
+            listed_on=None,
+            delisted_on=None,
+            trading_status="trading",
+            source="KIS",
+            source_as_of=date(2026, 8, 17),
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    return instrument_id

@@ -1,7 +1,9 @@
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import anyio
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from auto_stock_trading.adapters.database.fundamental_disclosure_reader import (
@@ -22,6 +24,11 @@ from auto_stock_trading.domain.fundamentals.financial_statements import (
     FinancialRawResponse,
 )
 from auto_stock_trading.settings.runtime import Settings
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncConnection
 
 _NOW = datetime(2026, 8, 17, 9, 0, tzinfo=UTC)
 
@@ -63,10 +70,7 @@ def test_disclosure_facts_are_idempotent_and_ordered() -> None:
             store = PostgresDisclosureStore.from_connection(connection)
             reader = PostgresDisclosureReader.from_connection(connection)
             try:
-                instrument_id = await connection.scalar(
-                    select(InstrumentRow.id).where(InstrumentRow.symbol == "005930").limit(1)
-                )
-                assert instrument_id is not None
+                instrument_id = await _ensure_instrument(connection, "005930")
                 _ = await connection.execute(
                     delete(DisclosureRow).where(DisclosureRow.instrument_id == instrument_id)
                 )
@@ -103,3 +107,32 @@ def test_disclosure_facts_are_idempotent_and_ordered() -> None:
         await engine.dispose()
 
     anyio.run(run)
+
+
+async def _ensure_instrument(connection: AsyncConnection, symbol: str) -> UUID:
+    existing = await connection.scalar(
+        select(InstrumentRow.id).where(InstrumentRow.symbol == symbol).limit(1)
+    )
+    if existing is not None:
+        return existing
+    instrument_id = uuid4()
+    _ = await connection.execute(
+        insert(InstrumentRow).values(
+            id=instrument_id,
+            country="KR",
+            exchange="XKRX",
+            symbol=symbol,
+            product_type="stock",
+            currency="KRW",
+            name="CI 검증 종목",
+            english_name=None,
+            listed_on=None,
+            delisted_on=None,
+            trading_status="trading",
+            source="KIS",
+            source_as_of=date(2026, 8, 17),
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    return instrument_id

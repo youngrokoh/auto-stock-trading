@@ -1,5 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
+// CI는 마이그레이션만 적용된 빈 데이터베이스로 실행되므로 기본은 구조·빈 상태 검증이다.
+// 실수집 데이터가 있는 로컬 환경에서는 E2E_EXPECT_DATA=1로 실데이터 검증까지 수행한다.
+const expectData = process.env.E2E_EXPECT_DATA === "1";
+
 const collectConsoleErrors = (page: Page): string[] => {
   const errors: string[] = [];
   page.on("console", (message) => {
@@ -29,7 +33,9 @@ test("운영 개요가 실제 상태와 안전 경계를 표시한다", async ({
   await expect(page.getByText("A2 · PostgreSQL")).toBeVisible();
   await expect(page.getByText("A3 · Valkey")).toBeVisible();
   await expect(page.getByText("수집 파이프라인")).toBeVisible();
-  await expect(page.getByText("삼성전자 005930")).toBeVisible();
+  if (expectData) {
+    await expect(page.getByText("삼성전자 005930")).toBeVisible();
+  }
 
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);
@@ -42,20 +48,27 @@ test("시장 데이터 화면이 실데이터 시세·차트·표를 제공한�
 
   await expect(page.getByRole("heading", { name: "시장 데이터" })).toBeVisible();
   await expect(page.getByText("A1 · 현재가 (원)")).toBeVisible();
-  await expect(page.getByRole("img", { name: "일봉 캔들 차트" })).toBeVisible();
-  await expect(page.getByRole("img", { name: "RSI 차트" })).toBeVisible();
-  await expect(page.getByRole("img", { name: "MACD 차트" })).toBeVisible();
   await expect(page.getByText("지연 데이터")).toBeVisible();
+  if (expectData) {
+    await expect(page.getByRole("img", { name: "일봉 캔들 차트" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "RSI 차트" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "MACD 차트" })).toBeVisible();
 
-  const select = page.getByLabel("종목 선택");
-  await select.selectOption("069500");
-  await expect(page.getByText("D1")).toBeVisible();
-  await expect(page.getByText("069500", { exact: true })).toBeVisible();
-  await expect(page.getByText("ETF 분배금").first()).toBeVisible();
+    const select = page.getByLabel("종목 선택");
+    await select.selectOption("069500");
+    await expect(page.getByText("D1")).toBeVisible();
+    await expect(page.getByText("069500", { exact: true })).toBeVisible();
+    await expect(page.getByText("ETF 분배금").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "1개월" }).click();
-  await expect(page.getByRole("button", { name: "1개월" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("img", { name: "일봉 캔들 차트" })).toBeVisible();
+    await page.getByRole("button", { name: "1개월" }).click();
+    await expect(page.getByRole("button", { name: "1개월" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByRole("img", { name: "일봉 캔들 차트" })).toBeVisible();
+  } else {
+    await expect(page.getByText("시세 확인 전")).toBeVisible();
+  }
 
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);
@@ -69,30 +82,34 @@ test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공�
   await expect(page.getByRole("heading", { name: "기업 분석" })).toBeVisible();
   await expect(page.getByText("A1 · 매출액 (원)")).toBeVisible();
   await expect(page.getByText("A5 · ROE (지배주주)")).toBeVisible();
-  await expect(page.getByText("사업보고서 · 접수번호").first()).toBeVisible();
-  await expect(page.getByRole("img", { name: "연간 실적 막대 차트" })).toBeVisible();
-  await expect(page.getByText("연도별 지표")).toBeVisible();
-  await expect(page.getByText("매출액증가율").first()).toBeVisible();
-  await expect(page.getByText("PER", { exact: true })).toBeVisible();
-  await expect(page.getByText("시가총액(보통주)")).toBeVisible();
-  await expect(page.getByText("가격 기준")).toBeVisible();
-  await expect(page.getByText("상장주식수", { exact: true })).toBeVisible();
-  await expect(page.getByText("재무 기준")).toBeVisible();
-
-  await page.getByRole("button", { name: "손익계산서" }).click();
-  await expect(page.getByRole("button", { name: "손익계산서" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.getByText("매출액", { exact: true }).first()).toBeVisible();
-
-  await expect(page.getByText("D2")).toBeVisible();
-  await expect(page.getByText("순매수 수량(주)", { exact: false })).toBeVisible();
-  await expect(page.getByText("D3")).toBeVisible();
   await expect(page.getByText("공시 연결")).toBeVisible();
+  if (expectData) {
+    await expect(page.getByText("사업보고서 · 접수번호").first()).toBeVisible();
+    await expect(page.getByRole("img", { name: "연간 실적 막대 차트" })).toBeVisible();
+    await expect(page.getByText("연도별 지표")).toBeVisible();
+    await expect(page.getByText("매출액증가율").first()).toBeVisible();
+    await expect(page.getByText("PER", { exact: true })).toBeVisible();
+    await expect(page.getByText("시가총액(보통주)")).toBeVisible();
+    await expect(page.getByText("가격 기준")).toBeVisible();
+    await expect(page.getByText("상장주식수", { exact: true })).toBeVisible();
+    await expect(page.getByText("재무 기준")).toBeVisible();
 
-  await page.getByRole("button", { name: "개별" }).click();
-  await expect(page.getByText("지배주주 계정 없음")).toBeVisible();
+    await page.getByRole("button", { name: "손익계산서" }).click();
+    await expect(page.getByRole("button", { name: "손익계산서" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByText("매출액", { exact: true }).first()).toBeVisible();
+
+    await expect(page.getByText("D2")).toBeVisible();
+    await expect(page.getByText("순매수 수량(주)", { exact: false })).toBeVisible();
+
+    await page.getByRole("button", { name: "개별" }).click();
+    await expect(page.getByText("지배주주 계정 없음")).toBeVisible();
+  } else {
+    await expect(page.getByText("연간 보고서 확인 전")).toBeVisible();
+    await expect(page.getByText("수집된 연간 사업보고서가 없습니다.")).toBeVisible();
+  }
 
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);
@@ -105,7 +122,6 @@ test("ETF 탐색 화면이 순위와 상세를 기준시각과 함께 제공한�
 
   await expect(page.getByRole("heading", { name: "ETF 탐색" })).toBeVisible();
   await expect(page.getByText("A1 · ETF 종목 수")).toBeVisible();
-  await expect(page.getByText("1,163").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "B 순위표" })).toBeVisible();
   await expect(page.getByRole("button", { name: "괴리율" })).toBeVisible();
 
@@ -114,8 +130,14 @@ test("ETF 탐색 화면이 순위와 상세를 기준시각과 함께 제공한�
     "aria-pressed",
     "true",
   );
-  await expect(page.getByText("선택 ETF 상세")).toBeVisible();
-  await expect(page.getByText("최근 12개월 분배율")).toBeVisible();
+  if (expectData) {
+    await expect(page.getByText("1,163").first()).toBeVisible();
+    await expect(page.getByText("선택 ETF 상세")).toBeVisible();
+    await expect(page.getByText("최근 12개월 분배율")).toBeVisible();
+  } else {
+    await expect(page.getByText("스냅샷 수집 전")).toBeVisible();
+    await expect(page.getByText("수집된 스냅샷이 없습니다.")).toBeVisible();
+  }
 
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);

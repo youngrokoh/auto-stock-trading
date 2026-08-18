@@ -28,7 +28,8 @@ bun run lint                    # biome check
 bun run typecheck               # tsc -b
 bun run test                    # vitest run
 bun run test tests/health.test.ts               # single unit test file
-bun run e2e                                     # Playwright, needs :8000 + :5173 up
+bun run e2e                                     # Playwright, needs :8000 + :5173 up (structural/empty-state mode, same as CI)
+E2E_EXPECT_DATA=1 bun run e2e                   # additionally asserts real collected data (local DB only)
 bun run e2e --project=desktop -g "dashboard"    # single e2e project/test
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 bun run e2e   # against the Compose/Caddy build
 
@@ -108,7 +109,7 @@ Frontend: React 19 + TanStack Query + Tailwind 4, no router yet — `App.tsx` sw
 - TypeScript: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `erasableSyntaxOnly`. Biome forbids `any` and unused variables.
 - Money uses `Decimal`, never `float`; timestamps stored UTC with exchange timezone preserved (see tech-stack §3.1).
 - `ListQueueBroker` must keep `socket_timeout=None` or an idle worker drops its blocking pop.
-- Playwright runs three viewport projects (mobile/tablet/desktop); the dashboard spec also asserts zero console errors and no horizontal overflow.
+- Playwright runs three viewport projects (mobile/tablet/desktop); the dashboard spec also asserts zero console errors and no horizontal overflow. CI runs against a freshly migrated empty database, so data-dependent assertions are gated behind `E2E_EXPECT_DATA=1` — always run both modes locally, and keep backend integration tests self-contained (create their own instruments/rows; never assume collected data exists).
 - Credentials for the broker (KIS) never enter documents, Git, the browser bundle, or logs; paper and live credentials stay fully separate.
 - `kis_coordination.py` is already near the project's 250 pure-LOC review threshold. Split the Valkey implementation into a separate module before extending KIS coordination behavior.
 
