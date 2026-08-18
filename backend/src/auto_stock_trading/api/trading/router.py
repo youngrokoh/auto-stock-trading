@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Annotated, Protocol
+from decimal import Decimal
+from typing import TYPE_CHECKING, Annotated, Final, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -9,25 +10,38 @@ from auto_stock_trading.api.trading.models import (
     AccountSnapshotsResponse,
     AutomationEventResponse,
     AutomationResponse,
+    OrderConditionsResponse,
+    OrderListEntryResponse,
     OrderPlanResponse,
     OrderPlansResponse,
     OrderPlanSummaryResponse,
     OrderResponse,
+    OrdersResponse,
     RiskDecisionResponse,
+    RiskLimitsResponse,
+    RiskLimitUsageResponse,
 )
 from auto_stock_trading.domain.orders.models import AutomationState
+from auto_stock_trading.domain.risk.limits import PAPER_RISK_LIMITS
+from auto_stock_trading.domain.risk.utilization import UsageState, limit_usage
 
 if TYPE_CHECKING:
     from auto_stock_trading.domain.orders.records import (
         AutomationEventRecord,
         AutomationRecord,
+        OrderListEntry,
         OrderPlanRecord,
         OrderPlanSummary,
         OrderRecord,
         StoredAccountSnapshot,
+        TradingRiskState,
     )
+    from auto_stock_trading.domain.risk.utilization import LimitUsage
 
 _EVENT_LIMIT = 20
+
+# 실전 한도는 전환 게이트를 통과한 뒤 별도로 정의한다. 여기서 완화하지 않는다.
+_LIMITS: Final = PAPER_RISK_LIMITS
 
 
 class TradingReader(Protocol):
@@ -48,6 +62,14 @@ class TradingReader(Protocol):
     async def order_plans(self, environment: str, limit: int) -> tuple[OrderPlanSummary, ...]: ...
 
     async def order_plan(self, plan_id: UUID) -> OrderPlanRecord | None: ...
+
+    async def orders(self, environment: str, limit: int) -> tuple[OrderListEntry, ...]: ...
+
+    async def risk_state(
+        self,
+        environment: str,
+        api_failure_window_seconds: int,
+    ) -> TradingRiskState: ...
 
     async def close(self) -> None: ...
 
@@ -157,6 +179,91 @@ def _summary_response(summary: OrderPlanSummary) -> OrderPlanSummaryResponse:
     )
 
 
+def _entry_response(entry: OrderListEntry) -> OrderListEntryResponse:
+    return OrderListEntryResponse(
+        client_order_id=entry.client_order_id,
+        plan_id=entry.plan_id,
+        trading_date=entry.trading_date,
+        created_at=entry.created_at,
+        sequence=entry.sequence,
+        symbol=entry.symbol,
+        side=entry.side.value,
+        order_type=entry.order_type.value,
+        quantity=entry.quantity,
+        filled_quantity=entry.filled_quantity,
+        limit_price=entry.limit_price,
+        reference_price=entry.reference_price,
+        reference_source=entry.reference_source,
+        reference_received_at=entry.reference_received_at,
+        state=entry.state.value,
+        reject_code=entry.reject_code,
+    )
+
+
+def _usage_state(state: TradingRiskState) -> UsageState:
+    stored = state.snapshot
+    snapshot = None if stored is None else stored.snapshot
+    counters = state.counters
+    positions = () if snapshot is None else snapshot.positions
+    return UsageState(
+        nav=None if snapshot is None else snapshot.nav,
+        cash_balance=None if snapshot is None else snapshot.cash_balance,
+        position_value=None if snapshot is None else snapshot.position_value,
+        max_position_value=(
+            None
+            if snapshot is None
+            else max((position.evaluation_amount for position in positions), default=Decimal(0))
+        ),
+        session_open_nav=state.session_open_nav,
+        peak_nav=state.peak_nav,
+        max_order_amount=state.max_order_amount,
+        daily_buy_amount=counters.daily_buy_amount,
+        open_orders=counters.open_orders,
+        daily_order_attempts=counters.daily_order_attempts,
+        consecutive_rejects=counters.consecutive_rejects,
+        api_failures=state.api_failures,
+    )
+
+
+def _usage_response(usage: LimitUsage) -> RiskLimitUsageResponse:
+    return RiskLimitUsageResponse(
+        rule_code=usage.rule.value,
+        basis=usage.basis.value,
+        comparison=usage.comparison.value,
+        limit_value=usage.limit_value,
+        current_value=usage.current_value,
+        usage_ratio=usage.usage_ratio,
+        reason=None if usage.reason is None else usage.reason.value,
+    )
+
+
+def _conditions_response() -> OrderConditionsResponse:
+    return OrderConditionsResponse(
+        order_window_start=_LIMITS.order_window_start,
+        order_window_end=_LIMITS.order_window_end,
+        quote_max_age_seconds=_LIMITS.quote_max_age_seconds,
+        price_band=_LIMITS.price_band,
+        api_failure_window_seconds=_LIMITS.api_failure_window_seconds,
+    )
+
+
+def _risk_limits_response(environment: str, state: TradingRiskState) -> RiskLimitsResponse:
+    stored = state.snapshot
+    snapshot = None if stored is None else stored.snapshot
+    return RiskLimitsResponse(
+        environment=environment,
+        evaluated_at=state.evaluated_at,
+        basis_date=state.basis_date,
+        snapshot_id=None if stored is None else stored.snapshot_id,
+        snapshot_as_of=None if snapshot is None else snapshot.as_of,
+        nav_basis=None if snapshot is None else snapshot.nav,
+        session_open_nav=state.session_open_nav,
+        peak_nav=state.peak_nav,
+        items=tuple(_usage_response(usage) for usage in limit_usage(_usage_state(state), _LIMITS)),
+        conditions=_conditions_response(),
+    )
+
+
 def create_trading_router(trading: TradingReader, environment: str) -> APIRouter:
     router = APIRouter(prefix="/api/trading", tags=["trading"])
 
@@ -196,6 +303,17 @@ def create_trading_router(trading: TradingReader, environment: str) -> APIRouter
             raise HTTPException(status.HTTP_404_NOT_FOUND, "order plan not found")
         return _plan_response(plan)
 
+    async def orders(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> OrdersResponse:
+        entries = await trading.orders(environment, limit)
+        return OrdersResponse(
+            environment=environment,
+            orders=tuple(_entry_response(entry) for entry in entries),
+        )
+
+    async def risk_limits() -> RiskLimitsResponse:
+        state = await trading.risk_state(environment, _LIMITS.api_failure_window_seconds)
+        return _risk_limits_response(environment, state)
+
     router.add_api_route(
         "/automation",
         automation,
@@ -230,6 +348,24 @@ def create_trading_router(trading: TradingReader, environment: str) -> APIRouter
         description=(
             "계획 하나의 상세와 주문·위험검사 판정 전체를 반환한다. 각 주문은 기준가 출처와 "
             "수신 시각, 적용된 모든 규칙의 한도값·예상값·통과 여부를 포함한다."
+        ),
+    )
+    router.add_api_route(
+        "/orders",
+        orders,
+        methods=["GET"],
+        description=(
+            "계획 경계를 넘어 주문을 최신 순으로 반환한다. 체결 수량은 저장된 값이며 주문 제출 "
+            "단계가 없는 동안 계획·거절 주문은 항상 0이다. 값을 만들지 않는다."
+        ),
+    )
+    router.add_api_route(
+        "/risk-limits",
+        risk_limits,
+        methods=["GET"],
+        description=(
+            "거래 안전 정책 §3 한도 13종의 한도값과 현재 소진율, §4 주문 가능 조건을 반환한다. "
+            "기준 스냅샷·장 시작 NAV·고점 NAV가 없으면 값 대신 사유 코드를 남긴다."
         ),
     )
     return router

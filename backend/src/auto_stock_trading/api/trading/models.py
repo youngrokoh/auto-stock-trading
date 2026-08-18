@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import ClassVar
 from uuid import UUID
@@ -118,3 +118,58 @@ class OrderPlanSummaryResponse(TradingResponse):
 class OrderPlansResponse(TradingResponse):
     environment: str
     plans: tuple[OrderPlanSummaryResponse, ...]
+
+
+class OrderListEntryResponse(TradingResponse):
+    client_order_id: str
+    plan_id: UUID
+    trading_date: date
+    created_at: datetime
+    sequence: int
+    symbol: str
+    side: str
+    order_type: str
+    quantity: int
+    filled_quantity: int
+    limit_price: Decimal | None
+    reference_price: Decimal | None
+    reference_source: str | None
+    reference_received_at: datetime | None
+    state: str
+    reject_code: str | None
+
+
+class OrdersResponse(TradingResponse):
+    environment: str
+    orders: tuple[OrderListEntryResponse, ...]
+
+
+class RiskLimitUsageResponse(TradingResponse):
+    rule_code: str
+    basis: str
+    comparison: str
+    limit_value: Decimal
+    current_value: Decimal | None
+    usage_ratio: Decimal | None
+    reason: str | None
+
+
+class OrderConditionsResponse(TradingResponse):
+    order_window_start: time
+    order_window_end: time
+    quote_max_age_seconds: int
+    price_band: Decimal
+    api_failure_window_seconds: int
+
+
+class RiskLimitsResponse(TradingResponse):
+    environment: str
+    evaluated_at: datetime
+    basis_date: date | None
+    snapshot_id: UUID | None
+    snapshot_as_of: datetime | None
+    nav_basis: Decimal | None
+    session_open_nav: Decimal | None
+    peak_nav: Decimal | None
+    items: tuple[RiskLimitUsageResponse, ...]
+    conditions: OrderConditionsResponse

@@ -91,3 +91,39 @@ class OrderPlanSummary:
     plan: OrderPlanRecord
     order_count: int
     rejected_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class OrderListEntry:
+    """계획 경계를 넘어 시간순으로 나열되는 주문 한 건. 위험검사 판정은 계획 상세에서 조회한다."""
+
+    client_order_id: str
+    plan_id: UUID
+    trading_date: date
+    created_at: datetime
+    sequence: int
+    symbol: str
+    side: OrderSide
+    order_type: OrderType
+    quantity: int
+    filled_quantity: int
+    limit_price: Decimal | None
+    reference_price: Decimal | None
+    reference_source: str | None
+    reference_received_at: datetime | None
+    state: OrderState
+    reject_code: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TradingRiskState:
+    """위험 한도 소진율 계산의 입력이 되는 현재 상태."""
+
+    evaluated_at: datetime
+    basis_date: date | None
+    snapshot: StoredAccountSnapshot | None
+    session_open_nav: Decimal | None
+    peak_nav: Decimal | None
+    max_order_amount: Decimal
+    counters: StoredCounters
+    api_failures: int

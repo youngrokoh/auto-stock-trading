@@ -48,6 +48,12 @@
   --color-accent-line: #cfe0f7;
   --color-row-attention: #fffaf1;
 
+  /* 진행·소진율 막대 — 화면 디자인 사양 5.5 */
+  --color-usage-track: #eef1f6;
+  --color-usage-normal: #1f6feb;
+  --color-usage-warn: #d99b3c;
+  --color-usage-danger: #d33a2c;
+
   /* 차트 — 5.6 / 8.4 */
   --color-chart-grid: #eef1f6;
   --color-candle-up: #d33a2c;
@@ -129,6 +135,10 @@
     --color-accent-bg: #142440;
     --color-accent-line: #27456f;
     --color-row-attention: #241a0e;
+    --color-usage-track: #1a2536;
+    --color-usage-normal: #6ea8fe;
+    --color-usage-warn: #f0b45c;
+    --color-usage-danger: #ff8b84;
     --color-chart-grid: #1a2536;
     --color-candle-up: #ff5f56;
     --color-candle-down: #4d9bff;
@@ -695,6 +705,122 @@ select:focus-visible {
   text-align: right;
 }
 
+/* ── 진행·소진율 막대 — 5.5 ────────────────────────────────── */
+
+.usage-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.usage__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.usage__label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.usage__value {
+  margin-left: auto;
+  color: var(--color-text-strong);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-num);
+}
+
+.usage__limit {
+  color: var(--color-text-label);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-coord);
+}
+
+.usage__track {
+  margin-top: 3px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-usage-track);
+}
+
+.usage__fill {
+  height: 4px;
+  min-width: 1px;
+  border-radius: 2px;
+  background: var(--color-usage-normal);
+}
+
+.usage__fill--warn {
+  background: var(--color-usage-warn);
+}
+
+.usage__fill--danger {
+  background: var(--color-usage-danger);
+}
+
+.usage__fill--unknown {
+  background: repeating-linear-gradient(90deg, var(--color-text-label) 0 2px, transparent 2px 5px);
+}
+
+.usage__note {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-label);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-coord);
+}
+
+/* ── 이벤트 목록 ───────────────────────────────────────────── */
+
+.event-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-list li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-row-line);
+  padding: var(--space-2) 0;
+}
+
+.event-list li:last-child {
+  border-bottom: 0;
+}
+
+.event-list__time {
+  color: var(--color-text-label);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-coord);
+}
+
+.event-list__level {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-coord);
+  font-weight: 600;
+}
+
+.event-list__level--danger {
+  color: var(--color-danger);
+}
+
+.event-list__message {
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.card__note code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-coord);
+  overflow-wrap: anywhere;
+}
+
 /* ── 차트 — 5.6 ────────────────────────────────────────────── */
 
 .chart-legend {
@@ -995,7 +1121,7 @@ select:focus-visible {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     border-top: var(--border-width) solid var(--color-nav-line);
     background: var(--color-nav);
   }

@@ -177,6 +177,41 @@ test("전략 연구 화면이 저장된 백테스트 실행을 계보와 함께 
   expect(consoleErrors).toEqual([]);
 });
 
+test("모의매매 콘솔이 자동매매 상태와 정책 한도를 표시한다", async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto("/trading");
+
+  await expect(page.getByRole("heading", { name: "모의매매 콘솔" })).toBeVisible();
+  await expect(page.getByText("모의투자 전용 · 주문 제출 없음")).toBeVisible();
+  await expect(page.getByText("A1 · 기준 NAV")).toBeVisible();
+  await expect(page.getByText("A7 · 미체결")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "B 주문 내역" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "D 위험 한도 소진율" })).toBeVisible();
+  await expect(page.getByText("총 투자 비중")).toBeVisible();
+  await expect(page.getByText("분류되지 않은 종목 합계")).toBeVisible();
+  await expect(page.getByText("MISSING_SECTOR_DATA")).toBeVisible();
+  await expect(page.getByText("주문 허용시간", { exact: true })).toBeVisible();
+  await expect(page.getByText("09:05~15:15 KST").first()).toBeVisible();
+  if (expectData) {
+    await expect(page.getByText("자동매매 비활성")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "E 주문·위험 이벤트" })).toBeVisible();
+    await expect(page.getByText("상태 전이").first()).toBeVisible();
+  }
+
+  await expectNoSecretsAndNoOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("모의매매 콘솔이 계좌번호 원문을 노출하지 않는다", async ({ page }) => {
+  await page.goto("/trading");
+
+  await expect(page.getByRole("heading", { name: "C 보유 포지션" })).toBeVisible();
+  const bodyText = await page.locator("body").innerText();
+  expect(bodyText).not.toMatch(/계좌 \d{8}/);
+  expect(bodyText).not.toContain("50123456");
+});
+
 test("구성요소 갤러리가 승인된 프리미티브 상태를 표시한다", async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
 

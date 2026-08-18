@@ -19,6 +19,8 @@ HTTP로 주문을 만들거나 상태를 바꾸는 엔드포인트는 제공하�
 | `GET` | `/api/trading/account-snapshots` | 계좌 스냅샷 목록 (`limit` 기본 20 · 1~100) |
 | `GET` | `/api/trading/order-plans` | 주문 계획 목록 (`limit` 기본 20 · 1~100) |
 | `GET` | `/api/trading/order-plans/{plan_id}` | 계획 상세와 주문·위험검사 판정 전체 |
+| `GET` | `/api/trading/orders` | 계획 경계를 넘어 최신 순으로 나열한 주문 (`limit` 기본 50 · 1~200) |
+| `GET` | `/api/trading/risk-limits` | 정책 §3 한도 13종의 현재 소진율과 §4 주문 가능 조건 |
 
 `environment`는 서버 설정(`AUTO_STOCK_KIS_ENVIRONMENT`)의 값이며 응답에 항상 포함된다.
 
@@ -34,3 +36,27 @@ HTTP로 주문을 만들거나 상태를 바꾸는 엔드포인트는 제공하�
 - 거절 주문은 `state="rejected"`와 `reject_code`(정책 §7.2 차단 코드 또는 `RISK_*` 규칙 코드)를
   가지며, 기준가를 얻지 못한 주문은 `limit_price`·`reference_price`가 `null`이다. 값을 만들지 않는다.
 - 없는 `plan_id`는 `404`, UUID가 아닌 `plan_id`와 범위를 벗어난 `limit`은 `422`다.
+
+## 주문 목록
+
+`GET /api/trading/orders`는 주문을 생성 시각 역순으로 반환한다. 각 항목은 소속 계획(`plan_id`),
+거래일, 생성 시각, 종목, 구분, 수량, 저장된 체결 수량(`filled_quantity`), 지정가와 기준가·출처·수신
+시각, 상태, 거절 사유를 포함한다. 위험검사 판정은 포함하지 않고 계획 상세에서 조회한다. 주문 제출
+단계가 없는 동안 `filled_quantity`는 항상 0이며 값을 만들지 않는다.
+
+## 위험 한도 소진율
+
+`GET /api/trading/risk-limits`는 [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md)의
+한도 소진율 정의를 그대로 반환한다.
+
+- `items`는 정책 §3 표 순서의 13개 규칙이며 각 항목은 `rule_code`, `basis`, `comparison`,
+  `limit_value`, `current_value`, `usage_ratio`, `reason`을 가진다. 소진율은 1.0이 한도 도달이고
+  1.0을 넘으면 위반이다.
+- 계산 근거는 응답에 함께 담긴다: `evaluated_at`(계산 시각), `basis_date`(일일 카운터 기준 거래일),
+  `snapshot_id`·`snapshot_as_of`·`nav_basis`(기준 스냅샷), `session_open_nav`, `peak_nav`.
+- 값을 만들 수 없으면 `current_value`·`usage_ratio`가 `null`이고 `reason`에 사유 코드가 담긴다
+  (`MISSING_SNAPSHOT`·`MISSING_SESSION_OPEN_NAV`·`MISSING_PEAK_NAV`·`MISSING_SECTOR_DATA`·`ZERO_BASIS`).
+  업종별 비중은 업종 분류 원천이 없어 항상 `MISSING_SECTOR_DATA`다.
+- `conditions`는 정책 §4의 주문 허용시간·기준가 최대 지연·지정가 허용 범위·API 실패 집계 창이며
+  화면이 한도를 하드코딩하지 않도록 서버가 제공한다. 값은 모의투자 한도이고 실전 한도는 전환 게이트
+  통과 후 별도로 정의한다.

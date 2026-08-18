@@ -7,6 +7,7 @@ import { Market } from "./pages/market";
 import { Overview } from "./pages/overview";
 import { Showcase } from "./pages/showcase";
 import { Strategy } from "./pages/strategy";
+import { Trading } from "./pages/trading";
 
 type AppProps = Readonly<{
   queryClient: QueryClient;
@@ -24,6 +25,9 @@ const screenFor = (pathname: string) => {
   }
   if (pathname === "/strategy") {
     return <Strategy />;
+  }
+  if (pathname === "/trading") {
+    return <Trading />;
   }
   if (pathname === "/showcase") {
     return <Showcase />;

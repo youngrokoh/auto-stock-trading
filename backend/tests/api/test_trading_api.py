@@ -16,10 +16,13 @@ from auto_stock_trading.domain.orders.models import (
 from auto_stock_trading.domain.orders.records import (
     AutomationEventRecord,
     AutomationRecord,
+    OrderListEntry,
     OrderPlanRecord,
     OrderPlanSummary,
     OrderRecord,
     StoredAccountSnapshot,
+    StoredCounters,
+    TradingRiskState,
 )
 from auto_stock_trading.domain.risk.engine import RiskDecision
 from auto_stock_trading.domain.risk.limits import RiskRule
@@ -176,6 +179,55 @@ class StubTradingReader:
     async def order_plans(self, environment: str, limit: int) -> tuple[OrderPlanSummary, ...]:
         _ = (environment, limit)
         return (OrderPlanSummary(plan=_plan(), order_count=2, rejected_count=1),)
+
+    async def orders(self, environment: str, limit: int) -> tuple[OrderListEntry, ...]:
+        _ = (environment, limit)
+        plan = _plan()
+        return tuple(
+            OrderListEntry(
+                client_order_id=order.client_order_id,
+                plan_id=plan.plan_id,
+                trading_date=plan.trading_date,
+                created_at=_NOW,
+                sequence=order.sequence,
+                symbol=order.symbol,
+                side=order.side,
+                order_type=order.order_type,
+                quantity=order.quantity,
+                filled_quantity=0,
+                limit_price=order.limit_price,
+                reference_price=order.reference_price,
+                reference_source=order.reference_source,
+                reference_received_at=order.reference_received_at,
+                state=order.state,
+                reject_code=order.reject_code,
+            )
+            for order in plan.orders
+        )
+
+    async def risk_state(
+        self,
+        environment: str,
+        api_failure_window_seconds: int,
+    ) -> TradingRiskState:
+        _ = (environment, api_failure_window_seconds)
+        snapshots = await self.account_snapshots(environment, 1)
+        return TradingRiskState(
+            evaluated_at=_NOW,
+            basis_date=_TRADING_DATE,
+            snapshot=snapshots[0],
+            session_open_nav=Decimal(100_000_000),
+            peak_nav=Decimal(100_000_000),
+            max_order_amount=Decimal(5_000_000),
+            counters=StoredCounters(
+                open_orders=1,
+                daily_order_attempts=6,
+                daily_buy_amount=Decimal(12_000_000),
+                consecutive_rejects=1,
+                unreconciled_orders=True,
+            ),
+            api_failures=0,
+        )
 
     async def order_plan(self, plan_id: UUID) -> OrderPlanRecord | None:
         return _plan() if plan_id == _PLAN_ID else None
@@ -348,9 +400,199 @@ def test_order_plan_detail_includes_orders_and_risk_decisions() -> None:
     }
 
 
+def test_order_list_exposes_stored_fill_quantity_and_plan_reference() -> None:
+    response = _client().get("/api/trading/orders?limit=10")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "environment": "paper",
+        "orders": [
+            {
+                "client_order_id": "a" * 32,
+                "plan_id": str(_PLAN_ID),
+                "trading_date": "2026-08-18",
+                "created_at": "2026-08-18T04:00:00Z",
+                "sequence": 1,
+                "symbol": "005930",
+                "side": "buy",
+                "order_type": "limit",
+                "quantity": 50,
+                "filled_quantity": 0,
+                "limit_price": "100000",
+                "reference_price": "100000",
+                "reference_source": "KIS",
+                "reference_received_at": "2026-08-18T04:00:00Z",
+                "state": "planned",
+                "reject_code": None,
+            },
+            {
+                "client_order_id": "b" * 32,
+                "plan_id": str(_PLAN_ID),
+                "trading_date": "2026-08-18",
+                "created_at": "2026-08-18T04:00:00Z",
+                "sequence": 2,
+                "symbol": "069500",
+                "side": "buy",
+                "order_type": "limit",
+                "quantity": 0,
+                "filled_quantity": 0,
+                "limit_price": None,
+                "reference_price": None,
+                "reference_source": None,
+                "reference_received_at": None,
+                "state": "rejected",
+                "reject_code": "DATA_STALE",
+            },
+        ],
+    }
+
+
+def test_risk_limits_expose_policy_limits_with_current_usage() -> None:
+    response = _client().get("/api/trading/risk-limits")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "environment": "paper",
+        "evaluated_at": "2026-08-18T04:00:00Z",
+        "basis_date": "2026-08-18",
+        "snapshot_id": str(_SNAPSHOT_ID),
+        "snapshot_as_of": "2026-08-18T04:00:00Z",
+        "nav_basis": "100000000",
+        "session_open_nav": "100000000",
+        "peak_nav": "100000000",
+        "items": [
+            {
+                "rule_code": "RISK_TOTAL_EXPOSURE",
+                "basis": "nav_ratio",
+                "comparison": "at_most",
+                "limit_value": "0.80",
+                "current_value": "0.109800",
+                "usage_ratio": "0.137250",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_MIN_CASH",
+                "basis": "nav_ratio",
+                "comparison": "at_least",
+                "limit_value": "0.20",
+                "current_value": "0.890200",
+                "usage_ratio": "0.224669",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_SYMBOL_EXPOSURE",
+                "basis": "nav_ratio",
+                "comparison": "at_most",
+                "limit_value": "0.10",
+                "current_value": "0.109800",
+                "usage_ratio": "1.098000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_SECTOR_EXPOSURE",
+                "basis": "nav_ratio",
+                "comparison": "at_most",
+                "limit_value": "0.30",
+                "current_value": None,
+                "usage_ratio": None,
+                "reason": "MISSING_SECTOR_DATA",
+            },
+            {
+                "rule_code": "RISK_UNCLASSIFIED_EXPOSURE",
+                "basis": "nav_ratio",
+                "comparison": "at_most",
+                "limit_value": "0.10",
+                "current_value": "0.109800",
+                "usage_ratio": "1.098000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_ORDER_AMOUNT",
+                "basis": "nav_ratio",
+                "comparison": "at_most",
+                "limit_value": "0.05",
+                "current_value": "0.050000",
+                "usage_ratio": "1.000000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_DAILY_BUY_AMOUNT",
+                "basis": "session_open_nav_ratio",
+                "comparison": "at_most",
+                "limit_value": "0.20",
+                "current_value": "0.120000",
+                "usage_ratio": "0.600000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_OPEN_ORDERS",
+                "basis": "count",
+                "comparison": "at_most",
+                "limit_value": "5",
+                "current_value": "1",
+                "usage_ratio": "0.200000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_DAILY_ORDER_ATTEMPTS",
+                "basis": "count",
+                "comparison": "at_most",
+                "limit_value": "20",
+                "current_value": "6",
+                "usage_ratio": "0.300000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_DAILY_LOSS",
+                "basis": "session_open_nav_ratio",
+                "comparison": "at_least",
+                "limit_value": "-0.02",
+                "current_value": "0.000000",
+                "usage_ratio": "0.000000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_DRAWDOWN",
+                "basis": "peak_nav_ratio",
+                "comparison": "at_least",
+                "limit_value": "-0.05",
+                "current_value": "0.000000",
+                "usage_ratio": "0.000000",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_CONSECUTIVE_REJECTS",
+                "basis": "count",
+                "comparison": "at_most",
+                "limit_value": "3",
+                "current_value": "1",
+                "usage_ratio": "0.333333",
+                "reason": None,
+            },
+            {
+                "rule_code": "RISK_API_FAILURES",
+                "basis": "count",
+                "comparison": "at_most",
+                "limit_value": "3",
+                "current_value": "0",
+                "usage_ratio": "0.000000",
+                "reason": None,
+            },
+        ],
+        "conditions": {
+            "order_window_start": "09:05:00",
+            "order_window_end": "15:15:00",
+            "quote_max_age_seconds": 10,
+            "price_band": "0.01",
+            "api_failure_window_seconds": 300,
+        },
+    }
+
+
 def test_unknown_plan_returns_404_and_invalid_id_returns_422() -> None:
     client = _client()
 
     assert client.get(f"/api/trading/order-plans/{_MISSING_PLAN_ID}").status_code == 404
     assert client.get("/api/trading/order-plans/not-a-uuid").status_code == 422
     assert client.get("/api/trading/account-snapshots?limit=0").status_code == 422
+    assert client.get("/api/trading/orders?limit=0").status_code == 422

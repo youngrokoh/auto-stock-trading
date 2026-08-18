@@ -16,6 +16,13 @@ from auto_stock_trading.adapters.database.market_data_rows import (
     InstrumentRow,
     RawApiResponseRow,
 )
+from auto_stock_trading.adapters.database.trading_queries import (
+    buy_amount_query,
+    consecutive_rejects,
+    open_orders_query,
+    order_attempts_query,
+    recent_states_query,
+)
 from auto_stock_trading.adapters.database.trading_rows import (
     AccountPositionRow,
     AccountSnapshotRow,
@@ -264,54 +271,15 @@ class PostgresTradingStore:
 
     async def counters(self, environment: str, trading_date: date) -> StoredCounters:
         async with self._sessions() as session:
-            open_orders = await session.scalar(
-                select(func.count())
-                .select_from(OrderRow)
-                .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
-                .where(
-                    OrderPlanRow.environment == environment,
-                    OrderRow.state.in_(_OPEN_STATES),
-                )
-            )
-            attempts = await session.scalar(
-                select(func.count())
-                .select_from(OrderRow)
-                .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
-                .where(
-                    OrderPlanRow.environment == environment,
-                    OrderPlanRow.trading_date == trading_date,
-                )
-            )
-            buy_amount = await session.scalar(
-                select(func.coalesce(func.sum(OrderRow.quantity * OrderRow.limit_price), 0))
-                .select_from(OrderRow)
-                .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
-                .where(
-                    OrderPlanRow.environment == environment,
-                    OrderPlanRow.trading_date == trading_date,
-                    OrderRow.side == "buy",
-                    OrderRow.state.in_(_BUY_COUNTED_STATES),
-                )
-            )
-            recent_states = (
-                await session.scalars(
-                    select(OrderRow.state)
-                    .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
-                    .where(OrderPlanRow.environment == environment)
-                    .order_by(OrderRow.created_at.desc(), OrderRow.sequence.desc())
-                    .limit(20)
-                )
-            ).all()
-        consecutive = 0
-        for state in recent_states:
-            if state != OrderState.REJECTED.value:
-                break
-            consecutive += 1
+            open_orders = await session.scalar(open_orders_query(environment))
+            attempts = await session.scalar(order_attempts_query(environment, trading_date))
+            buy_amount = await session.scalar(buy_amount_query(environment, trading_date))
+            recent_states = (await session.scalars(recent_states_query(environment))).all()
         return StoredCounters(
             open_orders=open_orders or 0,
             daily_order_attempts=attempts or 0,
             daily_buy_amount=Decimal(buy_amount or 0),
-            consecutive_rejects=consecutive,
+            consecutive_rejects=consecutive_rejects(recent_states),
             unreconciled_orders=bool(open_orders),
         )
 

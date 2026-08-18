@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, Final, final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -11,6 +12,14 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
+from auto_stock_trading.adapters.database.trading_queries import (
+    buy_amount_query,
+    consecutive_rejects,
+    max_order_amount_query,
+    open_orders_query,
+    order_attempts_query,
+    recent_states_query,
+)
 from auto_stock_trading.adapters.database.trading_rows import (
     AccountPositionRow,
     AccountSnapshotRow,
@@ -30,19 +39,25 @@ from auto_stock_trading.domain.orders.models import (
 from auto_stock_trading.domain.orders.records import (
     AutomationEventRecord,
     AutomationRecord,
+    OrderListEntry,
     OrderPlanRecord,
     OrderPlanSummary,
     OrderRecord,
     StoredAccountSnapshot,
+    StoredCounters,
+    TradingRiskState,
 )
 from auto_stock_trading.domain.risk.engine import RiskDecision
 from auto_stock_trading.domain.risk.limits import RiskRule
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import date
     from uuid import UUID
 
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+_API_FAILURE: Final = "api_failure"
 
 
 def _won(value: Decimal) -> Decimal:
@@ -245,9 +260,138 @@ class PostgresTradingReader:
                 orders.append(_order(order_row, symbol, decisions))
         return _plan(row, tuple(orders))
 
+    async def orders(self, environment: str, limit: int) -> tuple[OrderListEntry, ...]:
+        statement = (
+            select(OrderRow, InstrumentRow.symbol, OrderPlanRow.trading_date)
+            .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+            .join(InstrumentRow, OrderRow.instrument_id == InstrumentRow.id)
+            .where(OrderPlanRow.environment == environment)
+            .order_by(OrderRow.created_at.desc(), OrderRow.sequence.desc())
+            .limit(limit)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(_entry(row, symbol, trading_date) for row, symbol, trading_date in rows)
+
+    async def risk_state(
+        self,
+        environment: str,
+        api_failure_window_seconds: int,
+    ) -> TradingRiskState:
+        evaluated_at = datetime.now(UTC)
+        since = evaluated_at - timedelta(seconds=api_failure_window_seconds)
+        snapshots = await self.account_snapshots(environment, 1)
+        snapshot = snapshots[0] if snapshots else None
+        async with self._sessions() as session:
+            basis_date = (
+                snapshot.snapshot.trading_date
+                if snapshot is not None
+                else await _latest_plan_date(session, environment)
+            )
+            baselines = await _nav_baselines(session, environment, basis_date)
+            counters = await _counters(session, environment, basis_date)
+            failures = await session.scalar(
+                select(func.count())
+                .select_from(AutomationEventRow)
+                .where(
+                    AutomationEventRow.environment == environment,
+                    AutomationEventRow.event_type == _API_FAILURE,
+                    AutomationEventRow.occurred_at >= since,
+                )
+            )
+        session_open_nav, peak_nav, max_order_amount = baselines
+        return TradingRiskState(
+            evaluated_at=evaluated_at,
+            basis_date=basis_date,
+            snapshot=snapshot,
+            session_open_nav=session_open_nav,
+            peak_nav=peak_nav,
+            max_order_amount=max_order_amount,
+            counters=counters,
+            api_failures=failures or 0,
+        )
+
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
+
+
+def _entry(row: OrderRow, symbol: str, trading_date: date) -> OrderListEntry:
+    return OrderListEntry(
+        client_order_id=row.client_order_id,
+        plan_id=row.plan_id,
+        trading_date=trading_date,
+        created_at=row.created_at,
+        sequence=row.sequence,
+        symbol=symbol,
+        side=OrderSide(row.side),
+        order_type=OrderType(row.order_type),
+        quantity=row.quantity,
+        filled_quantity=row.filled_quantity,
+        limit_price=row.limit_price,
+        reference_price=row.reference_price,
+        reference_source=row.reference_source,
+        reference_received_at=row.reference_received_at,
+        state=OrderState(row.state),
+        reject_code=row.reject_code,
+    )
+
+
+async def _latest_plan_date(session: AsyncSession, environment: str) -> date | None:
+    return await session.scalar(
+        select(func.max(OrderPlanRow.trading_date)).where(OrderPlanRow.environment == environment)
+    )
+
+
+async def _nav_baselines(
+    session: AsyncSession,
+    environment: str,
+    basis_date: date | None,
+) -> tuple[Decimal | None, Decimal | None, Decimal]:
+    """장 시작 NAV·고점 NAV·그 거래일 최대 주문 금액. 기준 거래일이 없으면 값을 만들지 않는다."""
+    peak = await session.scalar(
+        select(func.max(AccountSnapshotRow.nav)).where(
+            AccountSnapshotRow.environment == environment
+        )
+    )
+    if basis_date is None:
+        return (None, None, Decimal(0))
+    session_open = await session.scalar(
+        select(AccountSnapshotRow.nav)
+        .where(
+            AccountSnapshotRow.environment == environment,
+            AccountSnapshotRow.trading_date == basis_date,
+        )
+        .order_by(AccountSnapshotRow.received_at)
+        .limit(1)
+    )
+    largest = await session.scalar(max_order_amount_query(environment, basis_date))
+    return (
+        None if session_open is None else _won(session_open),
+        None if peak is None else _won(peak),
+        Decimal(largest or 0),
+    )
+
+
+async def _counters(
+    session: AsyncSession,
+    environment: str,
+    basis_date: date | None,
+) -> StoredCounters:
+    open_orders = await session.scalar(open_orders_query(environment)) or 0
+    attempts = 0
+    buy_amount = Decimal(0)
+    if basis_date is not None:
+        attempts = await session.scalar(order_attempts_query(environment, basis_date)) or 0
+        buy_amount = Decimal(await session.scalar(buy_amount_query(environment, basis_date)) or 0)
+    states = (await session.scalars(recent_states_query(environment))).all()
+    return StoredCounters(
+        open_orders=open_orders,
+        daily_order_attempts=attempts,
+        daily_buy_amount=buy_amount,
+        consecutive_rejects=consecutive_rejects(states),
+        unreconciled_orders=bool(open_orders),
+    )
 
 
 async def _positions(session: AsyncSession, snapshot_id: UUID) -> tuple[AccountPosition, ...]:

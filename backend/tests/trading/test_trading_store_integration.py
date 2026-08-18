@@ -392,6 +392,116 @@ def test_counters_reflect_stored_orders() -> None:
     anyio.run(_run_scenario, scenario)
 
 
+def test_orders_are_listed_newest_first_across_plans() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        first = _plan(orders=(_order(),))
+        await store.save_plan(first)
+        later = replace(
+            _plan(orders=(_order(client_order_id="d" * 32, sequence=1),)),
+            planned_at=_NOW + timedelta(minutes=3),
+        )
+        await store.save_plan(later)
+
+        entries = await reader.orders(_ENVIRONMENT, 10)
+
+        assert [entry.client_order_id for entry in entries] == ["d" * 32, "a" * 32]
+        assert [entry.plan_id for entry in entries] == [later.plan_id, first.plan_id]
+        assert [entry.trading_date for entry in entries] == [_TRADING_DATE, _TRADING_DATE]
+        assert [entry.filled_quantity for entry in entries] == [0, 0]
+        assert [entry.symbol for entry in entries] == [_SYMBOL, _SYMBOL]
+        assert [entry.state for entry in entries] == [OrderState.PLANNED, OrderState.PLANNED]
+        assert [str(entry.limit_price) for entry in entries] == [
+            "100000.00000000",
+            "100000.00000000",
+        ]
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_risk_state_collects_nav_baselines_counters_and_recent_api_failures() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        now = datetime.now(UTC)
+        await store.record_api_failure(_ENVIRONMENT, "quote:TimeoutError", now)
+        await store.record_api_failure(
+            _ENVIRONMENT,
+            "quote:TimeoutError",
+            now - timedelta(minutes=10),
+        )
+        _ = await store.save_account_snapshot(
+            _snapshot_observation(nav=Decimal(100_000_000), held=40)
+        )
+        _ = await store.save_account_snapshot(
+            replace(
+                _snapshot_observation(nav=Decimal(98_000_000), held=40),
+                snapshot=replace(
+                    _snapshot_observation(nav=Decimal(98_000_000), held=40).snapshot,
+                    received_at=_NOW + timedelta(minutes=5),
+                ),
+            )
+        )
+        await store.save_plan(
+            _plan(
+                orders=(
+                    _order(),
+                    _order(
+                        sequence=2,
+                        client_order_id="e" * 32,
+                        quantity=0,
+                        state=OrderState.REJECTED,
+                        reject_code=RiskRule.MIN_CASH.value,
+                    ),
+                )
+            )
+        )
+
+        state = await reader.risk_state(_ENVIRONMENT, 300)
+
+        assert state.snapshot is not None
+        assert str(state.snapshot.snapshot.nav) == "98000000"
+        assert state.basis_date == _TRADING_DATE
+        assert str(state.session_open_nav) == "100000000"
+        assert str(state.peak_nav) == "100000000"
+        assert state.max_order_amount == Decimal(5_000_000)
+        assert state.counters.daily_order_attempts == 2
+        assert state.counters.daily_buy_amount == Decimal(5_000_000)
+        assert state.counters.consecutive_rejects == 1
+        assert state.api_failures == 1
+        assert state.evaluated_at >= now
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_risk_state_without_snapshot_reports_no_basis() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = (store, connection)
+
+        state = await reader.risk_state(_ENVIRONMENT, 300)
+
+        assert state.snapshot is None
+        assert state.basis_date is None
+        assert state.session_open_nav is None
+        assert state.peak_nav is None
+        assert state.max_order_amount == Decimal(0)
+        assert state.counters.open_orders == 0
+        assert state.api_failures == 0
+
+    anyio.run(_run_scenario, scenario)
+
+
 async def _run_scenario(scenario: StoreScenario) -> None:
     settings = Settings()
     engine = create_async_engine(settings.database_url.get_secret_value())
