@@ -20,10 +20,12 @@
 - KIS 투자자별 수급(당일 제외 버전 사실)과 DART 공시 목록 수집·읽기 API
 - KIS 공식 마스터 파일 기반 국내 ETF 전체 목록과 NAV·괴리율 스냅샷·분배율
 - 승인 디자인으로 구현한 운영 개요·시장 데이터·기업 분석·ETF 탐색 화면(캔들·보조지표·실적 차트, 좌표 셀, 안전 배너)
+- 결정적 백테스트 엔진과 전략 연구 화면
+- 승인된 안전 정책 한도를 코드로 표현한 결정적 위험검사와 모의투자 주문 계획(주문 제출 없음)
 - 모바일·태블릿·데스크톱(390/768/1360px) Playwright 검증
 - 코드와 문서 변경을 함께 검사하는 문서 동기화 게이트
 
-주문, 계좌, 전략과 AI 모델은 아직 구현하지 않았다. 실전거래는 승인된 [전환 게이트](spec/paper-to-live-gate.md)를 통과하기 전까지 비활성 상태를 유지한다.
+계좌 조회·목표 포지션·위험검사·주문 계획까지 구현했고 증권사 주문 제출과 AI 모델은 아직 구현하지 않았다. 실전거래는 승인된 [전환 게이트](spec/paper-to-live-gate.md)를 통과하기 전까지 비활성 상태를 유지한다.
 
 ## 실행
 
@@ -114,6 +116,7 @@ Taskiq worker ── Valkey
 - [시장 데이터 읽기 API](api/market-data-api.md)
 - [기업 재무 읽기 API](api/fundamentals-api.md)
 - [백테스트 읽기 API](api/backtest-api.md)
+- [모의투자 주문 계획 읽기 API](api/trading-api.md)
 
 #### Data
 
@@ -125,6 +128,7 @@ Taskiq worker ── Valkey
 - [수급·공시 연결 데이터 계약](data/investor-flow-disclosure-contract.md)
 - [ETF 탐색 데이터 계약](data/etf-exploration-data-contract.md)
 - [백테스트·규칙형 전략 계약](data/backtest-strategy-contract.md)
+- [주문 계획·위험검사 데이터 계약](data/order-planning-risk-contract.md)
 
 #### Operations
 
@@ -140,6 +144,7 @@ Taskiq worker ── Valkey
 - [4단계 기업 재무 데이터 검증](qa/phase-4-fundamentals-verification.md)
 - [5단계 ETF 탐색 검증](qa/phase-5-etf-verification.md)
 - [6단계 백테스트 엔진 검증](qa/phase-6-backtest-verification.md)
+- [7단계 주문 계획·위험검사 검증](qa/phase-7-order-planning-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions
@@ -150,6 +155,7 @@ Taskiq worker ── Valkey
 - [ADR-0004: AI 신호와 주문 실행 분리](decisions/0004-ai-execution-separation.md)
 - [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](decisions/0005-kis-token-and-rate-coordination.md)
 - [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](decisions/0006-market-calendar-scheduling.md)
+- [ADR-0007: 모의투자 주문 계획과 위험검사 경계](decisions/0007-paper-order-planning-and-risk.md)
 
 #### Governance
 

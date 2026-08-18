@@ -18,6 +18,7 @@ from auto_stock_trading.domain.market_data.models import (
     BrokerOperation,
     InstrumentTarget,
     MarketDataBundle,
+    QuoteObservation,
 )
 
 if TYPE_CHECKING:
@@ -129,6 +130,20 @@ class KisMarketDataAdapter:
             daily_bars=bars,
             raw_responses=raw_responses,
             collected_at=max(raw.received_at for raw in raw_responses),
+        )
+
+    async def fetch_quote(self, target: InstrumentTarget) -> QuoteObservation:
+        """주문 판단용 현재가를 단건으로 새로 조회한다(정책 §4의 10초 규칙)."""
+        raw = await self._client.get(
+            endpoint=QUOTE_ENDPOINT,
+            transaction_id="FHKST01010100",
+            params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target.symbol},
+            request_fingerprint=f"quote:{target.symbol}",
+        )
+        response = parse_response(raw, KisQuoteResponse, BrokerOperation.QUOTE)
+        return QuoteObservation(
+            quote=quote_from(target, response, raw.received_at),
+            raw=raw_from(BrokerOperation.QUOTE, raw),
         )
 
     async def close(self) -> None:

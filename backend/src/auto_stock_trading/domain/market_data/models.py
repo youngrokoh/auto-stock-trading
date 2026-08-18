@@ -51,6 +51,7 @@ class BrokerOperation(StrEnum):
     INVESTOR_FLOWS = "investor_flows"
     ETF_MASTER = "etf_master"
     ETF_NAV = "etf_nav"
+    ACCOUNT_BALANCE = "account_balance"
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +128,12 @@ class VersionedDailyBar:
     version: int
     valid_from: datetime
     superseded_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class QuoteObservation:
+    quote: Quote
+    raw: RawBrokerResponse
 
 
 @dataclass(frozen=True, slots=True)

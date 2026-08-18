@@ -9,6 +9,7 @@
 | [기업 재무 읽기 API](../api/fundamentals-api.md) | `docs/api/fundamentals-api.md` | 구현됨 |
 | [내부 상태 확인 API](../api/health-api.md) | `docs/api/health-api.md` | 구현됨 |
 | [시장 데이터 읽기 API](../api/market-data-api.md) | `docs/api/market-data-api.md` | 구현됨 |
+| [모의투자 주문 계획 읽기 API](../api/trading-api.md) | `docs/api/trading-api.md` | 구현됨 |
 | [프로젝트 실행 구조](../architecture/project-structure.md) | `docs/architecture/project-structure.md` | 구현됨 |
 | [상세 기술 스택](../architecture/tech-stack.md) | `docs/architecture/tech-stack.md` | 승인 |
 | [백테스트·규칙형 전략 계약](../data/backtest-strategy-contract.md) | `docs/data/backtest-strategy-contract.md` | 구현 기준 |
@@ -19,12 +20,14 @@
 | [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md) | `docs/data/investor-flow-disclosure-contract.md` | 구현 기준 |
 | [국내 시장 달력 데이터 계약](../data/market-calendar-data-contract.md) | `docs/data/market-calendar-data-contract.md` | 구현 기준 |
 | [국내 분봉 데이터 계약](../data/minute-bar-data-contract.md) | `docs/data/minute-bar-data-contract.md` | 구현 기준 |
+| [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md) | `docs/data/order-planning-risk-contract.md` | 구현 기준 |
 | [ADR-0001: 모듈형 모놀리스 채택](../decisions/0001-modular-monolith.md) | `docs/decisions/0001-modular-monolith.md` | 승인 |
 | [ADR-0002: Python·React 기술 기준선 채택](../decisions/0002-technology-baseline.md) | `docs/decisions/0002-technology-baseline.md` | 승인 |
 | [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](../decisions/0003-data-architecture.md) | `docs/decisions/0003-data-architecture.md` | 승인 |
 | [ADR-0004: AI 신호와 주문 실행 분리](../decisions/0004-ai-execution-separation.md) | `docs/decisions/0004-ai-execution-separation.md` | 승인 |
 | [ADR-0005: Valkey 기반 KIS 토큰·호출 조정](../decisions/0005-kis-token-and-rate-coordination.md) | `docs/decisions/0005-kis-token-and-rate-coordination.md` | 승인 |
 | [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](../decisions/0006-market-calendar-scheduling.md) | `docs/decisions/0006-market-calendar-scheduling.md` | 승인 |
+| [ADR-0007: 모의투자 주문 계획과 위험검사 경계](../decisions/0007-paper-order-planning-and-risk.md) | `docs/decisions/0007-paper-order-planning-and-risk.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |
@@ -44,6 +47,7 @@
 | [4단계 기업 재무 데이터 검증](../qa/phase-4-fundamentals-verification.md) | `docs/qa/phase-4-fundamentals-verification.md` | 검증 완료 (수집·저장·읽기 API·지표 계산·가치지표·수급·공시 연결·기업 분석 화면 범위) |
 | [5단계 ETF 탐색 검증](../qa/phase-5-etf-verification.md) | `docs/qa/phase-5-etf-verification.md` | 검증 완료 (마스터·NAV 스냅샷·순위·상세 범위) |
 | [6단계 백테스트 엔진 검증](../qa/phase-6-backtest-verification.md) | `docs/qa/phase-6-backtest-verification.md` | 검증 완료 (엔진·기술 전략 1종·읽기 API·전략 연구 화면 범위) |
+| [7단계 주문 계획·위험검사 검증](../qa/phase-7-order-planning-verification.md) | `docs/qa/phase-7-order-planning-verification.md` | 검증 완료 (계획 계층 범위) · 실계좌 조회 대조는 계좌번호 secret 대기 |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

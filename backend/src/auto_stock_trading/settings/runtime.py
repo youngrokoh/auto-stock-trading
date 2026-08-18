@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     kis_app_secret: SecretStr | None = None
     kis_app_key_file: Path | None = None
     kis_app_secret_file: Path | None = None
+    kis_account_number: SecretStr | None = None
+    kis_account_number_file: Path | None = None
+    kis_account_product_code: SecretStr | None = None
+    kis_account_product_code_file: Path | None = None
     dart_api_key: SecretStr | None = None
     dart_api_key_file: Path | None = None
     dart_base_url: str = "https://opendart.fss.or.kr"

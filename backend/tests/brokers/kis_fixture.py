@@ -4,6 +4,7 @@ from urllib.parse import parse_qs
 import httpx2
 from pydantic import SecretStr
 
+from auto_stock_trading.adapters.brokers.kis_account import BALANCE_ENDPOINT
 from auto_stock_trading.adapters.brokers.kis_coordination import (
     InMemoryKisRequestCoordinator,
     KisCoordinationConfig,
@@ -37,6 +38,8 @@ class KisFixtureHandler:
             index = min(self.token_requests - 1, len(self._token_filenames) - 1)
             return self._response(request, self._token_filenames[index])
         self.market_requests.append(request)
+        if request.url.path == BALANCE_ENDPOINT:
+            return self._response(request, "account_balance.json")
         query = parse_qs(request.url.query.decode())
         symbols = query.get("PDNO") or query.get("FID_INPUT_ISCD")
         if not symbols:

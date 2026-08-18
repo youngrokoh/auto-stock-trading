@@ -1,0 +1,120 @@
+from datetime import date, datetime
+from decimal import Decimal
+from typing import ClassVar
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
+
+class TradingResponse(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class AutomationEventResponse(TradingResponse):
+    event_type: str
+    previous_state: str | None
+    state: str | None
+    reason_code: str | None
+    detail: str | None
+    occurred_at: datetime
+
+
+class AutomationResponse(TradingResponse):
+    environment: str
+    state: str
+    reason_code: str | None
+    trading_date: date | None
+    changed_at: datetime | None
+    events: tuple[AutomationEventResponse, ...]
+
+
+class AccountPositionResponse(TradingResponse):
+    symbol: str
+    quantity: int
+    orderable_quantity: int
+    average_price: Decimal
+    current_price: Decimal
+    evaluation_amount: Decimal
+    profit_loss: Decimal
+
+
+class AccountSnapshotResponse(TradingResponse):
+    snapshot_id: UUID
+    source: str
+    environment: str
+    account_reference: str
+    currency: str
+    cash_balance: Decimal
+    orderable_cash: Decimal
+    position_value: Decimal
+    nav: Decimal
+    broker_net_asset: Decimal
+    trading_date: date
+    as_of: datetime
+    received_at: datetime
+    positions: tuple[AccountPositionResponse, ...]
+
+
+class AccountSnapshotsResponse(TradingResponse):
+    environment: str
+    snapshots: tuple[AccountSnapshotResponse, ...]
+
+
+class RiskDecisionResponse(TradingResponse):
+    rule_code: str
+    limit_value: Decimal
+    projected_value: Decimal
+    passed: bool
+
+
+class OrderResponse(TradingResponse):
+    client_order_id: str
+    sequence: int
+    symbol: str
+    side: str
+    order_type: str
+    quantity: int
+    limit_price: Decimal | None
+    reference_price: Decimal | None
+    reference_source: str | None
+    reference_received_at: datetime | None
+    state: str
+    reject_code: str | None
+    risk_decisions: tuple[RiskDecisionResponse, ...]
+
+
+class OrderPlanResponse(TradingResponse):
+    plan_id: UUID
+    environment: str
+    strategy_name: str
+    strategy_version: str
+    parameters_json: str
+    signal_date: date
+    trading_date: date
+    account_snapshot_id: UUID | None
+    nav_basis: Decimal | None
+    session_open_nav: Decimal | None
+    automation_state: str
+    status: str
+    block_code: str | None
+    planned_at: datetime
+    orders: tuple[OrderResponse, ...]
+
+
+class OrderPlanSummaryResponse(TradingResponse):
+    plan_id: UUID
+    strategy_name: str
+    strategy_version: str
+    signal_date: date
+    trading_date: date
+    automation_state: str
+    status: str
+    block_code: str | None
+    planned_at: datetime
+    order_count: int
+    rejected_count: int
+
+
+class OrderPlansResponse(TradingResponse):
+    environment: str
+    plans: tuple[OrderPlanSummaryResponse, ...]

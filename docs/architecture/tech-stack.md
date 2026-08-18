@@ -266,6 +266,8 @@ features/
 
 Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심 의존성으로 사용하지 않는다.
 
+2026-08-18에는 주문 실행 이전 계층을 추가했다. `domain/risk/`가 거래 안전 정책 §3·§4의 한도를 외부 호출 없는 순수 함수로 표현하고, `domain/orders/`가 주문·자동매매 상태 머신과 호가단위·지정가 규칙을 담는다. `application/trading/`이 시장 달력·계좌 조회·현재가 조회·저장소 Protocol을 조합해 계획을 만들고, `adapters/database/trading_*`가 `trading` 스키마(리비전 `20260818_0014`)에 계좌 스냅샷·자동매매 상태·주문·이벤트·위험판정을 저장한다. 읽기는 `/api/trading/*`, 실행은 `worker/execution/planning.py` CLI다. 증권사 주문 제출 어댑터는 아직 존재하지 않는다.
+
 2026-08-18 구현 상태: 보조지표(SMA·EMA·RSI·MACD·ATR·볼린저)는 `domain/strategies/indicators.py`의
 순수 `Decimal` 함수로 구현했다. 2종목 유니버스에서는 Polars 도입 없이 금액 `Decimal` 규칙과
 결정성을 우선했고, 다종목 유니버스로 확장할 때 Polars 벡터화를 재검토한다. 백테스트 엔진은

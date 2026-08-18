@@ -3,8 +3,8 @@
   "rules": [
     {
       "name": "order-and-risk",
-      "code": ["backend/src/auto_stock_trading/api/trading/**", "backend/src/auto_stock_trading/worker/execution/**", "backend/src/auto_stock_trading/domain/orders/**", "backend/src/auto_stock_trading/domain/risk/**", "backend/src/auto_stock_trading/application/trading/**", "backend/tests/trading/**", "backend/tests/risk/**"],
-      "docs": ["docs/spec/trading-safety-policy.md", "docs/spec/paper-to-live-gate.md", "docs/spec/product-scope.md", "docs/decisions/0004-ai-execution-separation.md"]
+      "code": ["backend/src/auto_stock_trading/api/trading/**", "backend/src/auto_stock_trading/worker/execution/**", "backend/src/auto_stock_trading/domain/orders/**", "backend/src/auto_stock_trading/domain/risk/**", "backend/src/auto_stock_trading/application/trading/**", "backend/src/auto_stock_trading/adapters/database/trading_*", "backend/src/auto_stock_trading/adapters/brokers/kis_account.py", "backend/migrations/versions/*trading*", "backend/tests/trading/**", "backend/tests/risk/**", "backend/tests/api/test_trading_api.py", "backend/tests/brokers/test_kis_account.py"],
+      "docs": ["docs/spec/trading-safety-policy.md", "docs/spec/paper-to-live-gate.md", "docs/spec/product-scope.md", "docs/decisions/0004-ai-execution-separation.md", "docs/decisions/0007-paper-order-planning-and-risk.md", "docs/data/order-planning-risk-contract.md", "docs/api/trading-api.md", "docs/qa/phase-7-order-planning-verification.md", "docs/plan/current-status.md"]
     },
     {
       "name": "broker-and-market-data",

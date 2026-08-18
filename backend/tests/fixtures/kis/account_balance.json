@@ -1,0 +1,39 @@
+{
+  "rt_cd": "0",
+  "msg_cd": "20310000",
+  "msg1": "모의투자 조회가 완료되었습니다.",
+  "ctx_area_fk100": "",
+  "ctx_area_nk100": "",
+  "output1": [
+    {
+      "pdno": "005930",
+      "prdt_name": "삼성전자",
+      "hldg_qty": "40",
+      "ord_psbl_qty": "40",
+      "pchs_avg_pric": "268500.0000",
+      "prpr": "274500",
+      "evlu_amt": "10980000",
+      "evlu_pfls_amt": "240000"
+    },
+    {
+      "pdno": "069500",
+      "prdt_name": "KODEX 200",
+      "hldg_qty": "0",
+      "ord_psbl_qty": "0",
+      "pchs_avg_pric": "0.0000",
+      "prpr": "110060",
+      "evlu_amt": "0",
+      "evlu_pfls_amt": "0"
+    }
+  ],
+  "output2": [
+    {
+      "dnca_tot_amt": "89020000",
+      "nxdy_excc_amt": "89020000",
+      "prvs_rcdl_excc_amt": "89020000",
+      "scts_evlu_amt": "10980000",
+      "tot_evlu_amt": "100000000",
+      "nass_amt": "100000000"
+    }
+  ]
+}
