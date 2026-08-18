@@ -20,7 +20,11 @@ from auto_stock_trading.adapters.database.market_data_etf_reader import Postgres
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.strategy_backtest_reader import (
+    PostgresBacktestReader,
+)
 from auto_stock_trading.adapters.health import PostgresHealthProbe, ValkeyHealthProbe
+from auto_stock_trading.api.backtests import create_backtests_router
 from auto_stock_trading.api.fundamentals import create_fundamentals_router
 from auto_stock_trading.api.health import create_health_router
 from auto_stock_trading.api.market_data import create_market_data_router
@@ -30,6 +34,7 @@ from auto_stock_trading.application.adjusted_prices import (
     AdjustedPriceReader,
     CorporateActionReader,
 )
+from auto_stock_trading.application.backtests.reader import BacktestReader
 from auto_stock_trading.application.disclosures import DisclosureReader
 from auto_stock_trading.application.etf import EtfReader
 from auto_stock_trading.application.financial_statements import FinancialReportReader
@@ -44,6 +49,7 @@ AdjustedPriceReaderFactory = Callable[[], AdjustedPriceReader]
 FinancialReportReaderFactory = Callable[[], FinancialReportReader]
 DisclosureReaderFactory = Callable[[], DisclosureReader]
 EtfReaderFactory = Callable[[], EtfReader]
+BacktestReaderFactory = Callable[[], BacktestReader]
 
 
 def create_app(  # noqa: PLR0913
@@ -57,6 +63,7 @@ def create_app(  # noqa: PLR0913
     financial_report_reader_factory: FinancialReportReaderFactory | None = None,
     disclosure_reader_factory: DisclosureReaderFactory | None = None,
     etf_reader_factory: EtfReaderFactory | None = None,
+    backtest_reader_factory: BacktestReaderFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -98,6 +105,10 @@ def create_app(  # noqa: PLR0913
         lambda: PostgresEtfReader.from_url(runtime_settings.database_url.get_secret_value())
     )
     etf_reader = etf_factory()
+    backtest_factory = backtest_reader_factory or (
+        lambda: PostgresBacktestReader.from_url(runtime_settings.database_url.get_secret_value())
+    )
+    backtest_reader = backtest_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -111,6 +122,7 @@ def create_app(  # noqa: PLR0913
             await financial_report_reader.close()
             await disclosure_reader.close()
             await etf_reader.close()
+            await backtest_reader.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -137,6 +149,7 @@ def create_app(  # noqa: PLR0913
     app.include_router(
         create_fundamentals_router(market_data_reader, financial_report_reader, disclosure_reader)
     )
+    app.include_router(create_backtests_router(backtest_reader))
     return app
 
 

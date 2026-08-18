@@ -113,6 +113,7 @@ Taskiq worker ── Valkey
 - [내부 상태 확인 API](api/health-api.md)
 - [시장 데이터 읽기 API](api/market-data-api.md)
 - [기업 재무 읽기 API](api/fundamentals-api.md)
+- [백테스트 읽기 API](api/backtest-api.md)
 
 #### Data
 
@@ -123,6 +124,7 @@ Taskiq worker ── Valkey
 - [재무 지표 정의 계약](data/financial-indicator-contract.md)
 - [수급·공시 연결 데이터 계약](data/investor-flow-disclosure-contract.md)
 - [ETF 탐색 데이터 계약](data/etf-exploration-data-contract.md)
+- [백테스트·규칙형 전략 계약](data/backtest-strategy-contract.md)
 
 #### Operations
 
@@ -137,6 +139,7 @@ Taskiq worker ── Valkey
 - [3단계 시장 대시보드 검증](qa/phase-3-market-dashboard-verification.md)
 - [4단계 기업 재무 데이터 검증](qa/phase-4-fundamentals-verification.md)
 - [5단계 ETF 탐색 검증](qa/phase-5-etf-verification.md)
+- [6단계 백테스트 엔진 검증](qa/phase-6-backtest-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions

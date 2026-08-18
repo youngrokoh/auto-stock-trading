@@ -266,6 +266,14 @@ features/
 
 Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심 의존성으로 사용하지 않는다.
 
+2026-08-18 구현 상태: 보조지표(SMA·EMA·RSI·MACD·ATR·볼린저)는 `domain/strategies/indicators.py`의
+순수 `Decimal` 함수로 구현했다. 2종목 유니버스에서는 Polars 도입 없이 금액 `Decimal` 규칙과
+결정성을 우선했고, 다종목 유니버스로 확장할 때 Polars 벡터화를 재검토한다. 백테스트 엔진은
+`domain/strategies/backtest.py`의 결정적 시뮬레이터로 위 흐름 중 위험검사 단계를 제외하고
+구현했으며(위험검사는 7단계 모의 자동매매 범위), 실행 기록은 `strategy.backtest_run`·
+`backtest_trade`·`backtest_equity`(리비전 `20260818_0013`)에 저장하고
+`/api/backtests`로 조회한다. 실행은 `worker/backtests.py` CLI로 수행한다.
+
 ## 6. 머신러닝과 생성형 AI
 
 ### 6.1 머신러닝

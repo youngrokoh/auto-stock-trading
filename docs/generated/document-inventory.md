@@ -5,11 +5,13 @@
 | 문서 | 경로 | 상태 |
 |---|---|---|
 | [Auto Stock Trading](../README.md) | `docs/README.md` | 미지정 |
+| [백테스트 읽기 API](../api/backtest-api.md) | `docs/api/backtest-api.md` | 구현됨 |
 | [기업 재무 읽기 API](../api/fundamentals-api.md) | `docs/api/fundamentals-api.md` | 구현됨 |
 | [내부 상태 확인 API](../api/health-api.md) | `docs/api/health-api.md` | 구현됨 |
 | [시장 데이터 읽기 API](../api/market-data-api.md) | `docs/api/market-data-api.md` | 구현됨 |
 | [프로젝트 실행 구조](../architecture/project-structure.md) | `docs/architecture/project-structure.md` | 구현됨 |
 | [상세 기술 스택](../architecture/tech-stack.md) | `docs/architecture/tech-stack.md` | 승인 |
+| [백테스트·규칙형 전략 계약](../data/backtest-strategy-contract.md) | `docs/data/backtest-strategy-contract.md` | 구현 기준 |
 | [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md) | `docs/data/corporate-action-adjusted-price-data-contract.md` | 승인 |
 | [ETF 탐색 데이터 계약](../data/etf-exploration-data-contract.md) | `docs/data/etf-exploration-data-contract.md` | 구현 기준 |
 | [재무 지표 정의 계약](../data/financial-indicator-contract.md) | `docs/data/financial-indicator-contract.md` | 구현 기준 |
@@ -41,6 +43,7 @@
 | [3단계 시장 대시보드 검증](../qa/phase-3-market-dashboard-verification.md) | `docs/qa/phase-3-market-dashboard-verification.md` | 검증 완료 (1차 구현 범위) |
 | [4단계 기업 재무 데이터 검증](../qa/phase-4-fundamentals-verification.md) | `docs/qa/phase-4-fundamentals-verification.md` | 검증 완료 (수집·저장·읽기 API·지표 계산·가치지표·수급·공시 연결·기업 분석 화면 범위) |
 | [5단계 ETF 탐색 검증](../qa/phase-5-etf-verification.md) | `docs/qa/phase-5-etf-verification.md` | 검증 완료 (마스터·NAV 스냅샷·순위·상세 범위) |
+| [6단계 백테스트 엔진 검증](../qa/phase-6-backtest-verification.md) | `docs/qa/phase-6-backtest-verification.md` | 검증 완료 (엔진·기술 전략 1종·읽기 API 범위) |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

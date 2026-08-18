@@ -90,6 +90,17 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CREATE TABLE fundamental.disclosure",
         "CONSTRAINT uq_disclosure_receipt UNIQUE",
         "CONSTRAINT ck_disclosure_type",
+        "CREATE TABLE strategy.backtest_run",
+        "CONSTRAINT ck_backtest_run_range",
+        "CONSTRAINT ck_backtest_run_initial_cash",
+        "CONSTRAINT ck_backtest_run_status",
+        "CONSTRAINT ck_backtest_run_failure_code",
+        "CREATE TABLE strategy.backtest_trade",
+        "CONSTRAINT uq_backtest_trade_sequence UNIQUE",
+        "CONSTRAINT ck_backtest_trade_action",
+        "CONSTRAINT ck_backtest_trade_execution",
+        "CREATE TABLE strategy.backtest_equity",
+        "CONSTRAINT uq_backtest_equity_date UNIQUE",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql
