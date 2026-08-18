@@ -561,7 +561,7 @@ export const Trading = () => {
                 )}
               </div>
               <div className="card__note">
-                상태 전이는 읽기 API가 아니라 worker CLI에서만 수행합니다:
+                상태 전이는 읽기 API가 아니라 worker CLI에서만 수행합니다{" "}
                 <code>
                   uv run python -m auto_stock_trading.worker.execution.planning --automation paused
                 </code>

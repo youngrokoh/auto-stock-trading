@@ -816,6 +816,12 @@ select:focus-visible {
 }
 
 .card__note code {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 4px;
+  border-radius: var(--radius-badge);
+  background: var(--color-panel-muted);
+  color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: var(--font-size-coord);
   overflow-wrap: anywhere;
