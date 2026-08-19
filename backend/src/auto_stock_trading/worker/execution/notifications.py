@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import signal
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Protocol
 
@@ -108,15 +109,24 @@ def is_interrupt(error: BaseException) -> bool:
     return False
 
 
+@dataclass(slots=True)
+class SessionTotals:
+    """운영자에게 보고할 집계. 취소로 세션이 끝나도 값을 잃지 않게 밖에 둔다."""
+
+    sessions: int = 0
+    notifications: int = 0
+    blocked: bool = False
+
+
 async def run_session(
     listener: SessionListener,
     socket: NotificationStream,
     transaction_id: str,
-) -> tuple[int, bool]:
-    """한 세션을 수신한다. 반환은 처리한 통보 수와 차단 발생 여부다."""
+    totals: SessionTotals,
+) -> None:
+    """한 세션을 수신하고 집계를 갱신한다."""
     attach = await listener.attach(transaction_id, _now())
-    handled = 0
-    blocked = attach.blocked
+    totals.blocked = totals.blocked or attach.blocked
     reason = _CLOSED
     try:
         async with anyio.create_task_group() as task_group:
@@ -126,8 +136,8 @@ async def run_session(
             try:
                 async for payload in socket.stream():
                     result = await listener.handle(payload, _now())
-                    handled += 1
-                    blocked = blocked or result.blocked
+                    totals.notifications += 1
+                    totals.blocked = totals.blocked or result.blocked
             except RealtimeFrameError as error:
                 reason = _FRAME_ERROR
                 await listener.record_failure(error.detail, _now())
@@ -142,7 +152,7 @@ async def run_session(
         # 취소 중에도 세션을 닫아야 다음 기동이 남은 연결 세션을 만나지 않는다.
         with anyio.CancelScope(shield=True):
             await listener.detach(attach.session_id, reason, _now())
-    return handled, blocked
+        totals.sessions += 1
 
 
 async def listen(arguments: Arguments) -> str:
@@ -194,25 +204,24 @@ async def run_sessions(
     max_sessions: int,
 ) -> str:
     """세션을 이어 붙인다. SIGINT·SIGTERM은 세션을 정상 종료로 닫고 루프를 끝낸다."""
-    sessions = 0
-    handled = 0
-    blocked = False
+    totals = SessionTotals()
     async with anyio.create_task_group() as task_group:
         _ = task_group.start_soon(_watch_signals, task_group.cancel_scope)
-        while max_sessions <= 0 or sessions < max_sessions:
-            received, session_blocked = await run_session(
+        while max_sessions <= 0 or totals.sessions < max_sessions:
+            await run_session(
                 listener,
                 socket,
                 PAPER_NOTIFICATION_TRANSACTION_ID,
+                totals,
             )
-            handled += received
-            blocked = blocked or session_blocked
-            sessions += 1
-            if max_sessions > 0 and sessions >= max_sessions:
+            if max_sessions > 0 and totals.sessions >= max_sessions:
                 break
-            await anyio.sleep(backoff_seconds(sessions - 1))
+            await anyio.sleep(backoff_seconds(totals.sessions - 1))
         task_group.cancel_scope.cancel()
-    return f"sessions={sessions} notifications={handled} blocked={blocked} reason={_STOPPED}"
+    return (
+        f"sessions={totals.sessions} notifications={totals.notifications} "
+        f"blocked={totals.blocked} reason={_STOPPED}"
+    )
 
 
 async def _watch_signals(scope: anyio.CancelScope) -> None:

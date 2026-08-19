@@ -69,11 +69,12 @@ def test_a_closed_connection_is_recorded_as_a_connection_close() -> None:
     async def run() -> None:
         listener = FakeListener()
         socket = FakeSocket(payloads=("first^body", "second^body"))
+        totals = worker.SessionTotals()
 
-        handled, blocked = await worker.run_session(listener, socket, _TRANSACTION_ID)
+        await worker.run_session(listener, socket, _TRANSACTION_ID, totals)
 
-        assert handled == 2
-        assert not blocked
+        assert totals.notifications == 2
+        assert not totals.blocked
         assert listener.payloads == ["first^body", "second^body"]
         assert listener.detached == [(_SESSION_ID, "CONNECTION_CLOSED")]
 
@@ -85,7 +86,7 @@ def test_a_frame_error_is_recorded_as_a_frame_error_and_does_not_escape() -> Non
         listener = FakeListener()
         socket = FakeSocket(error=RealtimeFrameError("body is empty"))
 
-        _ = await worker.run_session(listener, socket, _TRANSACTION_ID)
+        await worker.run_session(listener, socket, _TRANSACTION_ID, worker.SessionTotals())
 
         assert listener.failures == ["body is empty"]
         assert listener.detached == [(_SESSION_ID, "FRAME_ERROR")]
@@ -96,10 +97,11 @@ def test_a_frame_error_is_recorded_as_a_frame_error_and_does_not_escape() -> Non
 def test_a_gap_at_attach_time_is_reported_as_blocked() -> None:
     async def run() -> None:
         listener = FakeListener(blocked_on_attach=True)
+        totals = worker.SessionTotals()
 
-        _, blocked = await worker.run_session(listener, FakeSocket(), _TRANSACTION_ID)
+        await worker.run_session(listener, FakeSocket(), _TRANSACTION_ID, totals)
 
-        assert blocked
+        assert totals.blocked
 
     anyio.run(run)
 
@@ -110,11 +112,33 @@ def test_an_operator_interrupt_is_recorded_as_a_deliberate_stop() -> None:
         socket = FakeSocket(error=KeyboardInterrupt())
 
         with pytest.raises(BaseExceptionGroup) as raised:
-            _ = await worker.run_session(listener, socket, _TRANSACTION_ID)
+            await worker.run_session(listener, socket, _TRANSACTION_ID, worker.SessionTotals())
 
         assert worker.is_interrupt(raised.value)
         assert listener.detached == [(_SESSION_ID, "STOPPED")]
         assert listener.failures == []
+
+    anyio.run(run)
+
+
+def test_notifications_handled_before_a_signal_are_still_reported() -> None:
+    """취소로 세션이 끝나도 처리한 건수를 잃지 않아야 운영자 보고가 사실과 맞는다."""
+
+    async def run() -> None:
+        listener = FakeListener()
+        socket = SlowSocket(payloads=("first^body",))
+
+        async def stop() -> None:
+            await anyio.sleep(0.05)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        summaries: list[str] = []
+        async with anyio.create_task_group() as task_group:
+            _ = task_group.start_soon(stop)
+            summaries.append(await worker.run_sessions(listener, socket, 0))
+
+        assert listener.payloads == ["first^body"]
+        assert summaries == ["sessions=1 notifications=1 blocked=False reason=STOPPED"]
 
     anyio.run(run)
 
@@ -126,6 +150,19 @@ def test_only_a_pure_interrupt_counts_as_a_clean_stop() -> None:
     assert not worker.is_interrupt(
         BaseExceptionGroup("mixed", [KeyboardInterrupt(), RuntimeError("boom")])
     )
+
+
+@final
+@dataclass
+class SlowSocket:
+    """본문을 낸 뒤 끊기지 않는 연결. 취소 시점의 집계를 확인한다."""
+
+    payloads: tuple[str, ...] = ()
+
+    async def stream(self) -> AsyncIterator[str]:
+        for payload in self.payloads:
+            yield payload
+        await anyio.sleep_forever()
 
 
 @final
@@ -143,7 +180,12 @@ def test_cancellation_is_recorded_as_a_deliberate_stop() -> None:
         listener = FakeListener()
 
         async def session() -> None:
-            _ = await worker.run_session(listener, BlockingSocket(), _TRANSACTION_ID)
+            await worker.run_session(
+                listener,
+                BlockingSocket(),
+                _TRANSACTION_ID,
+                worker.SessionTotals(),
+            )
 
         async with anyio.create_task_group() as task_group:
             _ = task_group.start_soon(session)
@@ -172,7 +214,7 @@ def test_a_signal_closes_the_session_and_ends_the_loop() -> None:
             summaries.append(await worker.run_sessions(listener, BlockingSocket(), 0))
 
         assert listener.detached == [(_SESSION_ID, "STOPPED")]
-        assert summaries == ["sessions=0 notifications=0 blocked=False reason=STOPPED"]
+        assert summaries == ["sessions=1 notifications=0 blocked=False reason=STOPPED"]
 
     anyio.run(run)
 
