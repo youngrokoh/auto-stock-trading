@@ -31,6 +31,7 @@ class KisFixtureHandler:
     token_requests: int
     market_requests: list[httpx2.Request]
     _token_filenames: tuple[str, ...]
+    _balance_filename: str
     _order_filename: str
     _cancel_filename: str
     _fills_filename: str
@@ -38,6 +39,7 @@ class KisFixtureHandler:
     def __init__(
         self,
         token_filenames: tuple[str, ...],
+        balance_filename: str = "account_balance.json",
         order_filename: str = "order_cash.json",
         cancel_filename: str = "order_cancel.json",
         fills_filename: str = "daily_fills.json",
@@ -45,6 +47,7 @@ class KisFixtureHandler:
         self.token_requests = 0
         self.market_requests = []
         self._token_filenames = token_filenames
+        self._balance_filename = balance_filename
         self._order_filename = order_filename
         self._cancel_filename = cancel_filename
         self._fills_filename = fills_filename
@@ -56,7 +59,7 @@ class KisFixtureHandler:
             return self._response(request, self._token_filenames[index])
         self.market_requests.append(request)
         account_filename = {
-            BALANCE_ENDPOINT: "account_balance.json",
+            BALANCE_ENDPOINT: self._balance_filename,
             ORDER_ENDPOINT: self._order_filename,
             REVISE_CANCEL_ENDPOINT: self._cancel_filename,
             DAILY_FILLS_ENDPOINT: self._fills_filename,
@@ -93,12 +96,14 @@ class KisFixtureHandler:
 def create_fixture_handler_client(
     token_filenames: tuple[str, ...] = ("token.json",),
     *,
+    balance_filename: str = "account_balance.json",
     order_filename: str = "order_cash.json",
     cancel_filename: str = "order_cancel.json",
     fills_filename: str = "daily_fills.json",
 ) -> tuple[KisHttpClient, KisFixtureHandler]:
     handler = KisFixtureHandler(
         token_filenames,
+        balance_filename=balance_filename,
         order_filename=order_filename,
         cancel_filename=cancel_filename,
         fills_filename=fills_filename,

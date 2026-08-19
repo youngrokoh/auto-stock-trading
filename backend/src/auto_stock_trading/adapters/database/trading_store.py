@@ -22,6 +22,7 @@ from auto_stock_trading.adapters.database.trading_queries import (
     consecutive_rejects,
     open_orders_query,
     order_attempts_query,
+    pending_exposure_query,
     recent_states_query,
 )
 from auto_stock_trading.adapters.database.trading_rows import (
@@ -47,6 +48,7 @@ from auto_stock_trading.domain.orders.records import (
     StoredAccountSnapshot,
     StoredCounters,
 )
+from auto_stock_trading.domain.risk.engine import PendingExposure
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -437,6 +439,50 @@ class PostgresTradingStore:
                     occurred_at=occurred_at,
                 )
             )
+
+    async def pending_exposure(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> tuple[PendingExposure, ...]:
+        async with self._sessions() as session:
+            rows = (
+                (await session.execute(pending_exposure_query(environment, trading_date)))
+                .tuples()
+                .all()
+            )
+        return tuple(
+            PendingExposure(symbol=symbol, amount=Decimal(amount)) for symbol, amount in rows
+        )
+
+    async def withdraw_planned_orders(
+        self,
+        plan_id: UUID,
+        reason_code: str,
+        occurred_at: datetime,
+    ) -> int:
+        """제출 전 계획 주문을 철회한다(상태 그래프의 PLANNED → CANCELED). 이력은 보존된다."""
+        async with self._sessions.begin() as session:
+            rows = (
+                await session.scalars(
+                    select(OrderRow.id).where(
+                        OrderRow.plan_id == plan_id,
+                        OrderRow.state == OrderState.PLANNED.value,
+                    )
+                )
+            ).all()
+            for order_id in rows:
+                await _transition_order(
+                    session,
+                    _OrderTransition(
+                        order_id=order_id,
+                        state=OrderState.CANCELED,
+                        reason_code=reason_code,
+                        occurred_at=occurred_at,
+                        values={},
+                    ),
+                )
+        return len(rows)
 
     async def save_plan(self, plan: OrderPlanRecord) -> None:
         async with self._sessions.begin() as session:

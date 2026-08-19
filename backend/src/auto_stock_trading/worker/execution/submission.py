@@ -28,6 +28,8 @@ from auto_stock_trading.worker.kis_credentials import load_kis_account, load_kis
 
 _EMERGENCY_REASON: Final = "EMERGENCY_STOP"
 _PAPER_ONLY: Final = "order submission is allowed in the paper environment only"
+_WITHDRAW_REASON: Final = "USER_COMMAND"
+_WITHDRAW_NEEDS_PLAN: Final = "--withdraw requires --plan-id"
 
 
 class Arguments(argparse.Namespace):
@@ -35,6 +37,7 @@ class Arguments(argparse.Namespace):
     submit: bool = False
     sync: bool = False
     emergency_stop: bool = False
+    withdraw: bool = False
 
 
 def _http_client(settings: Settings) -> KisHttpClient:
@@ -84,6 +87,23 @@ async def submit_orders(arguments: Arguments) -> str:
         f"submitted={len(result.submitted)} rejected={len(result.rejected)} "
         f"orders={','.join(result.submitted) or '-'} reasons={rejected or '-'}"
     )
+
+
+async def withdraw_plan(arguments: Arguments) -> str:
+    """제출 전 계획 주문을 철회한다. 증권사 호출 없이 내부 상태만 종결한다."""
+    settings = _paper_settings()
+    if arguments.plan_id is None:
+        raise RuntimeError(_WITHDRAW_NEEDS_PLAN)
+    store = PostgresTradingStore.from_url(settings.database_url.get_secret_value())
+    try:
+        withdrawn = await store.withdraw_planned_orders(
+            UUID(arguments.plan_id),
+            _WITHDRAW_REASON,
+            datetime.now(UTC),
+        )
+    finally:
+        await store.close()
+    return f"withdrawn={withdrawn} plan_id={arguments.plan_id}"
 
 
 async def synchronize_fills() -> str:
@@ -147,16 +167,20 @@ def main() -> None:
     _ = parser.add_argument("--submit", action="store_true")
     _ = parser.add_argument("--sync", action="store_true")
     _ = parser.add_argument("--emergency-stop", action="store_true")
+    _ = parser.add_argument("--withdraw", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.emergency_stop:
         print(anyio.run(emergency_stop))  # noqa: T201
+        return
+    if arguments.withdraw:
+        print(anyio.run(withdraw_plan, arguments))  # noqa: T201
         return
     if arguments.submit:
         print(anyio.run(submit_orders, arguments))  # noqa: T201
     if arguments.sync:
         print(anyio.run(synchronize_fills))  # noqa: T201
     if not arguments.submit and not arguments.sync:
-        parser.error("--submit, --sync 또는 --emergency-stop 중 하나가 필요하다")
+        parser.error("--submit, --sync, --withdraw, --emergency-stop 중 하나가 필요하다")
 
 
 if __name__ == "__main__":

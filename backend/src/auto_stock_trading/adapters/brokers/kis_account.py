@@ -123,6 +123,9 @@ class KisAccountAdapter:
             _position(holding) for holding in response.output1 if int(holding.hldg_qty) > 0
         )
         cash_balance = Decimal(summary.dnca_tot_amt)
+        # 정책 §2의 기준 NAV는 "현금에서 미결제 비용을 뺀 값"을 쓴다. 예수금 총액은 미결제 매수분을
+        # 아직 차감하지 않으므로 가수도정산금액(D+2 예수금)을 NAV의 현금으로 사용한다.
+        settled_cash = Decimal(summary.prvs_rcdl_excc_amt)
         position_value = sum(
             (position.evaluation_amount for position in positions),
             Decimal(0),
@@ -133,9 +136,9 @@ class KisAccountAdapter:
             account_reference=self._account.reference,
             currency=_CURRENCY,
             cash_balance=cash_balance,
-            orderable_cash=Decimal(summary.prvs_rcdl_excc_amt),
+            orderable_cash=settled_cash,
             position_value=position_value,
-            nav=cash_balance + position_value,
+            nav=settled_cash + position_value,
             broker_net_asset=Decimal(summary.nass_amt),
             trading_date=raw.received_at.astimezone(_SEOUL).date(),
             as_of=raw.received_at,

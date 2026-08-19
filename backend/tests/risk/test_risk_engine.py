@@ -38,7 +38,7 @@ _QUOTE: Final = MarketQuote(
 _ETF_QUOTE: Final = replace(_QUOTE, symbol=_OTHER, product_type=ProductType.ETF)
 _ACCOUNT: Final = AccountState(
     nav=_NAV,
-    cash_balance=_NAV,
+    settled_cash=_NAV,
     orderable_cash=_NAV,
     session_open_nav=_NAV,
     peak_nav=_NAV,
@@ -253,7 +253,7 @@ def test_suspended_symbol_is_rejected() -> None:
 def test_symbol_exposure_limit_caps_additional_quantity() -> None:
     account = replace(
         _ACCOUNT,
-        cash_balance=Decimal(90_500_000),
+        settled_cash=Decimal(90_500_000),
         orderable_cash=Decimal(90_500_000),
         positions=(_position(quantity=95),),
     )
@@ -267,7 +267,7 @@ def test_symbol_exposure_limit_caps_additional_quantity() -> None:
 def test_symbol_exposure_limit_creates_no_order_when_target_is_met() -> None:
     account = replace(
         _ACCOUNT,
-        cash_balance=Decimal(90_000_000),
+        settled_cash=Decimal(90_000_000),
         orderable_cash=Decimal(90_000_000),
         positions=(_position(quantity=100),),
     )
@@ -294,7 +294,7 @@ def test_unclassified_total_limit_blocks_the_second_symbol() -> None:
 
 
 def test_minimum_cash_limit_caps_additional_quantity() -> None:
-    account = replace(_ACCOUNT, cash_balance=Decimal(25_000_000))
+    account = replace(_ACCOUNT, settled_cash=Decimal(25_000_000))
 
     (order,) = evaluate_plan(replace(_REQUEST, account=account)).orders
 
@@ -324,7 +324,7 @@ def test_daily_buy_amount_limit_caps_additional_quantity() -> None:
 def test_total_exposure_limit_caps_additional_quantity() -> None:
     account = replace(
         _ACCOUNT,
-        cash_balance=Decimal(22_000_000),
+        settled_cash=Decimal(22_000_000),
         orderable_cash=Decimal(22_000_000),
         positions=(_position(symbol=_OTHER, quantity=780),),
     )
@@ -359,7 +359,7 @@ def test_open_order_limit_rejects_when_exhausted() -> None:
 def test_sell_signal_liquidates_position_within_order_limit() -> None:
     account = replace(
         _ACCOUNT,
-        cash_balance=Decimal(90_000_000),
+        settled_cash=Decimal(90_000_000),
         orderable_cash=Decimal(90_000_000),
         positions=(_position(quantity=100),),
     )
@@ -380,7 +380,7 @@ def test_sell_signal_liquidates_position_within_order_limit() -> None:
 def test_sell_quantity_is_capped_by_orderable_quantity() -> None:
     account = replace(
         _ACCOUNT,
-        cash_balance=Decimal(90_000_000),
+        settled_cash=Decimal(90_000_000),
         orderable_cash=Decimal(90_000_000),
         positions=(_position(quantity=100, orderable_quantity=30),),
     )

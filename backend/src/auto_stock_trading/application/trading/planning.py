@@ -30,6 +30,7 @@ from auto_stock_trading.domain.orders.records import (
 from auto_stock_trading.domain.risk.engine import (
     AccountState,
     MarketQuote,
+    PendingExposure,
     PlannedOrder,
     PlanRequest,
     PositionState,
@@ -111,6 +112,12 @@ class TradingStore(Protocol):
 
     async def counters(self, environment: str, trading_date: date) -> StoredCounters: ...
 
+    async def pending_exposure(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> tuple[PendingExposure, ...]: ...
+
     async def save_plan(self, plan: OrderPlanRecord) -> None: ...
 
 
@@ -126,7 +133,7 @@ class PlanInput:
 
 _EMPTY_ACCOUNT: Final = AccountState(
     nav=Decimal(0),
-    cash_balance=Decimal(0),
+    settled_cash=Decimal(0),
     orderable_cash=Decimal(0),
     session_open_nav=Decimal(0),
     peak_nav=Decimal(0),
@@ -155,7 +162,7 @@ def _account_state(
 ) -> AccountState:
     return AccountState(
         nav=snapshot.nav,
-        cash_balance=snapshot.cash_balance,
+        settled_cash=snapshot.orderable_cash,
         orderable_cash=snapshot.orderable_cash,
         session_open_nav=snapshot.nav if session_open_nav is None else session_open_nav,
         peak_nav=snapshot.nav if peak_nav is None else peak_nav,
@@ -170,6 +177,11 @@ def _account_state(
         ),
         reconciled=reconciled,
     )
+
+
+def _reconciled(snapshot: AccountSnapshot, counters: StoredCounters) -> bool:
+    """미체결 대조가 끝났고 우리 NAV가 증권사 순자산금액과 일치할 때만 조정 완료다."""
+    return not counters.unreconciled_orders and snapshot.nav == snapshot.broker_net_asset
 
 
 def _order_record(request: PlanInput, order: PlannedOrder) -> OrderRecord:
@@ -219,6 +231,9 @@ class OrderPlanner:
             else _EMPTY_COUNTERS
         )
         quotes = await self._quotes(request, now) if collect else ()
+        pending = (
+            await self.store.pending_exposure(request.environment, trading_date) if collect else ()
+        )
         account = (
             _EMPTY_ACCOUNT
             if stored_snapshot is None
@@ -226,7 +241,7 @@ class OrderPlanner:
                 stored_snapshot.snapshot,
                 await self.store.session_open_nav(request.environment, trading_date),
                 await self.store.peak_nav(request.environment),
-                reconciled=not counters.unreconciled_orders,
+                reconciled=_reconciled(stored_snapshot.snapshot, counters),
             )
         )
         failures = await self.store.api_failures_since(
@@ -249,6 +264,7 @@ class OrderPlanner:
                 trading_day=trading_day,
                 now=now,
                 limits=self.limits,
+                pending=pending,
             )
         )
         if evaluation.pause_rule is not None:

@@ -17,7 +17,7 @@ from auto_stock_trading.domain.risk.utilization import (
 _NAV: Final = Decimal(100_000_000)
 _STATE: Final = UsageState(
     nav=_NAV,
-    cash_balance=Decimal(80_000_000),
+    settled_cash=Decimal(80_000_000),
     position_value=Decimal(20_000_000),
     max_position_value=Decimal(8_000_000),
     session_open_nav=_NAV,
@@ -229,7 +229,7 @@ def test_profit_leaves_loss_limits_unused() -> None:
 
 
 def test_cash_below_minimum_reports_usage_above_one() -> None:
-    state = replace(_STATE, cash_balance=Decimal(10_000_000))
+    state = replace(_STATE, settled_cash=Decimal(10_000_000))
 
     usage = _usage(state, RiskRule.MIN_CASH)
 
@@ -238,7 +238,7 @@ def test_cash_below_minimum_reports_usage_above_one() -> None:
 
 
 def test_zero_cash_leaves_minimum_cash_ratio_unknown() -> None:
-    state = replace(_STATE, cash_balance=Decimal(0))
+    state = replace(_STATE, settled_cash=Decimal(0))
 
     usage = _usage(state, RiskRule.MIN_CASH)
 
@@ -250,7 +250,7 @@ def test_zero_cash_leaves_minimum_cash_ratio_unknown() -> None:
 def test_missing_snapshot_leaves_every_amount_limit_unknown() -> None:
     state = UsageState(
         nav=None,
-        cash_balance=None,
+        settled_cash=None,
         position_value=None,
         max_position_value=None,
         session_open_nav=None,

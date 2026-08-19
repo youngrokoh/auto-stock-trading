@@ -35,7 +35,7 @@ from auto_stock_trading.domain.orders.models import (
     OrderType,
 )
 from auto_stock_trading.domain.orders.records import OrderPlanRecord, OrderRecord
-from auto_stock_trading.domain.risk.engine import RiskDecision
+from auto_stock_trading.domain.risk.engine import PendingExposure, RiskDecision
 from auto_stock_trading.domain.risk.limits import RiskRule
 from auto_stock_trading.settings.runtime import Settings
 
@@ -631,6 +631,69 @@ def test_cancel_event_and_reconcile_problem_are_persisted() -> None:
         assert [event.event_type for event in events] == ["reconcile_problem"]
         assert events[0].reason_code == ReconcileProblem.UNKNOWN_BROKER_ORDER.value
         assert events[0].detail == "0000999999"
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_pending_exposure_sums_unfilled_quantity_times_limit_price() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = reader
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        await store.save_plan(_plan(orders=(_order(quantity=3),)))
+        (pending,) = await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, None)
+
+        before = await store.pending_exposure(_ENVIRONMENT, _TRADING_DATE)
+        assert before == (PendingExposure(symbol=_SYMBOL, amount=Decimal(300_000)),)
+
+        await store.record_submission(pending.order_id, _acknowledgement(), _NOW)
+        await store.apply_fill(
+            pending.order_id,
+            OrderState.PARTIALLY_FILLED,
+            1,
+            _PRICE,
+            _NOW + timedelta(minutes=1),
+        )
+
+        after = await store.pending_exposure(_ENVIRONMENT, _TRADING_DATE)
+        assert after == (PendingExposure(symbol=_SYMBOL, amount=Decimal(200_000)),)
+
+        await store.apply_fill(
+            pending.order_id,
+            OrderState.FILLED,
+            3,
+            _PRICE,
+            _NOW + timedelta(minutes=2),
+        )
+        assert await store.pending_exposure(_ENVIRONMENT, _TRADING_DATE) == ()
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_withdrawn_plan_cancels_planned_orders_and_frees_exposure() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(orders=(_order(), _order(sequence=2, client_order_id="w" * 32)))
+        await store.save_plan(plan)
+
+        withdrawn = await store.withdraw_planned_orders(plan.plan_id, "USER_COMMAND", _NOW)
+
+        assert withdrawn == 2
+        assert await store.pending_orders(_ENVIRONMENT, _TRADING_DATE, plan.plan_id) == ()
+        assert await store.pending_exposure(_ENVIRONMENT, _TRADING_DATE) == ()
+        loaded = await reader.order_plan(plan.plan_id)
+        assert loaded is not None
+        assert [order.state for order in loaded.orders] == [
+            OrderState.CANCELED,
+            OrderState.CANCELED,
+        ]
 
     anyio.run(_run_scenario, scenario)
 

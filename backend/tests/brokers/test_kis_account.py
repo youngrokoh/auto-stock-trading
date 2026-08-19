@@ -79,3 +79,34 @@ def test_raw_response_keeps_account_number_out_of_the_fingerprint() -> None:
         assert len(reference) == 12
 
     anyio.run(run)
+
+
+def test_nav_uses_settlement_adjusted_cash_and_matches_the_broker() -> None:
+    """정책 §2: NAV는 현금에서 미결제 비용을 뺀 값에 평가금액을 더한다."""
+
+    async def scenario() -> None:
+        client, _ = create_fixture_handler_client(
+            balance_filename="account_balance_holding.json",
+        )
+        adapter = KisAccountAdapter(client, _ACCOUNT, paper=True)
+        try:
+            observation = await adapter.fetch_balance()
+        finally:
+            await adapter.close()
+
+        snapshot = observation.snapshot
+        assert snapshot.cash_balance == Decimal(10_000_000)
+        assert snapshot.orderable_cash == Decimal(9_004_860)
+        assert snapshot.position_value == Decimal(994_000)
+        assert snapshot.nav == Decimal(9_998_860)
+        assert snapshot.nav == snapshot.broker_net_asset
+        (position,) = snapshot.positions
+        assert position.symbol == "005930"
+        assert position.quantity == 4
+        assert position.orderable_quantity == 4
+        assert position.average_price == Decimal("248750.0000")
+        assert position.current_price == Decimal(248_500)
+        assert position.evaluation_amount == Decimal(994_000)
+        assert position.profit_loss == Decimal(-1_000)
+
+    anyio.run(scenario)

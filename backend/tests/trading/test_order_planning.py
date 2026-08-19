@@ -42,7 +42,7 @@ from auto_stock_trading.domain.orders.records import (
     StoredAccountSnapshot,
     StoredCounters,
 )
-from auto_stock_trading.domain.risk.engine import SignalCandidate
+from auto_stock_trading.domain.risk.engine import PendingExposure, SignalCandidate
 from auto_stock_trading.domain.risk.limits import BlockCode, RiskRule
 
 if TYPE_CHECKING:
@@ -168,6 +168,7 @@ class FakeAccounts:
     fails: bool = False
     nav: Decimal = _NAV
     held_quantity: int = 0
+    broker_net_asset: Decimal | None = None
 
     async def fetch_balance(self) -> AccountSnapshotObservation:
         self.calls += 1
@@ -198,7 +199,7 @@ class FakeAccounts:
             orderable_cash=self.nav - position_value,
             position_value=position_value,
             nav=self.nav,
-            broker_net_asset=self.nav,
+            broker_net_asset=self.nav if self.broker_net_asset is None else self.broker_net_asset,
             trading_date=_TRADING_DATE,
             as_of=_NOW,
             received_at=_NOW,
@@ -230,6 +231,7 @@ class FakeStore:
     )
     session_open: Decimal | None = None
     peak: Decimal | None = None
+    pending: tuple[PendingExposure, ...] = ()
     failures: int = 0
     transitions: list[AutomationTransition] = field(default_factory=list[AutomationTransition])
     api_failures: list[str] = field(default_factory=list[str])
@@ -263,6 +265,14 @@ class FakeStore:
     async def api_failures_since(self, environment: str, since: datetime) -> int:
         _ = (environment, since)
         return self.failures
+
+    async def pending_exposure(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> tuple[PendingExposure, ...]:
+        _ = (environment, trading_date)
+        return self.pending
 
     async def save_account_snapshot(
         self,
@@ -504,3 +514,27 @@ def test_sell_signal_without_position_creates_no_order() -> None:
 
     assert plan.orders == ()
     assert plan.status == "created"
+
+
+def test_pending_orders_from_earlier_plans_consume_the_exposure_cap() -> None:
+    """정책 §2대로 이전 계획의 미체결·계획 주문이 예상 노출에 포함돼야 한다."""
+    harness = _harness(
+        store=FakeStore(pending=(PendingExposure(symbol=_SYMBOL, amount=_NAV / 10),))
+    )
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    assert plan.status == "created"
+    (order,) = plan.orders
+    assert order.quantity == 0
+    assert order.reject_code == RiskRule.SYMBOL_EXPOSURE.value
+
+
+def test_nav_mismatch_with_the_broker_blocks_as_unreconciled() -> None:
+    """정책 §7.2: 내부 계산 NAV와 증권사 순자산금액이 다르면 주문을 만들지 않는다."""
+    harness = _harness(accounts=FakeAccounts(broker_net_asset=_NAV - Decimal(1)))
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    assert plan.block_code == BlockCode.ACCOUNT_NOT_RECONCILED
+    assert plan.orders == ()

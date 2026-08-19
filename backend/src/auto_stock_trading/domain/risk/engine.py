@@ -28,8 +28,10 @@ class PositionState:
 
 @dataclass(frozen=True, slots=True)
 class AccountState:
+    """판정에 쓰는 계좌 상태. 현금은 미결제 비용을 뺀 정산 기준 금액이다(정책 §2)."""
+
     nav: Decimal
-    cash_balance: Decimal
+    settled_cash: Decimal
     orderable_cash: Decimal
     session_open_nav: Decimal
     peak_nav: Decimal
@@ -63,6 +65,14 @@ class SignalCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class PendingExposure:
+    """아직 체결되지 않은 주문의 예상 노출. 정책 §2의 예상 노출 검사 입력이다."""
+
+    symbol: str
+    amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class PlanRequest:
     candidates: tuple[SignalCandidate, ...]
     account: AccountState
@@ -72,6 +82,7 @@ class PlanRequest:
     trading_day: bool
     now: datetime
     limits: RiskLimits
+    pending: tuple[PendingExposure, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,20 +187,37 @@ def _gate(request: PlanRequest) -> tuple[str | None, RiskRule | None]:
     return None, None
 
 
+def _add_exposure(
+    state: _PlanState,
+    symbol: str,
+    value: Decimal,
+    sector: str | None,
+) -> None:
+    state.symbol_value[symbol] = state.symbol_value.get(symbol, Decimal(0)) + value
+    state.total_value += value
+    if sector is None:
+        state.unclassified_value += value
+    else:
+        state.sector_value[sector] = state.sector_value.get(sector, Decimal(0)) + value
+
+
 def _seed_state(request: PlanRequest) -> _PlanState:
+    """보유 포지션과 미체결·계획 주문을 모두 예상 노출로 넣는다(정책 §2)."""
     quotes = {quote.symbol: quote for quote in request.quotes}
     state = _PlanState()
     state.buy_amount = request.counters.daily_buy_amount
     for position in request.account.positions:
         quote = quotes.get(position.symbol)
         value = position.evaluation_amount if quote is None else quote.price * position.quantity
-        state.symbol_value[position.symbol] = value
-        state.total_value += value
-        sector = None if quote is None else quote.sector
-        if sector is None:
-            state.unclassified_value += value
-        else:
-            state.sector_value[sector] = state.sector_value.get(sector, Decimal(0)) + value
+        _add_exposure(state, position.symbol, value, None if quote is None else quote.sector)
+    for exposure in request.pending:
+        quote = quotes.get(exposure.symbol)
+        _add_exposure(
+            state,
+            exposure.symbol,
+            exposure.amount,
+            None if quote is None else quote.sector,
+        )
     return state
 
 
@@ -213,8 +241,8 @@ def _buy_caps(request: PlanRequest, state: _PlanState, quote: MarketQuote) -> tu
         _Cap(
             RiskRule.MIN_CASH,
             nav * limits.min_cash,
-            account.cash_balance - state.spend,
-            account.cash_balance - state.spend - nav * limits.min_cash,
+            account.settled_cash - state.spend,
+            account.settled_cash - state.spend - nav * limits.min_cash,
             decreasing=True,
         ),
         _Cap(

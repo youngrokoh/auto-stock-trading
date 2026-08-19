@@ -210,7 +210,7 @@ def _usage_state(state: TradingRiskState) -> UsageState:
     positions = () if snapshot is None else snapshot.positions
     return UsageState(
         nav=None if snapshot is None else snapshot.nav,
-        cash_balance=None if snapshot is None else snapshot.cash_balance,
+        settled_cash=None if snapshot is None else snapshot.orderable_cash,
         position_value=None if snapshot is None else snapshot.position_value,
         max_position_value=(
             None

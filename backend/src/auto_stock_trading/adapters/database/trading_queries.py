@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import Select, func, select
 
+from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
 from auto_stock_trading.adapters.database.trading_rows import OrderPlanRow, OrderRow
 from auto_stock_trading.domain.orders.models import OrderState
 
@@ -67,6 +68,36 @@ def max_order_amount_query(environment: str, trading_date: date) -> Select[tuple
             OrderPlanRow.environment == environment,
             OrderPlanRow.trading_date == trading_date,
         )
+    )
+
+
+_PENDING_STATES: Final = (
+    OrderState.PLANNED.value,
+    OrderState.SUBMITTED.value,
+    OrderState.PARTIALLY_FILLED.value,
+)
+
+
+def pending_exposure_query(environment: str, trading_date: date) -> Select[tuple[str, int]]:
+    """정책 §2의 예상 노출: 아직 체결되지 않은 수량 × 지정가를 종목별로 합산한다."""
+    return (
+        select(
+            InstrumentRow.symbol,
+            func.coalesce(
+                func.sum((OrderRow.quantity - OrderRow.filled_quantity) * OrderRow.limit_price),
+                Decimal(0),
+            ),
+        )
+        .select_from(OrderRow)
+        .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+        .join(InstrumentRow, OrderRow.instrument_id == InstrumentRow.id)
+        .where(
+            OrderPlanRow.environment == environment,
+            OrderPlanRow.trading_date == trading_date,
+            OrderRow.state.in_(_PENDING_STATES),
+            OrderRow.limit_price.is_not(None),
+        )
+        .group_by(InstrumentRow.symbol)
     )
 
 

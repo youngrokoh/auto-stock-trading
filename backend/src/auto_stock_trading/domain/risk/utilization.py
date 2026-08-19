@@ -49,7 +49,7 @@ class UsageState:
     """소진율 계산에 쓰는 현재 상태. 없는 값은 `None`으로 남긴다."""
 
     nav: Decimal | None
-    cash_balance: Decimal | None
+    settled_cash: Decimal | None
     position_value: Decimal | None
     max_position_value: Decimal | None
     session_open_nav: Decimal | None
@@ -189,7 +189,7 @@ def _specs(state: UsageState, limits: RiskLimits) -> tuple[_Spec, ...]:
             comparison=UsageComparison.AT_LEAST,
             mode=_Mode.RATIO,
             limit_value=limits.min_cash,
-            numerator=state.cash_balance,
+            numerator=state.settled_cash,
             denominator=nav,
             missing=UsageReason.MISSING_SNAPSHOT,
         ),

@@ -39,8 +39,15 @@
   `msg_cd=90000000`). 미체결 목록은 일별주문체결조회의 잔여 수량으로만 판정한다.
 - 일별주문체결조회에 내역이 없으면 `rt_cd=0`, `msg_cd=70070000`, `output1`은 빈 배열이고
   `output2`는 `tot_ord_qty`·`tot_ccld_qty`·`tot_ccld_amt`·`prsm_tlex_smtl`·`pchs_avg_pric`를 준다.
-- `output1`의 필드명은 공식 문서 기준으로 구현했고 실제 주문이 생긴 뒤 대조한다. 필드가 없으면
-  엄격 파싱이 즉시 실패한다.
+- **장중에는 `output1`이 항상 빈 배열이다.** 2026-08-19 실주문 후 `CCLD_DVSN`·`INQR_DVSN`·
+  `INQR_DVSN_1`·`INQR_DVSN_3`·`SLL_BUY_DVSN_CD` 조합 6가지를 모두 시도해도 `output1`은 비어 있고
+  `output2` 합계만 채워졌다(`msg_cd=70070000`). 따라서 장중에는 주문별 체결을 증권사 사실로 확정할
+  수 없고, 내부 주문은 `SUBMITTED`로 남는다. 미체결이 남아 있으므로 이후 계획은
+  `ACCOUNT_NOT_RECONCILED`로 차단된다. 해소 방안(실시간 체결통보 도입 또는 집계 기반 확정 규칙)은
+  사용자 결정 대기다.
+- 제출 응답 계약은 실주문으로 검증됐다: `rt_cd=0`, `msg_cd=40600000`, `output`에
+  `KRX_FWDG_ORD_ORGNO`·`ODNO`·`ORD_TMD`가 모두 존재한다. 취소 실패도 사실로 기록된다
+  (`rt_cd=1`, `msg_cd=40330000` "모의투자 정정/취소할 수량이 없습니다").
 
 ## 제출
 
@@ -96,7 +103,8 @@
 취소 요청 본문은 `CANO`, `ACNT_PRDT_CD`, `KRX_FWDG_ORD_ORGNO`, `ORGN_ODNO`, `ORD_DVSN`,
 `RVSE_CNCL_DVSN_CD`(`02` 취소), `ORD_QTY`, `ORD_UNPR`(`0`), `QTY_ALL_ORD_YN`(`Y`)이다.
 
-- 대상은 `SUBMITTED`·`PARTIALLY_FILLED` 상태이고 증권사 주문번호가 있는 주문이다.
+- 대상은 `SUBMITTED`·`PARTIALLY_FILLED` 상태이고 증권사 주문번호가 있는 주문이다. 이미 전량
+  체결된 주문의 취소는 증권사가 거절하며(`40330000`) 실패로 기록된다.
 - `rt_cd = 0`이면 취소 요청 사실을 이벤트로 남기고, 상태 확정은 동기화가 증권사 사실로 한다.
 - `rt_cd ≠ 0`이면 실패를 사유 코드와 함께 남기고 상태를 바꾸지 않는다.
 - `EMERGENCY_STOP` 전이 시 위 대상 전체에 취소를 시도한다. 실패가 하나라도 있으면 차단 상태를

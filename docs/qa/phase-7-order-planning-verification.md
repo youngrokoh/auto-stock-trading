@@ -1,6 +1,6 @@
 # 7단계 주문 계획·위험검사 검증
 
-- 상태: 검증 완료 (계획 계층, 실계좌 잔고 조회, 모의매매 콘솔 화면, 주문 제출 계층의 차단·동기화 경로) · 실제 주문 제출·체결은 다음 거래일 장중 대기
+- 상태: 검증 완료 (계획·제출·체결·취소를 실제 모의계좌에서 확인) · 장중 주문별 체결 조회 한계는 후속 결정 대기
 - 검증일: 2026-08-18
 - 관련 결정: [ADR-0007](../decisions/0007-paper-order-planning-and-risk.md), [ADR-0008](../decisions/0008-paper-order-submission.md)
 - 관련 계약: [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md), [주문 제출·체결 동기화 계약](../data/order-submission-contract.md)
@@ -108,27 +108,46 @@ uv run python -m auto_stock_trading.worker.execution.planning --automation disab
 확인할 것: 제출 응답의 `ODNO`·`KRX_FWDG_ORD_ORGNO` 저장, `output1` 필드명 계약 일치, 부분체결·전량
 체결·취소의 상태 전이, 재실행 시 주문 수 불변, 콘솔 화면 B·C 표의 실데이터 표시.
 
+## 장중 실주문 검증 (2026-08-19 09:06~09:30 KST · 실제 모의주문 전송)
+
+사용자 승인(범위: 계획→제출→동기화→취소, 규모 종목 한도 10%)으로 실제 모의계좌에 주문을 보냈다.
+
+| 단계 | 결과 |
+|---|---|
+| 계좌 스냅샷 | 09:06 NAV 10,000,000원으로 장 시작 NAV 고정 |
+| 삼성전자 계획 | 기준가 249,750원(계획 시점 새 조회) → 지정가 250,000원(호가단위 500원 반올림, ±1% 밴드 통과). 주문 1건 한도 5%에 맞춰 2주씩 2건 = 1,000,000원, 종목 한도 10%와 정확히 일치 |
+| 제출 (실주문) | `rt_cd=0`, `msg_cd=40600000` "모의투자 매수주문이 완료 되었습니다". 주문번호 `0000008637`·`0000008645`, 지점번호 `00950`, 주문시각 `092002`·`092004`를 저장. **제출 응답 계약(`KRX_FWDG_ORD_ORGNO`·`ODNO`·`ORD_TMD`)이 실데이터로 검증됐다** |
+| 재실행 멱등성 | 같은 명령 재실행 시 `submitted=0`. 이미 `SUBMITTED` 상태라 증권사에 두 번 나가지 않는다 |
+| 체결 사실 | 잔고조회로 삼성전자 4주 보유, 평균 248,750원, 매수금액 995,000원, 제세금 140원 확인. 일별주문체결 `output2`도 `tot_ccld_qty=4`로 전량 체결을 보고 |
+| 보유 종목 정규화 | 잔고 응답 `output1`의 `hldg_qty=4`·`ord_psbl_qty=4`·`pchs_avg_pric=248750.0000`·`prpr=248500`·`evlu_amt=994000`·`evlu_pfls_amt=-1000`을 실데이터로 확인해 fixture로 승격했다(대기 항목 해소) |
+| 취소 시도 | 비상정지 후 미체결 취소를 시도했으나 `rt_cd=1`, `msg_cd=40330000` "모의투자 정정/취소할 수량이 없습니다" — 이미 전량 체결됐기 때문이다. 취소 실패가 주문 이벤트로 기록되고 차단 상태가 유지됐다 |
+| 화면 | 콘솔 B 좌표에 5건(철회 3·제출 2, 증권사 주문번호 표시), C 좌표에 삼성전자 4주 실데이터, KPI에 실제 NAV·현금·투자 비중·미체결 2건이 표시됐다. 1360·390px 콘솔 오류 0건, 가로 오버플로 없음, 계좌번호 미노출 |
+| 종료 상태 | 자동매매를 `disabled`로 되돌렸다 |
+
+### 실주문에서 발견해 고친 결함 3건
+
+| 결함 | 증거 | 수정 |
+|---|---|---|
+| **예상 노출에 미체결·계획 주문 미반영** (정책 §2 위반) | 삼성 계획 1,000,000원이 있는데도 KODEX 계획의 `RISK_UNCLASSIFIED_EXPOSURE` 예상값이 0에서 시작해 3건이 추가 계획됨. 미분류 합계 1,916,470원 = NAV의 19.2%로 한도 10%를 초과 | 위험검사에 `PendingExposure` 입력을 추가해 그 거래일의 `planned`·`submitted`·`partially_filled` 주문의 미체결 금액(수량−체결수량 × 지정가)을 노출에 포함. 실데이터 재계획에서 KODEX가 `RISK_UNCLASSIFIED_EXPOSURE`로 거절됨을 확인. 잘못 만든 계획은 `--withdraw`로 철회(3건 `canceled`, 이력 보존) |
+| **NAV가 예수금 총액 기준** (정책 §2 위반) | 체결 후 우리 NAV 10,995,000원 vs 증권사 순자산금액 9,999,860원. 예수금 총액은 미결제 매수분을 차감하지 않아 이중 계산 | NAV를 가수도정산금액(D+2 예수금) + 평가금액으로 계산. 수정 후 9,994,860원 = 증권사 값과 정확히 일치. 추가로 두 값이 다르면 `ACCOUNT_NOT_RECONCILED`로 주문 생성을 차단하는 가드를 넣었다 |
+| **최소 현금 비중이 예수금 총액 기준** | 소진율 API가 현금 비중 100.05%를 보고(현금 100.05% + 주식 9.91% = 110%) | 판정·표시 모두 정산 기준 현금을 쓰도록 `AccountState.settled_cash`로 이름과 의미를 고정. 수정 후 90.09%로 현금+주식=100% |
+
+### 미해결: 장중 주문별 체결 조회
+
+일별주문체결조회(`VTTC8001R`)가 모의환경에서 **`output1`을 빈 배열로 반환**한다(`msg_cd=70070000`).
+`CCLD_DVSN`·`INQR_DVSN`·`INQR_DVSN_1`·`INQR_DVSN_3`·`SLL_BUY_DVSN_CD` 조합 6가지를 모두 시도해도
+같았고, `output2` 합계만 채워진다. 따라서 장중에는 주문별 체결을 증권사 사실로 확정할 수 없다.
+
+- 내부 주문은 `SUBMITTED`로 남고 값을 만들지 않는다. 미체결이 존재하므로 이후 계획은
+  `ACCOUNT_NOT_RECONCILED`로 차단된다(fail-closed 설계 그대로 동작).
+- 장 마감 후 `output1`이 채워지는지 재확인이 필요하다. 채워지지 않으면 실시간 체결통보(웹소켓
+  `H0STCNI9`) 도입 또는 집계 기반 확정 규칙 추가 중 하나를 사용자 결정으로 선택한다.
+
 ## 다음 거래일 대기 항목
 
-- **주문 허용시간 내 계획 생성**: 09:05~15:15 KST의 거래일에 아래를 실행하면 `PLANNED` 주문이 생성된다.
-  현재 NAV 10,000,000원 기준 기대값은 종목 한도 10%(1,000,000원)와 주문 1건 한도 5%(500,000원)에 따라
-  삼성전자 1주씩 3건이다.
-
-  ```bash
-  cd backend
-  export AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-paper-app-key
-  export AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-paper-app-secret
-  export AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE=../.secrets/kis-paper-account-number
-  export AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE=../.secrets/kis-paper-account-product
-  uv run python -m auto_stock_trading.worker.execution.planning --account-snapshot
-  uv run python -m auto_stock_trading.worker.execution.planning --automation armed
-  uv run python -m auto_stock_trading.worker.execution.planning --automation running
-  uv run python -m auto_stock_trading.worker.execution.planning --symbol 005930 --side buy
-  uv run python -m auto_stock_trading.worker.execution.planning --automation disabled
-  ```
-
-- **보유 종목 정규화**: 모의계좌에 보유 종목이 없어 잔고 응답 `output1`(보유 수량·평균단가·평가금액)
-  정규화는 fixture 계약 테스트로만 검증됐다. 주문 제출 단계에서 실제 체결이 생기면 실데이터로 대조한다.
+- **장중 주문별 체결 확정**: 위 미해결 항목의 결정(웹소켓 도입 또는 집계 기반 확정)이 필요하다.
+- **부분체결 관측**: 오늘은 두 주문 모두 즉시 전량 체결돼 `PARTIALLY_FILLED` 전이와 취소 성공 경로는
+  실데이터로 보지 못했다. 다음 실주문에서 지정가를 시장가와 벌려 미체결을 만들어 확인한다.
 
 ## 정책 해석 기록
 
