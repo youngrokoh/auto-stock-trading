@@ -142,6 +142,7 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT ck_notification_session_end",
         "CREATE UNIQUE INDEX uq_notification_session_connected",
         "listener_state",
+        "attestation",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

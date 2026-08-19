@@ -92,6 +92,7 @@ class OrderTransition:
     reason_code: str | None
     occurred_at: datetime
     values: dict[str, object]
+    detail: str | None = None
 
 
 async def transition_order(session: AsyncSession, transition: OrderTransition) -> None:
@@ -120,7 +121,7 @@ async def transition_order(session: AsyncSession, transition: OrderTransition) -
             previous_state=previous.value,
             state=requested.value,
             reason_code=transition.reason_code,
-            detail=None,
+            detail=transition.detail,
             occurred_at=transition.occurred_at,
         )
     )

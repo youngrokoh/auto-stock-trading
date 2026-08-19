@@ -107,6 +107,46 @@
 
 차단 상태에서 조회는 계속 가능하다. 재개는 사람이 원인을 확인한 뒤 CLI로 상태를 전이한다.
 
+## 사람이 확인한 대조 종결
+
+증권사 응답으로 확정할 수 없는 주문을 사람이 확인한 사실로 종결하는 좁은 예외 경로다
+([ADR-0010](../decisions/0010-human-attested-order-reconciliation.md)). 증권사 API를 호출하지 않고
+주문 상태 한 건과 이벤트만 바꾼다.
+
+### 전제조건
+
+| 조건 | 위반 시 사유 코드 |
+|---|---|
+| 실행 환경이 모의(`paper`)다 | 실행 거부 |
+| 대상 주문이 `SUBMITTED`·`PARTIALLY_FILLED`다 | `NOT_OPEN` |
+| 대상 주문의 제출 시각이 그 환경의 가장 이른 체결통보 세션 시작보다 이전이다 | `LISTENER_COVERED` |
+| 그 환경에 체결통보 세션 기록이 하나라도 있다 | `NO_LISTENER_HISTORY` |
+| 목표 상태가 `FILLED`·`PARTIALLY_FILLED`·`CANCELED`다 | `STATE_NOT_ALLOWED` |
+| 상태 그래프가 그 전이를 허용한다 | `TRANSITION_NOT_ALLOWED` |
+
+"리스너 부착 전 주문"으로 범위가 닫혀 있으므로, 체결통보로 확정될 수 있었던 주문에는 이 경로를 쓸 수
+없다.
+
+### 입력 검증
+
+수량과 평균단가는 사람이 KIS 화면에서 읽어 넣는다. 시스템은 추정하거나 집계에서 역산하지 않는다.
+
+| 규칙 | 사유 코드 |
+|---|---|
+| 수량 ≤ 주문 수량 | `QUANTITY_EXCEEDS_ORDER` |
+| 수량 ≥ 현재 체결 수량(체결 수량은 줄어들 수 없다) | `QUANTITY_DECREASED` |
+| `FILLED`이면 수량 = 주문 수량 | `QUANTITY_NOT_COMPLETE` |
+| `PARTIALLY_FILLED`이면 0 < 수량 < 주문 수량 | `QUANTITY_NOT_PARTIAL` |
+| 수량 > 0이면 평균단가 > 0 | `PRICE_REQUIRED` |
+
+### 기록
+
+`--operator`와 `--evidence`는 필수다. 사유 코드 `HUMAN_ATTESTED`로 주문 이벤트를 남기고,
+`automation_event`에는 `attestation` 유형으로 같은 값을 남긴다(리비전 `20260819_0017`). 두 값은 사람의
+자기 주장이며 시스템이 검증할 수 없다. 감사에서 증권사 사실과 구분하려고 별도 유형을 쓴다.
+
+이 경로는 자동매매 상태를 바꾸지 않는다. 차단이 풀렸는지는 다음 계획 실행이 스스로 판단한다.
+
 ## 취소
 
 취소 요청 본문은 `CANO`, `ACNT_PRDT_CD`, `KRX_FWDG_ORD_ORGNO`, `ORGN_ODNO`, `ORD_DVSN`,

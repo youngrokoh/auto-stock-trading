@@ -148,3 +148,17 @@ class FillNotificationRecord:
     filled_quantity: int | None
     average_fill_price: Decimal | None
     received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AttestationTarget:
+    """사람이 확인해 종결할 주문의 현재 상태. 제출 시각이 적용 범위 판정에 쓰인다."""
+
+    order_id: UUID
+    client_order_id: str
+    symbol: str
+    quantity: int
+    filled_quantity: int
+    average_fill_price: Decimal | None
+    state: OrderState
+    submitted_at: datetime | None

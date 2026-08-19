@@ -197,6 +197,7 @@ export const hasFillInformation = (state: string): boolean =>
 
 const EVENT_LABELS: Readonly<Record<string, string>> = {
   api_failure: "API 실패",
+  attestation: "사람 확인 종결",
   listener_state: "체결통보 연결",
   reconcile_problem: "대조 불일치",
   state_change: "상태 전이",
@@ -206,7 +207,8 @@ export const eventTypeLabel = (eventType: string): string => EVENT_LABELS[eventT
 
 /**
  * 상태 전이와 리스너 부착은 정상 흐름이고, 나머지는 주의를 요구한다.
- * 리스너 단절은 제출이 차단된다는 뜻이므로 주의로 표시한다.
+ * 리스너 단절은 제출이 차단된다는 뜻이므로 주의로 표시하고, 사람 확인 종결은
+ * 증권사 사실이 아닌 근거로 상태가 바뀐 기록이므로 항상 주의로 표시한다.
  */
 export const isAlertEvent = (eventType: string, reasonCode?: string | null): boolean => {
   if (eventType === "state_change") {

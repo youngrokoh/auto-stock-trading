@@ -32,6 +32,7 @@
 | [ADR-0007: 모의투자 주문 계획과 위험검사 경계](../decisions/0007-paper-order-planning-and-risk.md) | `docs/decisions/0007-paper-order-planning-and-risk.md` | 승인 |
 | [ADR-0008: 모의투자 주문 제출·체결 동기화 경계](../decisions/0008-paper-order-submission.md) | `docs/decisions/0008-paper-order-submission.md` | 승인 |
 | [ADR-0009: 실시간 체결통보 수신 경계](../decisions/0009-realtime-fill-notification.md) | `docs/decisions/0009-realtime-fill-notification.md` | 승인 |
+| [ADR-0010: 사람이 확인한 주문 대조 종결](../decisions/0010-human-attested-order-reconciliation.md) | `docs/decisions/0010-human-attested-order-reconciliation.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |

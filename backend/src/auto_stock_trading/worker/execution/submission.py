@@ -3,6 +3,7 @@
 import argparse
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Final
 from uuid import UUID
 
@@ -17,16 +18,23 @@ from auto_stock_trading.adapters.brokers.kis_orders import KisOrderAdapter
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
 )
+from auto_stock_trading.adapters.database.trading_attestation_store import (
+    PostgresAttestationStore,
+)
 from auto_stock_trading.adapters.database.trading_notification_store import (
     PostgresNotificationStore,
 )
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
+from auto_stock_trading.application.trading.attestation import (
+    AttestationInput,
+    OrderAttestor,
+)
 from auto_stock_trading.application.trading.planning import AutomationTransition
 from auto_stock_trading.application.trading.submission import (
     OrderSubmitter,
     SubmissionInput,
 )
-from auto_stock_trading.domain.orders.models import AutomationState
+from auto_stock_trading.domain.orders.models import AutomationState, OrderState
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.kis_credentials import load_kis_account, load_kis_credentials
 
@@ -34,6 +42,7 @@ _EMERGENCY_REASON: Final = "EMERGENCY_STOP"
 _PAPER_ONLY: Final = "order submission is allowed in the paper environment only"
 _WITHDRAW_REASON: Final = "USER_COMMAND"
 _WITHDRAW_NEEDS_PLAN: Final = "--withdraw requires --plan-id"
+_ATTEST_NEEDS: Final = "--attest requires {}"
 
 
 class Arguments(argparse.Namespace):
@@ -42,6 +51,13 @@ class Arguments(argparse.Namespace):
     sync: bool = False
     emergency_stop: bool = False
     withdraw: bool = False
+    attest: bool = False
+    broker_order_id: str | None = None
+    state: str | None = None
+    quantity: int | None = None
+    price: str | None = None
+    operator: str | None = None
+    evidence: str | None = None
 
 
 def _http_client(settings: Settings) -> KisHttpClient:
@@ -142,6 +158,42 @@ async def withdraw_plan(arguments: Arguments) -> str:
     return f"withdrawn={withdrawn} plan_id={arguments.plan_id}"
 
 
+async def attest_order_state(arguments: Arguments) -> str:
+    """사람이 확인한 사실로 주문을 종결한다(ADR-0010). 증권사 호출은 없다."""
+    settings = _paper_settings()
+    missing = [
+        name
+        for name, value in (
+            ("--broker-order-id", arguments.broker_order_id),
+            ("--state", arguments.state),
+            ("--quantity", arguments.quantity),
+            ("--operator", arguments.operator),
+            ("--evidence", arguments.evidence),
+        )
+        if value is None
+    ]
+    if missing:
+        raise RuntimeError(_ATTEST_NEEDS.format(", ".join(missing)))
+    store = PostgresAttestationStore.from_url(settings.database_url.get_secret_value())
+    request = AttestationInput(
+        environment=settings.kis_environment.value,
+        broker_order_id=arguments.broker_order_id or "",
+        state=OrderState(arguments.state),
+        filled_quantity=arguments.quantity or 0,
+        average_fill_price=None if arguments.price is None else Decimal(arguments.price),
+        operator=arguments.operator or "",
+        evidence=arguments.evidence or "",
+    )
+    try:
+        result = await OrderAttestor(store=store).attest(request, datetime.now(UTC))
+    finally:
+        await store.close()
+    if not result.applied:
+        return f"refused reason={result.reason}"
+    state = result.state.value if result.state is not None else "-"
+    return f"attested order={result.client_order_id} state={state}"
+
+
 async def synchronize_fills() -> str:
     settings = _paper_settings()
     collaborators = _collaborators(settings)
@@ -199,7 +251,24 @@ def main() -> None:
     _ = parser.add_argument("--sync", action="store_true")
     _ = parser.add_argument("--emergency-stop", action="store_true")
     _ = parser.add_argument("--withdraw", action="store_true")
+    _ = parser.add_argument("--attest", action="store_true")
+    _ = parser.add_argument("--broker-order-id")
+    _ = parser.add_argument(
+        "--state",
+        choices=(
+            OrderState.FILLED.value,
+            OrderState.PARTIALLY_FILLED.value,
+            OrderState.CANCELED.value,
+        ),
+    )
+    _ = parser.add_argument("--quantity", type=int)
+    _ = parser.add_argument("--price")
+    _ = parser.add_argument("--operator")
+    _ = parser.add_argument("--evidence")
     arguments = parser.parse_args(namespace=Arguments())
+    if arguments.attest:
+        print(anyio.run(attest_order_state, arguments))  # noqa: T201
+        return
     if arguments.emergency_stop:
         print(anyio.run(emergency_stop))  # noqa: T201
         return
@@ -211,7 +280,7 @@ def main() -> None:
     if arguments.sync:
         print(anyio.run(synchronize_fills))  # noqa: T201
     if not arguments.submit and not arguments.sync:
-        parser.error("--submit, --sync, --withdraw, --emergency-stop 중 하나가 필요하다")
+        parser.error("--submit, --sync, --withdraw, --attest, --emergency-stop 중 하나가 필요하다")
 
 
 if __name__ == "__main__":

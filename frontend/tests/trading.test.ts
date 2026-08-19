@@ -167,6 +167,7 @@ describe("이벤트와 체결 정보", () => {
     expect(eventTypeLabel("api_failure")).toBe("API 실패");
     expect(eventTypeLabel("reconcile_problem")).toBe("대조 불일치");
     expect(eventTypeLabel("listener_state")).toBe("체결통보 연결");
+    expect(eventTypeLabel("attestation")).toBe("사람 확인 종결");
     expect(eventTypeLabel("unknown_type")).toBe("unknown_type");
   });
 
@@ -174,6 +175,10 @@ describe("이벤트와 체결 정보", () => {
     expect(isAlertEvent("state_change")).toBe(false);
     expect(isAlertEvent("api_failure")).toBe(true);
     expect(isAlertEvent("reconcile_problem")).toBe(true);
+  });
+
+  it("사람 확인 종결은 증권사 사실이 아니므로 주의로 표시한다", () => {
+    expect(isAlertEvent("attestation", "HUMAN_ATTESTED")).toBe(true);
   });
 
   it("체결통보 리스너 이벤트는 부착만 정상으로 본다", () => {
