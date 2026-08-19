@@ -139,6 +139,7 @@ class FakeNotifications:
     sessions: list[tuple[str, UUID]] = field(default_factory=list)
     events: list[str] = field(default_factory=list)
     closed_before_start: int = 0
+    close_reasons: list[str] = field(default_factory=list)
 
     async def order_by_broker_order_id(
         self,
@@ -168,8 +169,8 @@ class FakeNotifications:
 
     async def close_open_sessions(self, environment: str, reason: str, at: datetime) -> int:
         assert environment == _ENVIRONMENT
-        assert reason
         assert at is not None
+        self.close_reasons.append(reason)
         self.closed_before_start += 1
         return self.closed_before_start
 
@@ -350,6 +351,7 @@ def test_attach_closes_previous_sessions_and_starts_a_new_one() -> None:
 
         assert not result.blocked
         assert notifications.closed_before_start == 1
+        assert notifications.close_reasons == ["SUPERSEDED"]
         assert notifications.sessions[0][0] == _TRANSACTION_ID
         assert result.session_id == notifications.sessions[0][1]
         assert any(event.startswith("event:LISTENER_ATTACHED") for event in notifications.events)

@@ -228,4 +228,10 @@ KIS 모의환경의 실시간 체결통보(`H0STCNI9`)를 수신해 장중에 �
 
 | 날짜 | 확인 내용 |
 |---|---|
-| — | 실주문 통보 대조 대기 |
+| 2026-08-19 | 모의 웹소켓 접속·구독 성공을 실측했다. `approval_key` 36자, 구독 응답 `rt_cd=0`·`msg_cd=OPSP0000`·`msg1=SUBSCRIBE SUCCESS`, `output.key` 32자·`output.iv` 16자로 이 문서의 복호화 표와 일치한다. `PINGPONG`은 약 10초 간격으로 오며 같은 프레임으로 응답해 유지된다. |
+| 2026-08-19 | 리스너 세션·심박·부착 판정, 미체결 상태 재부착의 `NOTIFICATION_GAP` 차단, SIGINT·SIGTERM 정상 종료, `LISTENER_NOT_ATTACHED` 제출 차단을 실환경에서 확인했다([검증 기록](../qa/phase-7-order-planning-verification.md)). |
+| — | 본문 23개 필드 순서와 장중 체결 확정은 실제 통보 수신 후 기록한다. |
+
+리스너 세션의 종료 사유 문자열은 감사 로그에서 원인을 구분한다: `CONNECTION_CLOSED`(연결이 끊김),
+`FRAME_ERROR`(계약과 다른 프레임), `STOPPED`(운영자 중단·컨테이너 정지), `SUPERSEDED`(새 리스너가
+이전 세션을 정리).

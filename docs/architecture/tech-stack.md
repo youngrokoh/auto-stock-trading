@@ -77,6 +77,8 @@ FastAPI 라우터는 `create_app`이 주입하는 application 계층 Protocol(�
 
 KIS 어댑터의 `httpx2` 클라이언트는 HTTP/2, 연결 풀, Brotli·Zstandard 응답, 연결·읽기·쓰기·풀 타임아웃과 전송 재시도를 사용한다. 모의투자 인증과 시세 요청은 초당 1건 제한보다 안전한 최소 1.05초 간격으로 직렬화하고, 로그에는 HTTP 메서드·경로·상태·소요시간만 남겨 인증 헤더와 요청 본문을 제외한다.
 
+상시 실행 프로세스는 종료 신호를 코드로 다룬다. 체결통보 리스너는 `anyio.open_signal_receiver`로 SIGINT·SIGTERM을 같은 종료 경로로 모아 세션을 닫고(취소 중에도 기록이 남도록 `CancelScope(shield=True)`) 종료하며, 감사 로그의 종료 사유로 운영자 중단(`STOPPED`)과 연결 끊김(`CONNECTION_CLOSED`)을 구분한다. 컨테이너 정지가 기록 없이 프로세스를 죽이면 다음 기동이 남은 연결 세션을 만나기 때문이다. 수신 루프의 예외는 태스크 그룹이 예외 그룹으로 묶기 전에 해당 프레임에서 처리한다.
+
 실시간 체결통보는 `websockets`로 연결하고 자동 ping을 끈 뒤 서버의 `PINGPONG` 프레임에 응답해 유지한다. 통보 본문은 항상 암호화되어 오므로 `cryptography`의 AES-256-CBC로 복호화한다(`adapters/brokers/kis_realtime.py`). 프레임 해석·복호화는 순수 함수로 분리해 소켓 없이 검증하며, 웹소켓 접속키는 REST 접근토큰과 별개 자격증명이라 별도 Valkey 캐시 키로 공유한다. Valkey 조정 모듈은 공용 타입·단일 프로세스 구현(`kis_coordination.py`)과 Valkey 구현(`kis_coordination_valkey.py`)으로 나뉘어 있다.
 
 주요 의미 타입은 일반 문자열이나 숫자와 구분한다.

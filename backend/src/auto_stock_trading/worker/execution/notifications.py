@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 import anyio
 
@@ -25,7 +26,11 @@ from auto_stock_trading.adapters.database.trading_notification_store import (
     PostgresNotificationStore,
 )
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
-from auto_stock_trading.application.trading.notifications import FillNotificationListener
+from auto_stock_trading.application.trading.notifications import (
+    AttachResult,
+    FillNotificationListener,
+    HandleResult,
+)
 from auto_stock_trading.domain.orders.account import account_reference
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.kis_credentials import (
@@ -35,6 +40,7 @@ from auto_stock_trading.worker.kis_credentials import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
     from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,24 @@ _CLOSED: Final = "CONNECTION_CLOSED"
 _FRAME_ERROR: Final = "FRAME_ERROR"
 _STOPPED: Final = "STOPPED"
 _BACKOFF_SECONDS: Final = (1.0, 2.0, 4.0, 8.0, 16.0, 30.0)
+
+
+class SessionListener(Protocol):
+    """세션 한 번에 필요한 리스너 동작. 테스트는 같은 모양의 대역을 넘긴다."""
+
+    async def attach(self, transaction_id: str, now: datetime) -> AttachResult: ...
+
+    async def handle(self, payload: str, received_at: datetime) -> HandleResult: ...
+
+    async def heartbeat(self, session_id: UUID, now: datetime) -> None: ...
+
+    async def record_failure(self, detail: str, now: datetime) -> None: ...
+
+    async def detach(self, session_id: UUID, reason: str, now: datetime) -> None: ...
+
+
+class NotificationStream(Protocol):
+    def stream(self) -> AsyncIterator[str]: ...
 
 
 class Arguments(argparse.Namespace):
@@ -63,20 +87,30 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _backoff(attempt: int) -> float:
+def backoff_seconds(attempt: int) -> float:
+    """계약의 재연결 대기(1·2·4·8·16·30초, 상한 30초)."""
     return _BACKOFF_SECONDS[min(attempt, len(_BACKOFF_SECONDS) - 1)]
 
 
-async def _heartbeat(listener: FillNotificationListener, session_id: UUID) -> None:
+async def _heartbeat(listener: SessionListener, session_id: UUID) -> None:
     """세션 심박. 제출 게이트가 이 값으로 부착을 판정한다."""
     while True:
         await anyio.sleep(HEARTBEAT_SECONDS)
         await listener.heartbeat(session_id, _now())
 
 
-async def _session(
-    listener: FillNotificationListener,
-    socket: KisNotificationSocket,
+def is_interrupt(error: BaseException) -> bool:
+    """운영자 중단만 정상 종료로 본다. 태스크 그룹은 예외를 묶어 올린다."""
+    if isinstance(error, KeyboardInterrupt):
+        return True
+    if isinstance(error, BaseExceptionGroup):
+        return all(is_interrupt(inner) for inner in error.exceptions)
+    return False
+
+
+async def run_session(
+    listener: SessionListener,
+    socket: NotificationStream,
     transaction_id: str,
 ) -> tuple[int, bool]:
     """한 세션을 수신한다. 반환은 처리한 통보 수와 차단 발생 여부다."""
@@ -87,17 +121,27 @@ async def _session(
     try:
         async with anyio.create_task_group() as task_group:
             _ = task_group.start_soon(_heartbeat, listener, attach.session_id)
-            async for payload in socket.stream():
-                result = await listener.handle(payload, _now())
-                handled += 1
-                blocked = blocked or result.blocked
-            task_group.cancel_scope.cancel()
-    except RealtimeFrameError as error:
-        reason = _FRAME_ERROR
-        await listener.record_failure(error.detail, _now())
-        logger.warning("KIS notification session failed: %s", error.detail)
+            # 프레임 오류는 이 프레임에서 처리해 태스크 그룹이 묶지 않게 한다. 묶이면
+            # 예외 그룹이 되어 세션 재연결 대신 프로세스가 죽는다.
+            try:
+                async for payload in socket.stream():
+                    result = await listener.handle(payload, _now())
+                    handled += 1
+                    blocked = blocked or result.blocked
+            except RealtimeFrameError as error:
+                reason = _FRAME_ERROR
+                await listener.record_failure(error.detail, _now())
+                logger.warning("KIS notification session failed: %s", error.detail)
+            finally:
+                task_group.cancel_scope.cancel()
+    except* KeyboardInterrupt, SystemExit, anyio.get_cancelled_exc_class():
+        # 운영자가 멈춘 것과 연결이 끊긴 것은 감사 로그에서 구분한다.
+        reason = _STOPPED
+        raise
     finally:
-        await listener.detach(attach.session_id, reason, _now())
+        # 취소 중에도 세션을 닫아야 다음 기동이 남은 연결 세션을 만나지 않는다.
+        with anyio.CancelScope(shield=True):
+            await listener.detach(attach.session_id, reason, _now())
     return handled, blocked
 
 
@@ -136,12 +180,27 @@ async def listen(arguments: Arguments) -> str:
             account.product_code.get_secret_value(),
         ),
     )
+    try:
+        return await run_sessions(listener, socket, arguments.max_sessions)
+    finally:
+        await approvals.close()
+        await notifications.close()
+        await store.close()
+
+
+async def run_sessions(
+    listener: SessionListener,
+    socket: NotificationStream,
+    max_sessions: int,
+) -> str:
+    """세션을 이어 붙인다. SIGINT·SIGTERM은 세션을 정상 종료로 닫고 루프를 끝낸다."""
     sessions = 0
     handled = 0
     blocked = False
-    try:
-        while arguments.max_sessions <= 0 or sessions < arguments.max_sessions:
-            received, session_blocked = await _session(
+    async with anyio.create_task_group() as task_group:
+        _ = task_group.start_soon(_watch_signals, task_group.cancel_scope)
+        while max_sessions <= 0 or sessions < max_sessions:
+            received, session_blocked = await run_session(
                 listener,
                 socket,
                 PAPER_NOTIFICATION_TRANSACTION_ID,
@@ -149,14 +208,20 @@ async def listen(arguments: Arguments) -> str:
             handled += received
             blocked = blocked or session_blocked
             sessions += 1
-            if arguments.max_sessions > 0 and sessions >= arguments.max_sessions:
+            if max_sessions > 0 and sessions >= max_sessions:
                 break
-            await anyio.sleep(_backoff(sessions - 1))
-    finally:
-        await approvals.close()
-        await notifications.close()
-        await store.close()
+            await anyio.sleep(backoff_seconds(sessions - 1))
+        task_group.cancel_scope.cancel()
     return f"sessions={sessions} notifications={handled} blocked={blocked} reason={_STOPPED}"
+
+
+async def _watch_signals(scope: anyio.CancelScope) -> None:
+    """컨테이너 정지(SIGTERM)와 Ctrl-C(SIGINT)를 같은 종료 경로로 모은다."""
+    with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+        async for received in signals:
+            logger.info("KIS notification listener stopping on signal %d", received)
+            scope.cancel()
+            return
 
 
 async def status() -> str:
@@ -181,7 +246,12 @@ def main() -> None:
         print(anyio.run(status))  # noqa: T201
         return
     if arguments.listen:
-        print(anyio.run(listen, arguments))  # noqa: T201
+        try:
+            print(anyio.run(listen, arguments))  # noqa: T201
+        except (KeyboardInterrupt, BaseExceptionGroup) as error:
+            if not is_interrupt(error):
+                raise
+            print("stopped=interrupt")  # noqa: T201
         return
     parser.error("--listen 또는 --status 중 하나가 필요하다")
 

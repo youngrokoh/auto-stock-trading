@@ -181,7 +181,32 @@ uv run python -m auto_stock_trading.worker.execution.submission --submit
 | 제출 게이트 | 리스너 미부착 시 `blocked block_code=LISTENER_NOT_ATTACHED submitted=0` |
 | 단절 복구 | 미체결 주문이 있는 상태로 재부착하면 자동매매가 `PAUSED`로 전이한다 |
 
-결과: (실행 후 기록)
+결과 (2026-08-19 11:40~12:05 KST, 실제 모의환경):
+
+| 항목 | 결과 |
+|---|---|
+| 접속키 발급 | `/oauth2/Approval`이 36자 `approval_key`를 반환. Valkey 공유 키에 캐시되고 재호출은 발급하지 않음 |
+| 구독 응답 | `rt_cd=0`, `msg_cd=OPSP0000`, `msg1=SUBSCRIBE SUCCESS`, `output.key` 32자·`output.iv` 16자 — 계약의 복호화 표와 일치 |
+| 연결 유지 | `PINGPONG` 제어 프레임이 약 10초 간격으로 도착하고 같은 프레임을 되돌려 세션 유지 |
+| 세션·심박 | `notification_session` 행이 `connected`로 생기고 10초마다 `last_heartbeat_at` 갱신. `--status`가 `attached=True` |
+| 단절 구간 차단 | 미체결 주문 2건이 있는 상태로 부착하니 주문번호별 `NOTIFICATION_GAP` 2건 기록. 자동매매가 `disabled`라 전이는 시도하지 않고 기록만 남음(정지 가능 상태에서만 전이) |
+| 정상 종료 | SIGINT·SIGTERM 모두 세션을 `disconnected`/`STOPPED`로 닫고 `LISTENER_DETACHED` 이벤트 기록. 다음 기동은 남은 연결 세션을 `SUPERSEDED`로 정리 |
+| 제출 게이트 | 리스너를 끈 상태에서 자동매매 `RUNNING`으로 제출 → `blocked block_code=LISTENER_NOT_ATTACHED submitted=0`, 증권사 호출 없음. 확인 후 즉시 `disabled` 복귀 |
+| 개인정보 | 원본 응답·요청 지문·자동매매 이벤트에서 HTS ID·계좌번호 문자열 검색 결과 0건 |
+
+이 실행에서 고친 결함 2건(둘 다 정책·계약 변경 없음):
+
+1. 프레임 오류가 태스크 그룹에 묶여 예외 그룹이 되면서 세션 재연결이 아니라 프로세스가 죽었다.
+   프레임 오류를 수신 루프 프레임에서 처리하도록 바꿨다.
+2. 운영자 중단과 컨테이너 정지(SIGTERM)가 세션을 닫지 못해 `connected` 행이 남았다. 신호를 받아
+   같은 종료 경로로 모으고 취소 중에도 종료 기록을 남기도록(`CancelScope(shield=True)`) 바꿨다.
+
+미완료 2항목(주문 사실이 필요하다):
+
+- **통보 필드 순서 실측 대조**와 **장중 체결 확정**은 계좌에 새 주문 이벤트가 있어야 관측된다.
+- 오늘은 오전 실주문 2건이 내부 `SUBMITTED`로 남아 계획이 `ACCOUNT_NOT_RECONCILED`로 차단된 상태다.
+  이 대조는 마감 후 일별주문체결조회로만 풀리므로, 우리 시스템이 새 주문을 내는 방식의 확인은 다음
+  거래일에 리스너를 먼저 붙인 뒤 수행한다.
 
 ## 다음 거래일 대기 항목
 

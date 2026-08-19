@@ -35,6 +35,7 @@ _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _ATTACHED: Final = "LISTENER_ATTACHED"
 _DETACHED: Final = "LISTENER_DETACHED"
 _FAILED: Final = "LISTENER_ERROR"
+_SUPERSEDED: Final = "SUPERSEDED"
 _PAUSABLE: Final = frozenset({AutomationState.ARMED, AutomationState.RUNNING})
 
 
@@ -146,7 +147,7 @@ class FillNotificationListener:
 
     async def attach(self, transaction_id: str, now: datetime) -> AttachResult:
         """세션을 시작한다. 미체결 주문이 있으면 놓친 통보가 있을 수 있어 차단한다."""
-        _ = await self.notifications.close_open_sessions(self.environment, _ATTACHED, now)
+        _ = await self.notifications.close_open_sessions(self.environment, _SUPERSEDED, now)
         session_id = await self.notifications.start_session(self.environment, transaction_id, now)
         await self.notifications.record_listener_event(
             self.environment,
