@@ -144,6 +144,11 @@
 `AUTOMATION_NOT_RUNNING`은 자동매매 상태가 `RUNNING`이 아닐 때의 계획 차단 사유이며, 정책 §6의
 상태 자체를 함께 기록한다.
 
+`LISTENER_NOT_ATTACHED`는 [ADR-0009](../decisions/0009-realtime-fill-notification.md)가 추가한 제출
+차단 사유다. 실시간 체결통보 리스너가 붙어 있지 않으면 그 주문의 체결을 장중에 확인할 수 없으므로
+제출하지 않는다. 한도를 완화하지 않고 조건을 하나 더 좁히는 코드이며 판정 규칙은
+[실시간 체결통보 계약](realtime-fill-notification-contract.md)에 있다.
+
 ## 주문과 식별자
 
 `trading.order`는 주문당 현재 상태 한 행이며, 이 계약의 범위에서는 `PLANNED`와 `REJECTED`만

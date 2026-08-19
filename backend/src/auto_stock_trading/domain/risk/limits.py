@@ -42,6 +42,8 @@ class BlockCode(StrEnum):
     MARKET_CLOSED = "MARKET_CLOSED"
     SOURCE_TIMEOUT = "SOURCE_TIMEOUT"
     AUTOMATION_NOT_RUNNING = "AUTOMATION_NOT_RUNNING"
+    # ADR-0009: 체결통보 리스너가 붙어 있지 않으면 장중 체결을 확인할 수 없어 제출하지 않는다.
+    LISTENER_NOT_ATTACHED = "LISTENER_NOT_ATTACHED"
 
 
 # 이 값은 거래 안전 정책 §3·§4의 승인된 한도다. 코드에서 완화할 수 없다.

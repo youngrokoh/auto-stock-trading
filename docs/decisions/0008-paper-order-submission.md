@@ -4,6 +4,7 @@
 - 결정일: 2026-08-18
 - 승인: 사용자가 2026-08-18에 네 가지 결정을 승인 — ① 첫 슬라이스는 worker CLI 수동 제출만, ② 체결·상태 동기화는 일별주문체결조회 폴링, ③ 증권사 대조 불일치는 차단하고 사람이 확인, ④ 비상정지는 정책대로 미체결 자동 취소를 시도
 - 관련 결정: [ADR-0007 모의투자 주문 계획과 위험검사 경계](0007-paper-order-planning-and-risk.md), [ADR-0004 AI 신호와 주문 실행 분리](0004-ai-execution-separation.md)
+- 후속 결정: [ADR-0009 실시간 체결통보 수신 경계](0009-realtime-fill-notification.md) — 아래 결정 2는 2026-08-19에 확장됐다. 장중 확정은 실시간 체결통보가 맡고, 일별주문체결조회 폴링은 마감 후 재대조 검증자로 남는다. 결정 1·3~7은 그대로 유효하다
 - 관련 정책: [거래 안전 정책](../spec/trading-safety-policy.md), [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md)
 - 관련 계약: [주문 제출·체결 동기화 계약](../data/order-submission-contract.md), [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md)
 

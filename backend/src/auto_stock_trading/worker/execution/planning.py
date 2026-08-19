@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Final, final
 import anyio
 
 from auto_stock_trading.adapters.brokers.kis_account import KisAccountAdapter
-from auto_stock_trading.adapters.brokers.kis_coordination import (
+from auto_stock_trading.adapters.brokers.kis_coordination import kis_coordination_scope
+from auto_stock_trading.adapters.brokers.kis_coordination_valkey import (
     ValkeyKisRequestCoordinator,
-    kis_coordination_scope,
 )
 from auto_stock_trading.adapters.brokers.kis_http import (
     KisConfigurationError,

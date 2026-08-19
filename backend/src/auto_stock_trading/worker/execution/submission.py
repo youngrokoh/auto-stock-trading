@@ -1,20 +1,24 @@
 """모의투자 주문 제출·체결 동기화·취소 CLI. 사람이 실행할 때만 증권사에 주문을 보낸다."""
 
 import argparse
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
 import anyio
 
-from auto_stock_trading.adapters.brokers.kis_coordination import (
+from auto_stock_trading.adapters.brokers.kis_coordination import kis_coordination_scope
+from auto_stock_trading.adapters.brokers.kis_coordination_valkey import (
     ValkeyKisRequestCoordinator,
-    kis_coordination_scope,
 )
 from auto_stock_trading.adapters.brokers.kis_http import KisHttpClient, create_kis_http_client
 from auto_stock_trading.adapters.brokers.kis_orders import KisOrderAdapter
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
+)
+from auto_stock_trading.adapters.database.trading_notification_store import (
+    PostgresNotificationStore,
 )
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.planning import AutomationTransition
@@ -63,13 +67,47 @@ def _paper_settings() -> Settings:
     return settings
 
 
-async def submit_orders(arguments: Arguments) -> str:
-    settings = _paper_settings()
+@dataclass(frozen=True, slots=True)
+class _Collaborators:
+    """CLI 한 번 실행에 쓰는 어댑터 묶음. 종료 시 모두 닫는다."""
+
+    calendar: PostgresMarketCalendarRepository
+    store: PostgresTradingStore
+    notifications: PostgresNotificationStore
+    broker: KisOrderAdapter
+    submitter: OrderSubmitter
+
+    async def close(self) -> None:
+        await self.broker.close()
+        await self.calendar.close()
+        await self.notifications.close()
+        await self.store.close()
+
+
+def _collaborators(settings: Settings) -> _Collaborators:
     database_url = settings.database_url.get_secret_value()
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     store = PostgresTradingStore.from_url(database_url)
+    notifications = PostgresNotificationStore.from_url(database_url)
     broker = KisOrderAdapter(_http_client(settings), load_kis_account(settings), paper=True)
-    submitter = OrderSubmitter(calendar=calendar, broker=broker, store=store)
+    return _Collaborators(
+        calendar=calendar,
+        store=store,
+        notifications=notifications,
+        broker=broker,
+        submitter=OrderSubmitter(
+            calendar=calendar,
+            broker=broker,
+            store=store,
+            listener=notifications,
+        ),
+    )
+
+
+async def submit_orders(arguments: Arguments) -> str:
+    settings = _paper_settings()
+    collaborators = _collaborators(settings)
+    submitter = collaborators.submitter
     request = SubmissionInput(
         environment=settings.kis_environment.value,
         plan_id=None if arguments.plan_id is None else UUID(arguments.plan_id),
@@ -77,9 +115,7 @@ async def submit_orders(arguments: Arguments) -> str:
     try:
         result = await submitter.submit(request, datetime.now(UTC))
     finally:
-        await broker.close()
-        await calendar.close()
-        await store.close()
+        await collaborators.close()
     if result.block_code is not None:
         return f"blocked block_code={result.block_code} submitted=0"
     rejected = ",".join(f"{order}:{code}" for order, code in result.rejected)
@@ -108,17 +144,14 @@ async def withdraw_plan(arguments: Arguments) -> str:
 
 async def synchronize_fills() -> str:
     settings = _paper_settings()
-    database_url = settings.database_url.get_secret_value()
-    calendar = PostgresMarketCalendarRepository.from_url(database_url)
-    store = PostgresTradingStore.from_url(database_url)
-    broker = KisOrderAdapter(_http_client(settings), load_kis_account(settings), paper=True)
-    submitter = OrderSubmitter(calendar=calendar, broker=broker, store=store)
+    collaborators = _collaborators(settings)
     try:
-        summary = await submitter.synchronize(settings.kis_environment.value, datetime.now(UTC))
+        summary = await collaborators.submitter.synchronize(
+            settings.kis_environment.value,
+            datetime.now(UTC),
+        )
     finally:
-        await broker.close()
-        await calendar.close()
-        await store.close()
+        await collaborators.close()
     updated = ",".join(f"{order}:{state.value}" for order, state in summary.updated)
     problems = ",".join(f"{order}:{problem.value}" for order, problem in summary.problems)
     return (
@@ -130,15 +163,11 @@ async def synchronize_fills() -> str:
 async def emergency_stop() -> str:
     """정책 §6대로 비상정지 후 미체결 주문 취소를 시도한다. 보유는 청산하지 않는다."""
     settings = _paper_settings()
-    database_url = settings.database_url.get_secret_value()
-    calendar = PostgresMarketCalendarRepository.from_url(database_url)
-    store = PostgresTradingStore.from_url(database_url)
-    broker = KisOrderAdapter(_http_client(settings), load_kis_account(settings), paper=True)
-    submitter = OrderSubmitter(calendar=calendar, broker=broker, store=store)
+    collaborators = _collaborators(settings)
     now = datetime.now(UTC)
     environment = settings.kis_environment.value
     try:
-        record = await store.transition_automation(
+        record = await collaborators.store.transition_automation(
             AutomationTransition(
                 environment=environment,
                 requested=AutomationState.EMERGENCY_STOP,
@@ -147,11 +176,13 @@ async def emergency_stop() -> str:
                 trading_date=now.date(),
             )
         )
-        summary = await submitter.cancel_open_orders(environment, now, _EMERGENCY_REASON)
+        summary = await collaborators.submitter.cancel_open_orders(
+            environment,
+            now,
+            _EMERGENCY_REASON,
+        )
     finally:
-        await broker.close()
-        await calendar.close()
-        await store.close()
+        await collaborators.close()
     failed = ",".join(f"{order}:{code}" for order, code in summary.failed)
     return (
         f"state={record.state.value} cancel_requested={len(summary.requested)} "

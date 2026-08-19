@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     kis_account_number_file: Path | None = None
     kis_account_product_code: SecretStr | None = None
     kis_account_product_code_file: Path | None = None
+    kis_hts_id: SecretStr | None = None
+    kis_hts_id_file: Path | None = None
     dart_api_key: SecretStr | None = None
     dart_api_key_file: Path | None = None
     dart_base_url: str = "https://opendart.fss.or.kr"
@@ -55,3 +57,9 @@ class Settings(BaseSettings):
         if self.kis_environment is KisEnvironment.PAPER:
             return "https://openapivts.koreainvestment.com:29443"
         return "https://openapi.koreainvestment.com:9443"
+
+    @property
+    def kis_websocket_url(self) -> str:
+        if self.kis_environment is KisEnvironment.PAPER:
+            return "ws://ops.koreainvestment.com:31000"
+        return "ws://ops.koreainvestment.com:21000"

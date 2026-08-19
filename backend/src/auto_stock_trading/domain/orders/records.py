@@ -7,12 +7,14 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from auto_stock_trading.domain.orders.account import AccountSnapshot
+    from auto_stock_trading.domain.orders.fills import ReconcileProblem
     from auto_stock_trading.domain.orders.models import (
         AutomationState,
         OrderSide,
         OrderState,
         OrderType,
     )
+    from auto_stock_trading.domain.orders.notifications import FillNotification
     from auto_stock_trading.domain.risk.engine import RiskDecision
 
 
@@ -130,3 +132,19 @@ class TradingRiskState:
     max_order_amount: Decimal
     counters: StoredCounters
     api_failures: int
+
+
+@dataclass(frozen=True, slots=True)
+class FillNotificationRecord:
+    """저장할 체결통보 한 건. 상태 전이 목표를 함께 담아 같은 트랜잭션에서 반영한다."""
+
+    environment: str
+    account_reference: str
+    order_id: UUID | None
+    notification: FillNotification
+    masked_payload: str
+    problem: ReconcileProblem | None
+    state: OrderState | None
+    filled_quantity: int | None
+    average_fill_price: Decimal | None
+    received_at: datetime

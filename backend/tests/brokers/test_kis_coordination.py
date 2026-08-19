@@ -11,8 +11,10 @@ from auto_stock_trading.adapters.brokers.kis_coordination import (
     KisAccessToken,
     KisCoordinationConfig,
     KisCoordinationError,
-    ValkeyKisRequestCoordinator,
     kis_coordination_scope,
+)
+from auto_stock_trading.adapters.brokers.kis_coordination_valkey import (
+    ValkeyKisRequestCoordinator,
 )
 from auto_stock_trading.settings.runtime import Settings
 

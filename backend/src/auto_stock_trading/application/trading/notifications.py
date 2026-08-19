@@ -1,0 +1,314 @@
+"""실시간 체결통보 수신 유스케이스. 읽기 전용이며 주문을 제출·취소하지 않는다(ADR-0009)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Final, Protocol
+from zoneinfo import ZoneInfo
+
+from auto_stock_trading.application.trading.planning import AutomationTransition
+from auto_stock_trading.domain.orders.fills import OrderSnapshot, ReconcileProblem
+from auto_stock_trading.domain.orders.models import (
+    AutomationState,
+    InvalidTransitionError,
+    OrderState,
+    next_order_state,
+)
+from auto_stock_trading.domain.orders.notifications import (
+    NotificationFormatError,
+    apply_notification,
+    mask_notification_payload,
+    parse_notifications,
+)
+from auto_stock_trading.domain.orders.records import FillNotificationRecord
+from auto_stock_trading.domain.risk.limits import BlockCode
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+    from uuid import UUID
+
+    from auto_stock_trading.application.trading.submission import TrackedOrder
+    from auto_stock_trading.domain.orders.notifications import FillNotification
+    from auto_stock_trading.domain.orders.records import AutomationRecord
+
+_SEOUL: Final = ZoneInfo("Asia/Seoul")
+_ATTACHED: Final = "LISTENER_ATTACHED"
+_DETACHED: Final = "LISTENER_DETACHED"
+_FAILED: Final = "LISTENER_ERROR"
+_PAUSABLE: Final = frozenset({AutomationState.ARMED, AutomationState.RUNNING})
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationOutcome:
+    broker_order_id: str
+    client_order_id: str | None
+    state: OrderState | None
+    problem: ReconcileProblem | None
+
+
+@dataclass(frozen=True, slots=True)
+class HandleResult:
+    outcomes: tuple[NotificationOutcome, ...]
+    blocked: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AttachResult:
+    session_id: UUID
+    blocked: bool
+
+
+class NotificationOrders(Protocol):
+    """주문·자동매매 쪽 협력자. 기존 주문 저장소가 그대로 만족한다."""
+
+    async def automation_record(self, environment: str) -> AutomationRecord | None: ...
+
+    async def transition_automation(
+        self,
+        transition: AutomationTransition,
+    ) -> AutomationRecord: ...
+
+    async def open_orders(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> tuple[TrackedOrder, ...]: ...
+
+    async def record_reconcile_problem(
+        self,
+        environment: str,
+        broker_order_id: str,
+        problem: ReconcileProblem,
+        occurred_at: datetime,
+    ) -> None: ...
+
+
+class NotificationSink(Protocol):
+    """통보 저장과 리스너 세션. 통보 저장과 주문 상태 전이는 같은 트랜잭션이다."""
+
+    async def order_by_broker_order_id(
+        self,
+        environment: str,
+        broker_order_id: str,
+    ) -> TrackedOrder | None: ...
+
+    async def record_notification(self, record: FillNotificationRecord) -> None: ...
+
+    async def start_session(
+        self,
+        environment: str,
+        transaction_id: str,
+        at: datetime,
+    ) -> UUID: ...
+
+    async def close_open_sessions(self, environment: str, reason: str, at: datetime) -> int: ...
+
+    async def heartbeat(self, session_id: UUID, at: datetime) -> None: ...
+
+    async def end_session(self, session_id: UUID, reason: str, at: datetime) -> None: ...
+
+    async def record_listener_event(
+        self,
+        environment: str,
+        reason_code: str,
+        detail: str,
+        occurred_at: datetime,
+    ) -> None: ...
+
+
+def _snapshot(order: TrackedOrder) -> OrderSnapshot:
+    return OrderSnapshot(
+        client_order_id=order.client_order_id,
+        broker_order_id=order.broker_order_id,
+        symbol=order.symbol,
+        quantity=order.quantity,
+        filled_quantity=order.filled_quantity,
+        average_fill_price=order.average_fill_price,
+        state=order.state,
+    )
+
+
+def _allowed(order: TrackedOrder, state: OrderState) -> bool:
+    """상태 그래프가 막는 전이는 사실 반영이 아니라 대조 불일치로 다룬다."""
+    try:
+        _ = next_order_state(order.state, state)
+    except InvalidTransitionError:
+        return False
+    return True
+
+
+@dataclass(frozen=True, slots=True)
+class FillNotificationListener:
+    orders: NotificationOrders
+    notifications: NotificationSink
+    environment: str
+    account_reference: str
+
+    async def attach(self, transaction_id: str, now: datetime) -> AttachResult:
+        """세션을 시작한다. 미체결 주문이 있으면 놓친 통보가 있을 수 있어 차단한다."""
+        _ = await self.notifications.close_open_sessions(self.environment, _ATTACHED, now)
+        session_id = await self.notifications.start_session(self.environment, transaction_id, now)
+        await self.notifications.record_listener_event(
+            self.environment,
+            _ATTACHED,
+            transaction_id,
+            now,
+        )
+        open_orders = await self.orders.open_orders(self.environment, now.astimezone(_SEOUL).date())
+        if not open_orders:
+            return AttachResult(session_id=session_id, blocked=False)
+        for order in open_orders:
+            await self._record_problem(
+                order.broker_order_id or order.client_order_id,
+                ReconcileProblem.NOTIFICATION_GAP,
+                now,
+            )
+        await self._pause(now)
+        return AttachResult(session_id=session_id, blocked=True)
+
+    async def heartbeat(self, session_id: UUID, now: datetime) -> None:
+        await self.notifications.heartbeat(session_id, now)
+
+    async def record_failure(self, detail: str, now: datetime) -> None:
+        """세션 수준 실패를 남긴다. 세션이 닫히면 제출 게이트가 이미 차단한다."""
+        await self.notifications.record_listener_event(self.environment, _FAILED, detail, now)
+
+    async def detach(self, session_id: UUID, reason: str, now: datetime) -> None:
+        await self.notifications.end_session(session_id, reason, now)
+        await self.notifications.record_listener_event(self.environment, _DETACHED, reason, now)
+
+    async def handle(self, payload: str, received_at: datetime) -> HandleResult:
+        """복호화된 프레임 하나를 반영한다. 형식 위반은 체결 유실 가능성으로 다룬다."""
+        try:
+            notifications = parse_notifications(payload)
+        except NotificationFormatError as error:
+            # 사유는 형식 위반의 종류뿐이다. 본문은 어디에도 남기지 않는다.
+            await self.notifications.record_listener_event(
+                self.environment,
+                ReconcileProblem.NOTIFICATION_UNPARSABLE.value,
+                error.detail,
+                received_at,
+            )
+            await self._record_problem("", ReconcileProblem.NOTIFICATION_UNPARSABLE, received_at)
+            await self._pause(received_at)
+            return HandleResult(outcomes=(), blocked=True)
+        outcomes: list[NotificationOutcome] = []
+        blocked = False
+        masked = mask_notification_payload(payload)
+        for notification in notifications:
+            outcome = await self._apply(notification, masked, received_at)
+            outcomes.append(outcome)
+            blocked = blocked or outcome.problem is not None
+        if blocked:
+            await self._pause(received_at)
+        return HandleResult(outcomes=tuple(outcomes), blocked=blocked)
+
+    async def _apply(
+        self,
+        notification: FillNotification,
+        masked_payload: str,
+        received_at: datetime,
+    ) -> NotificationOutcome:
+        order = await self.notifications.order_by_broker_order_id(
+            self.environment,
+            notification.broker_order_id,
+        )
+        if order is None:
+            return await self._unmatched(notification, masked_payload, received_at)
+        result = apply_notification(_snapshot(order), notification)
+        problem = result.problem
+        state = result.state if result.changed else None
+        if state is not None and not _allowed(order, state):
+            problem = ReconcileProblem.TERMINAL_STATE_CHANGED
+            state = None
+        if problem is not None:
+            state = None
+        await self.notifications.record_notification(
+            FillNotificationRecord(
+                environment=self.environment,
+                account_reference=self.account_reference,
+                order_id=order.order_id,
+                notification=notification,
+                masked_payload=masked_payload,
+                problem=problem,
+                state=state,
+                filled_quantity=None if state is None else result.filled_quantity,
+                average_fill_price=None if state is None else result.average_fill_price,
+                received_at=received_at,
+            )
+        )
+        if problem is not None:
+            await self.orders.record_reconcile_problem(
+                self.environment,
+                notification.broker_order_id,
+                problem,
+                received_at,
+            )
+        return NotificationOutcome(
+            broker_order_id=notification.broker_order_id,
+            client_order_id=order.client_order_id,
+            state=state,
+            problem=problem,
+        )
+
+    async def _unmatched(
+        self,
+        notification: FillNotification,
+        masked_payload: str,
+        received_at: datetime,
+    ) -> NotificationOutcome:
+        problem = ReconcileProblem.UNKNOWN_BROKER_ORDER
+        await self.notifications.record_notification(
+            FillNotificationRecord(
+                environment=self.environment,
+                account_reference=self.account_reference,
+                order_id=None,
+                notification=notification,
+                masked_payload=masked_payload,
+                problem=problem,
+                state=None,
+                filled_quantity=None,
+                average_fill_price=None,
+                received_at=received_at,
+            )
+        )
+        await self.orders.record_reconcile_problem(
+            self.environment,
+            notification.broker_order_id,
+            problem,
+            received_at,
+        )
+        return NotificationOutcome(
+            broker_order_id=notification.broker_order_id,
+            client_order_id=None,
+            state=None,
+            problem=problem,
+        )
+
+    async def _record_problem(
+        self,
+        broker_order_id: str,
+        problem: ReconcileProblem,
+        occurred_at: datetime,
+    ) -> None:
+        await self.orders.record_reconcile_problem(
+            self.environment,
+            broker_order_id,
+            problem,
+            occurred_at,
+        )
+
+    async def _pause(self, now: datetime) -> None:
+        """정지할 수 있는 상태에서만 전이한다. 이미 멈춰 있으면 기록만 남는다."""
+        record = await self.orders.automation_record(self.environment)
+        if record is None or record.state not in _PAUSABLE:
+            return
+        _ = await self.orders.transition_automation(
+            AutomationTransition(
+                environment=self.environment,
+                requested=AutomationState.PAUSED,
+                reason_code=BlockCode.ACCOUNT_NOT_RECONCILED.value,
+                occurred_at=now,
+                trading_date=now.astimezone(_SEOUL).date(),
+            )
+        )

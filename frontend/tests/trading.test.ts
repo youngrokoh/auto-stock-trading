@@ -166,6 +166,7 @@ describe("이벤트와 체결 정보", () => {
     expect(eventTypeLabel("state_change")).toBe("상태 전이");
     expect(eventTypeLabel("api_failure")).toBe("API 실패");
     expect(eventTypeLabel("reconcile_problem")).toBe("대조 불일치");
+    expect(eventTypeLabel("listener_state")).toBe("체결통보 연결");
     expect(eventTypeLabel("unknown_type")).toBe("unknown_type");
   });
 
@@ -173,6 +174,13 @@ describe("이벤트와 체결 정보", () => {
     expect(isAlertEvent("state_change")).toBe(false);
     expect(isAlertEvent("api_failure")).toBe(true);
     expect(isAlertEvent("reconcile_problem")).toBe(true);
+  });
+
+  it("체결통보 리스너 이벤트는 부착만 정상으로 본다", () => {
+    expect(isAlertEvent("listener_state", "LISTENER_ATTACHED")).toBe(false);
+    expect(isAlertEvent("listener_state", "LISTENER_DETACHED")).toBe(true);
+    expect(isAlertEvent("listener_state", "LISTENER_ERROR")).toBe(true);
+    expect(isAlertEvent("listener_state", null)).toBe(true);
   });
 
   it("제출 이후 상태만 체결 정보를 가진다", () => {

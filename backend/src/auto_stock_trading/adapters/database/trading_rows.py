@@ -180,6 +180,55 @@ class OrderEventRow(Base):
 
 
 @final
+class FillNotificationRow(Base):
+    """실시간 체결통보 한 건. 본문은 계약의 마스킹 규칙을 지난 뒤에만 저장된다."""
+
+    __tablename__: str = "fill_notification"
+    __table_args__: tuple[dict[str, str]] = ({"schema": "trading"},)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    environment: Mapped[str] = mapped_column(String(8))
+    account_reference: Mapped[str] = mapped_column(String(12))
+    order_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("trading.order.id", ondelete="SET NULL"),
+    )
+    broker_order_id: Mapped[str] = mapped_column(String(40))
+    original_broker_order_id: Mapped[str | None] = mapped_column(String(40))
+    notification_kind: Mapped[str] = mapped_column(String(12))
+    side: Mapped[str] = mapped_column(String(4))
+    symbol: Mapped[str] = mapped_column(String(12))
+    quantity: Mapped[int] = mapped_column(Integer)
+    price: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    order_quantity: Mapped[int] = mapped_column(Integer)
+    broker_event_time: Mapped[str] = mapped_column(String(6))
+    rejected: Mapped[bool] = mapped_column(Boolean)
+    revise_code: Mapped[str] = mapped_column(String(4))
+    accept_code: Mapped[str] = mapped_column(String(4))
+    branch_no: Mapped[str] = mapped_column(String(8))
+    masked_payload: Mapped[str] = mapped_column(Text)
+    problem: Mapped[str | None] = mapped_column(String(40))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+@final
+class NotificationSessionRow(Base):
+    """체결통보 리스너 세션. 제출 게이트가 이 행의 심박을 본다."""
+
+    __tablename__: str = "notification_session"
+    __table_args__: tuple[dict[str, str]] = ({"schema": "trading"},)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    environment: Mapped[str] = mapped_column(String(8))
+    transaction_id: Mapped[str] = mapped_column(String(16))
+    state: Mapped[str] = mapped_column(String(12))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disconnect_reason: Mapped[str | None] = mapped_column(String(40))
+
+
+@final
 class RiskDecisionRow(Base):
     __tablename__: str = "risk_decision"
     __table_args__: tuple[UniqueConstraint, dict[str, str]] = (

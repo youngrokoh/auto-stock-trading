@@ -29,7 +29,11 @@ HTTP로 주문을 만들거나 상태를 바꾸는 엔드포인트는 제공하�
 - **계좌번호 원문을 노출하지 않는다.** 스냅샷은 `account_reference`(계좌번호+상품코드 sha256의 앞
   12자)만 포함한다. `nav`는 우리 계산값이고 `broker_net_asset`은 증권사 보고값(대조용)이다.
 - 자동매매 상태 행이 없으면 정책 기본값 `disabled`로 응답하고 `changed_at`은 `null`이다. 이벤트에는
-  상태 전이(`state_change`)와 외부 API 실패(`api_failure`)가 함께 시간 역순으로 담긴다.
+  상태 전이(`state_change`), 외부 API 실패(`api_failure`), 대조 불일치(`reconcile_problem`),
+  체결통보 리스너 상태(`listener_state`)가 함께 시간 역순으로 담긴다. `listener_state`의
+  `reason_code`는 `LISTENER_ATTACHED`·`LISTENER_DETACHED`·`LISTENER_ERROR` 또는
+  `NOTIFICATION_UNPARSABLE`이며 상세는
+  [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md)에 있다.
 - 계획 목록은 차단된 계획도 포함하며 `status`(`created`·`blocked`), `block_code`, 주문 수와 거절
   수를 준다. 계획 상세는 각 주문의 기준가·출처·수신 시각과 적용된 모든 규칙의 한도값·예상값·통과
   여부(`risk_decisions`)를 포함한다.

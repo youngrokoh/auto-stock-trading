@@ -108,6 +108,12 @@ class BrokerGateway(Protocol):
     async def fetch_daily_fills(self, trading_date: date) -> DailyFillsObservation: ...
 
 
+class SubmissionListener(Protocol):
+    """체결통보 리스너 부착 판정(ADR-0009 결정 3). 붙어 있지 않으면 제출하지 않는다."""
+
+    async def attached(self, environment: str, now: datetime) -> bool: ...
+
+
 class SubmissionStore(Protocol):
     async def automation_record(self, environment: str) -> AutomationRecord | None: ...
 
@@ -210,6 +216,7 @@ class OrderSubmitter:
     calendar: SubmissionCalendar
     broker: BrokerGateway
     store: SubmissionStore
+    listener: SubmissionListener
     limits: RiskLimits = PAPER_RISK_LIMITS
 
     async def submit(self, request: SubmissionInput, now: datetime) -> SubmissionResult:
@@ -343,6 +350,8 @@ class OrderSubmitter:
             return BlockCode.MARKET_CLOSED.value
         if not within_order_window(now, self.limits):
             return BlockCode.MARKET_CLOSED.value
+        if not await self.listener.attached(environment, now):
+            return BlockCode.LISTENER_NOT_ATTACHED.value
         return None
 
     async def _is_trading_day(self, trading_date: date) -> bool:

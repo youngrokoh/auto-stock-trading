@@ -5,7 +5,7 @@
 - 승인: 사용자가 2026-08-18에 [ADR-0008](../decisions/0008-paper-order-submission.md)의 네 가지 결정을 승인
 - 관련 결정: [ADR-0008](../decisions/0008-paper-order-submission.md), [ADR-0007](../decisions/0007-paper-order-planning-and-risk.md)
 - 관련 정책: [거래 안전 정책](../spec/trading-safety-policy.md), [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md)
-- 관련 계약: [주문 계획·위험검사 데이터 계약](order-planning-risk-contract.md)
+- 관련 계약: [주문 계획·위험검사 데이터 계약](order-planning-risk-contract.md), [실시간 체결통보 계약](realtime-fill-notification-contract.md)
 - 관련 API: [모의투자 주문 계획 읽기 API](../api/trading-api.md)
 
 ## 목적
@@ -43,8 +43,9 @@
   `INQR_DVSN_1`·`INQR_DVSN_3`·`SLL_BUY_DVSN_CD` 조합 6가지를 모두 시도해도 `output1`은 비어 있고
   `output2` 합계만 채워졌다(`msg_cd=70070000`). 따라서 장중에는 주문별 체결을 증권사 사실로 확정할
   수 없고, 내부 주문은 `SUBMITTED`로 남는다. 미체결이 남아 있으므로 이후 계획은
-  `ACCOUNT_NOT_RECONCILED`로 차단된다. 해소 방안(실시간 체결통보 도입 또는 집계 기반 확정 규칙)은
-  사용자 결정 대기다.
+  `ACCOUNT_NOT_RECONCILED`로 차단된다. 이 한계는 2026-08-19에 [ADR-0009](../decisions/0009-realtime-fill-notification.md)로
+  해소했다. 장중 확정은 [실시간 체결통보 계약](realtime-fill-notification-contract.md)이 맡고, 이
+  조회는 마감 후 재대조 검증자로 남는다.
 - 제출 응답 계약은 실주문으로 검증됐다: `rt_cd=0`, `msg_cd=40600000`, `output`에
   `KRX_FWDG_ORD_ORGNO`·`ODNO`·`ORD_TMD`가 모두 존재한다. 취소 실패도 사실로 기록된다
   (`rt_cd=1`, `msg_cd=40330000` "모의투자 정정/취소할 수량이 없습니다").
@@ -58,6 +59,8 @@
 - 서울 기준 오늘이 검증된 달력의 거래일이고 정책 §4의 주문 허용시간(09:05~15:15) 안이다.
 - 대상 주문이 `PLANNED` 상태이고 수량·지정가가 모두 양수다.
 - 계획의 거래일이 오늘이다. 지난 거래일의 계획은 제출하지 않는다.
+- 같은 환경의 체결통보 리스너가 부착돼 있다. 어긋나면 `LISTENER_NOT_ATTACHED`로 차단한다
+  ([실시간 체결통보 계약](realtime-fill-notification-contract.md)).
 
 요청 본문은 `CANO`, `ACNT_PRDT_CD`, `PDNO`(6자리), `ORD_DVSN`(`00` 지정가), `ORD_QTY`, `ORD_UNPR`
 이다. 응답 `output`의 `KRX_FWDG_ORD_ORGNO`(지점번호), `ODNO`(주문번호), `ORD_TMD`(주문시각)를
@@ -146,7 +149,8 @@
 
 - 정정(수량·가격 변경)은 취소 후 재계획으로 대체한다. 정정 TR은 취소와 같은 엔드포인트지만 목표
   포지션 재계산 규칙이 필요해 후속으로 둔다.
-- 실시간 체결통보(웹소켓)는 도입하지 않는다. 체결 반영은 동기화 명령 실행 시점에 확정된다.
+- 실시간 체결통보(웹소켓)는 2026-08-19에 [ADR-0009](../decisions/0009-realtime-fill-notification.md)로
+  도입했다. 이 조회로만 확정하던 제약은 사라졌고, 이 문서의 동기화는 마감 후 재대조 경로다.
 - 자동 스케줄 제출이 없으므로 신호 발생과 제출 사이 지연은 사람의 실행 시점에 의존한다.
 - `output1` 필드명과 제출·취소 응답은 실제 주문이 생긴 뒤 대조한다. 제출 경로는 주문 허용시간
   안에서만 동작하므로 검증은 거래일 장중에 수행한다.

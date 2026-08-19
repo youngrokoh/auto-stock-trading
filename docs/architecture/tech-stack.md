@@ -66,7 +66,8 @@ Infrastructure
 | 환경 설정 | pydantic-settings |
 | 비동기 런타임 | AnyIO |
 | 외부 HTTP | httpx2 |
-| WebSocket | websockets |
+| WebSocket | websockets (pinned `17.0.1`) |
+| 대칭키 복호화 | cryptography (pinned `50.0.0`) |
 | JSON 응답 | Pydantic 직렬화, 필요 시 orjson |
 | 구조화 로그 | structlog |
 
@@ -75,6 +76,8 @@ Infrastructure
 FastAPI 라우터는 `create_app`이 주입하는 application 계층 Protocol(상태 probe, 시장 데이터 reader, 기업행사·수정주가 reader, 재무 보고서 reader)만 사용한다. 어댑터 구현은 기본 factory로 연결하고 테스트는 fake reader를 주입한다. 읽기 전용 조회 어댑터는 쓰기 저장소와 모듈을 분리한다. 분봉 읽기는 `MarketDataReader` Protocol의 `minute_bars`로 노출되며, 분봉 수집은 시장 달력·KIS 당일분봉·분봉 저장소 Protocol을 조합한 application 유스케이스가 담당한다.
 
 KIS 어댑터의 `httpx2` 클라이언트는 HTTP/2, 연결 풀, Brotli·Zstandard 응답, 연결·읽기·쓰기·풀 타임아웃과 전송 재시도를 사용한다. 모의투자 인증과 시세 요청은 초당 1건 제한보다 안전한 최소 1.05초 간격으로 직렬화하고, 로그에는 HTTP 메서드·경로·상태·소요시간만 남겨 인증 헤더와 요청 본문을 제외한다.
+
+실시간 체결통보는 `websockets`로 연결하고 자동 ping을 끈 뒤 서버의 `PINGPONG` 프레임에 응답해 유지한다. 통보 본문은 항상 암호화되어 오므로 `cryptography`의 AES-256-CBC로 복호화한다(`adapters/brokers/kis_realtime.py`). 프레임 해석·복호화는 순수 함수로 분리해 소켓 없이 검증하며, 웹소켓 접속키는 REST 접근토큰과 별개 자격증명이라 별도 Valkey 캐시 키로 공유한다. Valkey 조정 모듈은 공용 타입·단일 프로세스 구현(`kis_coordination.py`)과 Valkey 구현(`kis_coordination_valkey.py`)으로 나뉘어 있다.
 
 주요 의미 타입은 일반 문자열이나 숫자와 구분한다.
 

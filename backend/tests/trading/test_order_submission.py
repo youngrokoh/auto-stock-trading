@@ -239,12 +239,48 @@ class FakeStore:
         self.raw_responses.append(raw.request_fingerprint)
 
 
-def _submitter(store: FakeStore, broker: FakeBroker, *, trading_day: bool = True) -> OrderSubmitter:
+@dataclass
+class FakeListener:
+    """체결통보 리스너 부착 여부. 기본은 부착 상태다."""
+
+    attached_result: bool = True
+
+    async def attached(self, environment: str, now: datetime) -> bool:
+        assert environment == _ENVIRONMENT
+        assert now is not None
+        return self.attached_result
+
+
+def _submitter(
+    store: FakeStore,
+    broker: FakeBroker,
+    *,
+    trading_day: bool = True,
+    listener_attached: bool = True,
+) -> OrderSubmitter:
     return OrderSubmitter(
         calendar=FakeCalendar(trading_day=trading_day),
         broker=broker,
         store=store,
+        listener=FakeListener(attached_result=listener_attached),
     )
+
+
+def test_submission_without_an_attached_listener_never_calls_the_broker() -> None:
+    async def scenario() -> None:
+        store = FakeStore(pending=(_tracked(),))
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker, listener_attached=False).submit(
+            SubmissionInput(environment=_ENVIRONMENT, plan_id=None),
+            _NOW,
+        )
+
+        assert result.block_code == BlockCode.LISTENER_NOT_ATTACHED.value
+        assert result.submitted == ()
+        assert broker.submissions == []
+
+    anyio.run(scenario)
 
 
 def test_planned_order_is_submitted_and_recorded() -> None:

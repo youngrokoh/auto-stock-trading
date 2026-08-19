@@ -314,7 +314,15 @@ etf_distribution
 [ADR-0008](../decisions/0008-paper-order-submission.md)과
 [주문 제출·체결 동기화 계약](../data/order-submission-contract.md)에 따라 KIS 모의 주문 제출·취소와
 일별주문체결 기반 상태 확정, 증권사 대조 차단을 구현했다. 제출은 worker CLI 수동 실행만 제공하며
-HTTP 쓰기 경로는 없다. 실시간 체결통보와 자동 스케줄 제출은 후속 결정이다.
+HTTP 쓰기 경로는 없다.
+
+2026-08-19에 실제 모의주문을 전송해 접수·체결을 확인했고, 그 실행이 드러낸 장중 한계(일별주문체결조회가
+`output1`을 주지 않아 주문별 체결을 확정할 수 없음)를 승인된
+[ADR-0009](../decisions/0009-realtime-fill-notification.md)와
+[실시간 체결통보 계약](../data/realtime-fill-notification-contract.md)으로 해소했다. 장중 확정은
+웹소켓 체결통보 리스너가 맡고, 일별주문체결조회는 마감 후 재대조 검증자로 남는다. 리스너는 읽기
+전용 별도 프로세스이며 기본 구성에서 비활성이고, 리스너가 붙어 있지 않으면 제출이
+`LISTENER_NOT_ATTACHED`로 차단된다. 자동 스케줄 제출은 여전히 후속 결정이다.
 
 구현 내용:
 

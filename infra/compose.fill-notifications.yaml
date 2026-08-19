@@ -1,0 +1,48 @@
+services:
+  # 실시간 체결통보 리스너. 읽기 전용이며 주문을 제출·취소하지 않는다(ADR-0009 결정 6).
+  # 기본 Compose에는 이 서비스가 없다. 이 오버라이드를 명시적으로 지정할 때만 뜬다.
+  fill-notification-listener:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "python",
+        "-m",
+        "auto_stock_trading.worker.execution.notifications",
+        "--listen",
+      ]
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      AUTO_STOCK_KIS_ENVIRONMENT: paper
+      AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_paper_app_key
+      AUTO_STOCK_KIS_APP_SECRET_FILE: /run/secrets/kis_paper_app_secret
+      AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE: /run/secrets/kis_paper_account_number
+      AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE: /run/secrets/kis_paper_account_product_code
+      AUTO_STOCK_KIS_HTS_ID_FILE: /run/secrets/kis_paper_hts_id
+    secrets:
+      - kis_paper_app_key
+      - kis_paper_app_secret
+      - kis_paper_account_number
+      - kis_paper_account_product_code
+      - kis_paper_hts_id
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+secrets:
+  kis_paper_app_key:
+    file: ${KIS_PAPER_APP_KEY_FILE:-../.secrets/kis-paper-app-key}
+  kis_paper_app_secret:
+    file: ${KIS_PAPER_APP_SECRET_FILE:-../.secrets/kis-paper-app-secret}
+  kis_paper_account_number:
+    file: ${KIS_PAPER_ACCOUNT_NUMBER_FILE:-../.secrets/kis-paper-account-number}
+  kis_paper_account_product_code:
+    file: ${KIS_PAPER_ACCOUNT_PRODUCT_CODE_FILE:-../.secrets/kis-paper-account-product}
+  kis_paper_hts_id:
+    file: ${KIS_PAPER_HTS_ID_FILE:-../.secrets/kis-paper-hts-id}

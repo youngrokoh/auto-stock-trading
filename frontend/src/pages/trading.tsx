@@ -562,7 +562,7 @@ export const Trading = () => {
                         </span>
                         <span
                           className={
-                            isAlertEvent(event.event_type)
+                            isAlertEvent(event.event_type, event.reason_code)
                               ? "event-list__level event-list__level--danger"
                               : "event-list__level"
                           }

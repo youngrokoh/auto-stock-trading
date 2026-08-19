@@ -132,6 +132,16 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "ck_order_submitted_fields",
         "ck_order_fill_quantity",
         "reconcile_problem",
+        "CREATE TABLE trading.fill_notification",
+        "CONSTRAINT ck_fill_notification_kind",
+        "CONSTRAINT ck_fill_notification_amounts",
+        "CONSTRAINT ck_fill_notification_masked",
+        "CREATE INDEX ix_fill_notification_broker_order",
+        "CREATE TABLE trading.notification_session",
+        "CONSTRAINT ck_notification_session_state",
+        "CONSTRAINT ck_notification_session_end",
+        "CREATE UNIQUE INDEX uq_notification_session_connected",
+        "listener_state",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

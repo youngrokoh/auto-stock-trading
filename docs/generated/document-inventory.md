@@ -22,6 +22,7 @@
 | [국내 분봉 데이터 계약](../data/minute-bar-data-contract.md) | `docs/data/minute-bar-data-contract.md` | 구현 기준 |
 | [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md) | `docs/data/order-planning-risk-contract.md` | 구현 기준 |
 | [주문 제출·체결 동기화 계약](../data/order-submission-contract.md) | `docs/data/order-submission-contract.md` | 구현 기준 |
+| [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md) | `docs/data/realtime-fill-notification-contract.md` | 구현 기준 |
 | [ADR-0001: 모듈형 모놀리스 채택](../decisions/0001-modular-monolith.md) | `docs/decisions/0001-modular-monolith.md` | 승인 |
 | [ADR-0002: Python·React 기술 기준선 채택](../decisions/0002-technology-baseline.md) | `docs/decisions/0002-technology-baseline.md` | 승인 |
 | [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](../decisions/0003-data-architecture.md) | `docs/decisions/0003-data-architecture.md` | 승인 |
@@ -30,6 +31,7 @@
 | [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](../decisions/0006-market-calendar-scheduling.md) | `docs/decisions/0006-market-calendar-scheduling.md` | 승인 |
 | [ADR-0007: 모의투자 주문 계획과 위험검사 경계](../decisions/0007-paper-order-planning-and-risk.md) | `docs/decisions/0007-paper-order-planning-and-risk.md` | 승인 |
 | [ADR-0008: 모의투자 주문 제출·체결 동기화 경계](../decisions/0008-paper-order-submission.md) | `docs/decisions/0008-paper-order-submission.md` | 승인 |
+| [ADR-0009: 실시간 체결통보 수신 경계](../decisions/0009-realtime-fill-notification.md) | `docs/decisions/0009-realtime-fill-notification.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |

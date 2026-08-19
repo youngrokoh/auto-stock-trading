@@ -140,8 +140,48 @@ uv run python -m auto_stock_trading.worker.execution.planning --automation disab
 
 - 내부 주문은 `SUBMITTED`로 남고 값을 만들지 않는다. 미체결이 존재하므로 이후 계획은
   `ACCOUNT_NOT_RECONCILED`로 차단된다(fail-closed 설계 그대로 동작).
-- 장 마감 후 `output1`이 채워지는지 재확인이 필요하다. 채워지지 않으면 실시간 체결통보(웹소켓
-  `H0STCNI9`) 도입 또는 집계 기반 확정 규칙 추가 중 하나를 사용자 결정으로 선택한다.
+- 장 마감 후 `output1`이 채워지는지 재확인이 필요하다.
+- **해소 결정**: 2026-08-19에 사용자가 실시간 체결통보 도입을 승인했다
+  ([ADR-0009](../decisions/0009-realtime-fill-notification.md)). 장중 확정은 웹소켓 통보가 맡고
+  이 조회는 마감 후 재대조 검증자로 남는다.
+
+## 실시간 체결통보 리스너 검증 (2026-08-19)
+
+절차와 결과는 아래 순서로 기록한다. 리스너는 읽기 전용이며 이 절차에서 새 주문을 만들지 않는다.
+
+```bash
+cd backend
+export AUTO_STOCK_KIS_ENVIRONMENT=paper
+export AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-paper-app-key
+export AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-paper-app-secret
+export AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE=../.secrets/kis-paper-account-number
+export AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE=../.secrets/kis-paper-account-product
+export AUTO_STOCK_KIS_HTS_ID_FILE=../.secrets/kis-paper-hts-id
+
+# 1) 부착 판정 (리스너 없이 실행하면 attached=False)
+uv run python -m auto_stock_trading.worker.execution.notifications --status
+
+# 2) 한 세션만 붙여 구독·복호화 확인 (Ctrl-C로 종료)
+uv run python -m auto_stock_trading.worker.execution.notifications --listen --max-sessions 1
+
+# 3) 리스너를 끈 상태에서 제출 시도 → 증권사 호출 없이 차단되어야 한다
+uv run python -m auto_stock_trading.worker.execution.submission --submit
+```
+
+확인 항목:
+
+| 항목 | 기대 |
+|---|---|
+| 접속키 발급 | `/oauth2/Approval`이 `approval_key`를 주고 Valkey 공유 키에 캐시된다 |
+| 구독 응답 | `rt_cd=0`이며 `output.key`·`output.iv`가 온다 |
+| 연결 유지 | `PINGPONG`에 같은 프레임으로 응답해 세션이 유지된다 |
+| 통보 필드 | 복호화 본문의 23개 필드 순서가 계약의 표와 일치한다 |
+| 상태 확정 | 실제 체결이 장중에 `PARTIALLY_FILLED`/`FILLED`로 전이된다 |
+| 개인정보 | 저장된 통보·API 응답·로그에 계좌번호·계좌명·고객ID·HTS ID·접속키가 없다 |
+| 제출 게이트 | 리스너 미부착 시 `blocked block_code=LISTENER_NOT_ATTACHED submitted=0` |
+| 단절 복구 | 미체결 주문이 있는 상태로 재부착하면 자동매매가 `PAUSED`로 전이한다 |
+
+결과: (실행 후 기록)
 
 ## 다음 거래일 대기 항목
 
@@ -171,6 +211,6 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 ## 남은 범위
 
 - 실제 주문 전송·체결·취소의 장중 검증(위 절차)과 콘솔 화면 B·C 표 실데이터 대조
-- 주문 정정(수량·가격 변경)과 실시간 체결통보(웹소켓), 자동 스케줄 제출
+- 주문 정정(수량·가격 변경)과 자동 스케줄 제출
 - 서버 재시작 후 상태 복구 시나리오 테스트(현재는 거래일 변경 복귀만 검증)
 - 주문·위험 이벤트 알림(웹·메신저)

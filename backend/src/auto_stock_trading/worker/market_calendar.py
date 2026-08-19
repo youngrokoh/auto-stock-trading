@@ -2,9 +2,9 @@ from datetime import UTC, date, datetime
 from typing import Final
 from zoneinfo import ZoneInfo
 
-from auto_stock_trading.adapters.brokers.kis_coordination import (
+from auto_stock_trading.adapters.brokers.kis_coordination import kis_coordination_scope
+from auto_stock_trading.adapters.brokers.kis_coordination_valkey import (
     ValkeyKisRequestCoordinator,
-    kis_coordination_scope,
 )
 from auto_stock_trading.adapters.brokers.kis_http import (
     KisConfigurationError,

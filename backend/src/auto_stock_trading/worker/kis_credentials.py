@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 _ACCOUNT_NUMBER_LENGTH = 8
 _PRODUCT_CODE_LENGTH = 2
+_HTS_ID_MAX_LENGTH = 20
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
@@ -50,6 +51,16 @@ def load_kis_account(settings: Settings) -> KisAccount:
             "AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE",
         ),
     )
+
+
+def load_kis_hts_id(settings: Settings) -> SecretStr:
+    """체결통보 구독의 `tr_key`. secret 파일로만 주입하고 값은 메시지에 넣지 않는다."""
+    secret = _secret_from(settings.kis_hts_id, settings.kis_hts_id_file, "AUTO_STOCK_KIS_HTS_ID")
+    value = secret.get_secret_value()
+    if not value.isalnum() or len(value) > _HTS_ID_MAX_LENGTH:
+        message = f"AUTO_STOCK_KIS_HTS_ID must be alphanumeric and at most {_HTS_ID_MAX_LENGTH}"
+        raise KisConfigurationError(message)
+    return secret
 
 
 def _digits(secret: SecretStr, length: int, setting_name: str) -> SecretStr:

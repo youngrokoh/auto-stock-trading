@@ -130,6 +130,7 @@ Taskiq worker ── Valkey
 - [백테스트·규칙형 전략 계약](data/backtest-strategy-contract.md)
 - [주문 계획·위험검사 데이터 계약](data/order-planning-risk-contract.md)
 - [주문 제출·체결 동기화 계약](data/order-submission-contract.md)
+- [실시간 체결통보 계약](data/realtime-fill-notification-contract.md)
 
 #### Operations
 
@@ -158,6 +159,7 @@ Taskiq worker ── Valkey
 - [ADR-0006: 시장 달력 스케줄 실행과 중복 방지](decisions/0006-market-calendar-scheduling.md)
 - [ADR-0007: 모의투자 주문 계획과 위험검사 경계](decisions/0007-paper-order-planning-and-risk.md)
 - [ADR-0008: 모의투자 주문 제출·체결 동기화 경계](decisions/0008-paper-order-submission.md)
+- [ADR-0009: 실시간 체결통보 수신 경계](decisions/0009-realtime-fill-notification.md)
 
 #### Governance
 
