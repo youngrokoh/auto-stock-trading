@@ -229,11 +229,92 @@ uv run python -m auto_stock_trading.worker.execution.submission --submit
 - **우리 제출 경로로 낸 주문의 장중 확정**: 오전 미체결 2건의 대조가 마감 후 일별주문체결조회로만
   풀리므로 다음 거래일에 리스너를 먼저 붙인 뒤 수행한다. 부분체결 관측도 같이 한다.
 
-## 다음 거래일 대기 항목
+## 다음 거래일 장중 검증 계획 (2026-08-20)
 
-- **장중 주문별 체결 확정**: 위 미해결 항목의 결정(웹소켓 도입 또는 집계 기반 확정)이 필요하다.
-- **부분체결 관측**: 오늘은 두 주문 모두 즉시 전량 체결돼 `PARTIALLY_FILLED` 전이와 취소 성공 경로는
-  실데이터로 보지 못했다. 다음 실주문에서 지정가를 시장가와 벌려 미체결을 만들어 확인한다.
+목표는 세 가지다: ① 우리 제출 경로로 낸 주문이 장중에 체결 통보로 확정되는지, ② 부분체결·취소
+경로, ③ 리스너 단절 후 재부착의 `PAUSED` 전이(2026-08-19에는 자동매매가 `disabled`여서 전이 분기를
+관측하지 못했다).
+
+### 계좌 상태와 그에 따른 주문 방향 (2026-08-19 12:20 실측)
+
+| 값 | 금액 |
+|---|---|
+| NAV(결제기준 현금 + 평가금액) | 9,993,080원 |
+| 결제기준 현금 | 8,755,580원 |
+| 삼성전자 5주 평가금액 | 1,237,500원 (NAV의 12.38%) |
+| 증권사 순자산금액 | 9,993,080원 (우리 NAV와 일치) |
+
+정책 §3의 종목 노출 상한은 NAV의 10%(999,308원)이고, 업종 분류 원천이 없어 미분류 상한 10%가 실효
+총노출 상한이다. **현재 보유가 이미 상한을 넘었으므로 매수 계획은 목표 수량이 0이 되어 주문을 만들지
+않는다.** 따라서 검증 주문은 **매도**여야 하며, 이는 상한 초과 상태를 정상으로 되돌리는 방향이기도
+하다. 매도 수량은 계획기가 주문가능수량 안에서 산출하며, 실행 전에 산출 금액을 사용자에게 확인받는다.
+
+### 0단계 — 전제 확인
+
+- 2026-08-19 마감 후 `--sync`가 미체결 2건(`0000008637`, `0000008645`)을 증권사 사실로 확정했는지
+  확인한다. 확정되지 않았으면 계획이 `ACCOUNT_NOT_RECONCILED`로 계속 차단되므로 먼저 해결한다.
+- NAV와 증권사 순자산금액이 일치해야 한다. 다르면 계획이 차단된다(2026-08-19의 결함 수정 결과).
+
+### 1단계 — 리스너 선부착 (08:50~09:04 KST)
+
+```bash
+cd backend
+# 환경변수는 위 "실시간 체결통보 리스너 검증" 절과 같다
+uv run python -m auto_stock_trading.worker.execution.notifications --listen &
+uv run python -m auto_stock_trading.worker.execution.notifications --status   # attached=True
+uv run python -m auto_stock_trading.worker.execution.planning --account-snapshot
+uv run python -m auto_stock_trading.worker.execution.planning --automation armed
+uv run python -m auto_stock_trading.worker.execution.planning --automation running
+```
+
+리스너를 제출보다 먼저 붙이는 것이 ADR-0009 결정 3의 요구사항이다. 통보는 재생되지 않으므로 순서가
+바뀌면 그 주문의 체결을 놓친다.
+
+### 2단계 — 즉시 체결 경로 (09:05 이후)
+
+매도 신호로 계획을 만들고 제출한 뒤, 체결 통보가 장중에 상태를 확정하는지 본다.
+
+| 확인 지점 | 기대 |
+|---|---|
+| `trading.fill_notification` | `order_id`가 채워진 `execution` 통보. `problem`은 비어 있다 |
+| `trading.order` | `filled`(또는 `partially_filled`), `average_fill_price`가 통보 값 |
+| `trading.order_event` | 사유 `FILL_NOTIFICATION`의 전이 기록 |
+| `GET /api/trading/orders` | 체결 수량과 평균 체결가가 통보와 같다 |
+| 모의매매 콘솔 `/trading` | B 좌표 체결 열이 `수량 @ 단가`로 표시된다 |
+
+### 3단계 — 부분체결과 취소
+
+지정가를 정책 §4의 ±1% 밴드 상한(매도는 기준가 +1%)에 두어 즉시 체결되지 않는 주문을 만든다.
+
+- 일부만 체결되면 `PARTIALLY_FILLED` 확정과 누적 가산(직전 누적 + 통보 수량)을 확인한다.
+- 남은 수량은 `--emergency-stop`으로 취소하고 `CANCELED` 확정 경로를 본다.
+- **취소·정정 확인 통보의 `RCTF_CLS`·`ACPT_YN` 조합을 실측한다.** 계약은 이 조합이 확인되기 전까지
+  통보로 취소 전이를 하지 않으므로, 관측 결과로 전이 규칙을 채운다.
+
+### 4단계 — 단절 복구와 `PAUSED` 전이
+
+리스너를 `SIGKILL`로 죽여 정리 경로를 건너뛰게 만든다(세션 행이 `connected`로 남고 심박이 30초 뒤
+낡는다). 미체결 주문이 있는 상태에서 다시 부착하면 `NOTIFICATION_GAP`을 기록하고 자동매매가
+`PAUSED`로 전이해야 한다. 이후 재개는 사람이 원인을 확인한 뒤
+`--automation armed` → `--automation running`으로 한다.
+
+단절 동안 제출을 시도해 `LISTENER_NOT_ATTACHED` 차단도 다시 확인한다.
+
+### 5단계 — 마감 후 재대조
+
+`--sync`를 실행해 통보로 만든 누적과 일별주문체결조회 합계가 일치하는지 본다. 불일치는 자동으로
+고치지 않고 `ACCOUNT_NOT_RECONCILED`로 차단되는 것이 정상이다.
+
+### 기록과 마감
+
+결과를 [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md)의 실측 기록과 이 문서에
+남기고, 게이트를 통과시킨 뒤 커밋·푸시하고 CI를 확인한다. 자동매매는 검증 종료 시 `disabled`로
+되돌린다.
+
+### 사용자 확인이 필요한 항목
+
+- 매도 검증 주문의 수량·금액(계획기 산출값을 실행 전에 보고한다)
+- 3단계의 미체결 유도 주문을 낼지 여부
 
 ## 정책 해석 기록
 
