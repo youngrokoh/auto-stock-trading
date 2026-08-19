@@ -6,6 +6,7 @@
 - 관련 결정: [ADR-0008 모의투자 주문 제출·체결 동기화 경계](0008-paper-order-submission.md), [ADR-0007 모의투자 주문 계획과 위험검사 경계](0007-paper-order-planning-and-risk.md), [ADR-0005 KIS 토큰·요청 조정](0005-kis-token-and-rate-coordination.md)
 - 관련 정책: [거래 안전 정책](../spec/trading-safety-policy.md), [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md)
 - 관련 계약: [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md), [주문 제출·체결 동기화 계약](../data/order-submission-contract.md)
+- 실측 후속: 2026-08-19 마감 후 확인에서 일별주문체결조회가 **모의환경에서는 시각·파라미터와 무관하게 주문별 행(`output1`)을 주지 않는다**는 사실이 나왔다(9가지 조합). 아래 결정 1의 전반부(웹소켓으로 장중 확정)는 그대로 유효하지만, 후반부인 "마감 후 이 조회로 재대조"는 모의환경에서 수행할 수 없다. 결정 문구는 승인 상태로 두고, 대체 재대조 수단은 사용자 결정으로 남긴다
 
 ## 배경
 
