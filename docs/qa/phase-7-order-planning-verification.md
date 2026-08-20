@@ -486,6 +486,69 @@ uv run python -m auto_stock_trading.worker.execution.planning --automation runni
 - 매도 검증 주문의 수량·금액(계획기 산출값을 실행 전에 보고한다)
 - 3단계의 미체결 유도 주문을 낼지 여부
 
+## 지정가 정정 검증 계획 (다음 거래일)
+
+[ADR-0011](../decisions/0011-paper-order-revision.md)의 지정가 정정은 구현·자동검증이 끝났고
+실환경 검증만 남았다. 사용자 결정으로 **다음 거래일 장중**에 수행한다.
+
+### 2026-08-20에 오늘 수행하지 못한 이유
+
+| 확인 | 값 |
+|---|---|
+| 서울 시각 | 12:59 KST (주문 허용시간 안) |
+| 미체결 주문 | 0건 (매도 5건 `filled`, 매수 6건 `canceled`) |
+| 오늘 사용한 신호 조합 | 005930 매수·매도, 069500 매수 |
+| 종목 유니버스 | 삼성전자·KODEX 200 두 개 |
+
+정정할 주문을 만들려면 새 `PLANNED` 주문이 필요한데 오늘 날짜의 남은 조합이 없다. 같은
+`(전략·버전·신호일·종목·방향·순번)`은 같은 `client_order_id`가 되어 저장이 생략된다(중복 차단이 의도대로
+동작한 결과). 069500 매도는 보유 수량이 0이라 계획이 나오지 않는다. **`--signal-date`로 신호일을 바꿔
+우회하지 않는다** — 신호일은 계보 사실이므로 검증 편의로 바꿀 값이 아니다.
+
+### 절차
+
+```bash
+# 0) 리스너 먼저 붙인다(리스너 시작이 자동매매를 disabled로 되돌리므로 순서가 중요하다)
+python -m auto_stock_trading.worker.execution.notifications --listen
+
+# 1) 자동매매 활성화
+python -m auto_stock_trading.worker.execution.submission --automation armed
+python -m auto_stock_trading.worker.execution.submission --automation running
+
+# 2) 체결되지 않을 지정가로 미체결 주문 1건을 만든다(매수는 기준가보다 낮게)
+python -m auto_stock_trading.worker.execution.planning --symbol 005930 --side buy \
+  --price-offset-pct -1.5
+python -m auto_stock_trading.worker.execution.submission --submit
+
+# 3) 정정: 기준가 쪽으로 붙인다
+python -m auto_stock_trading.worker.execution.submission --revise \
+  --broker-order-id <2단계에서 받은 번호> --price-offset-pct -0.2
+```
+
+### 확인 항목
+
+| 항목 | 기대 |
+|---|---|
+| CLI 출력 | `revised price=<새 지정가> decisions=<판정 수>` |
+| `order.broker_order_id` | 증권사가 준 **새 번호**로 갱신 |
+| `order.limit_price`·`revision_count` | 새 지정가, `1` |
+| `order.state`·`quantity` | 변하지 않음 |
+| `order_event` | `order_revised`, detail에 `previous_broker_order_id` |
+| `risk_decision` | 같은 주문에 `attempt=1`(계획)과 `attempt=2`(정정)이 함께 존재 |
+| 정정 후 체결 통보 | **새 주문번호로 대조**되어 상태가 전이 (갱신을 검증하는 핵심 항목) |
+| 리스너를 끈 상태의 정정 | 증권사 호출 없이 `refused reason=LISTENER_NOT_ATTACHED` |
+| 한도 초과 정정 | 증권사 호출 없이 규칙 코드로 거절 |
+
+검증 후 자동매매를 `disabled`로 되돌리고 미체결 주문을 정리한다. 결과는 이 문서와
+[주문 제출·체결 동기화 계약](../data/order-submission-contract.md)에 남긴다.
+
+### 리스너 조건 보완 (2026-08-20)
+
+검증 절차를 쓰면서 구현 누락을 찾았다. ADR-0011 결정 4는 "새 주문과 같은 전수 검사"인데 제출 경로의
+리스너 부착 조건(ADR-0009 결정 3)이 정정 경로에 빠져 있었다. 정정은 새 주문번호를 받고 체결되지 않던
+가격을 체결 가능한 값으로 바꾸므로, 통보 없이 허용하면 장중에 확인할 수 없는 체결이 생긴다. 실패
+테스트를 먼저 쓰고 `OrderReviser`에 조건을 추가했으며 ADR과 계약에 근거를 기록했다.
+
 ## 정책 해석 기록
 
 - 업종 분류 원천 데이터가 없어 두 종목 모두 미분류로 판정된다. 정책 §3의 "분류되지 않은 종목 합계
@@ -507,7 +570,7 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 
 ## 남은 범위
 
-- 실제 주문 전송·체결·취소의 장중 검증(위 절차)과 콘솔 화면 B·C 표 실데이터 대조
-- 주문 정정(수량·가격 변경)과 자동 스케줄 제출
+- 지정가 정정의 장중 검증(위 "지정가 정정 검증 계획" 절, 다음 거래일)
+- 수량 정정과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
 - 서버 재시작 후 상태 복구 시나리오 테스트(현재는 거래일 변경 복귀만 검증)
 - 주문·위험 이벤트 알림(웹·메신저)

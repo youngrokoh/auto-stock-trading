@@ -172,6 +172,18 @@ class FakeContextSource:
 
 @final
 @dataclass
+class FakeListener:
+    is_attached: bool = True
+    asked: list[str] = field(default_factory=list)
+
+    async def attached(self, environment: str, now: datetime) -> bool:
+        assert now is not None
+        self.asked.append(environment)
+        return self.is_attached
+
+
+@final
+@dataclass
 class FakeBroker:
     accepted: bool = True
     requests: list[ReviseRequest] = field(default_factory=list)
@@ -243,8 +255,14 @@ def _reviser(
     store: FakeStore,
     broker: FakeBroker,
     context: FakeContextSource,
+    listener: FakeListener | None = None,
 ) -> OrderReviser:
-    return OrderReviser(context=context, broker=broker, store=store)
+    return OrderReviser(
+        context=context,
+        broker=broker,
+        store=store,
+        listener=listener or FakeListener(),
+    )
 
 
 def _request(offset: str = "0.4") -> RevisionInput:
@@ -366,6 +384,26 @@ def test_a_revision_that_breaks_a_limit_is_refused_with_the_rule_code() -> None:
         assert result.reject_code.startswith("RISK_")
         assert broker.requests == []
         assert result.decisions
+
+    anyio.run(run)
+
+
+def test_a_detached_listener_blocks_the_revision() -> None:
+    """정정은 새 주문번호를 받는다. 통보를 못 받는 상태에서 체결 가능성을 바꿀 수 없다."""
+
+    async def run() -> None:
+        broker = FakeBroker()
+        listener = FakeListener(is_attached=False)
+
+        result = await _reviser(FakeStore(), broker, FakeContextSource(), listener).revise(
+            _request(),
+            _NOW,
+        )
+
+        assert not result.applied
+        assert result.reject_code == "LISTENER_NOT_ATTACHED"
+        assert broker.requests == []
+        assert listener.asked == [_ENVIRONMENT]
 
     anyio.run(run)
 

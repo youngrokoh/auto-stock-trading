@@ -28,7 +28,10 @@ if TYPE_CHECKING:
 
     from auto_stock_trading.adapters.brokers.kis_orders import BrokerAcknowledgement
     from auto_stock_trading.application.trading.planning import PlanContext
-    from auto_stock_trading.application.trading.submission import TrackedOrder
+    from auto_stock_trading.application.trading.submission import (
+        SubmissionListener,
+        TrackedOrder,
+    )
     from auto_stock_trading.domain.market_data.models import RawBrokerResponse
     from auto_stock_trading.domain.orders.records import AutomationRecord
     from auto_stock_trading.domain.risk.engine import (
@@ -155,20 +158,19 @@ class OrderReviser:
     context: RevisionContext
     broker: RevisionBroker
     store: RevisionStore
+    listener: SubmissionListener
     limits: RiskLimits = PAPER_RISK_LIMITS
 
     async def revise(self, request: RevisionInput, now: datetime) -> RevisionResult:
         """대상 주문의 지정가만 바꾼다. 수량과 상태는 그대로 둔다."""
+        if not await self.listener.attached(request.environment, now):
+            return _refused(BlockCode.LISTENER_NOT_ATTACHED.value)
         order = await self.store.open_order(request.environment, request.broker_order_id)
         if order is None:
             return _refused(_UNKNOWN_ORDER)
-        if order.state not in _OPEN_STATES or order.broker_org_no is None:
-            return _refused(_NOT_OPEN)
-        remaining = order.quantity - order.filled_quantity
-        if remaining <= 0:
-            return _refused(_NOTHING_LEFT)
-        if not within_order_window(now, self.limits):
-            return _refused(BlockCode.MARKET_CLOSED.value)
+        target = self._target_refusal(order, now)
+        if target is not None:
+            return _refused(target)
         plan_context = await self.context.context(
             request.environment,
             (order.symbol,),
@@ -179,6 +181,16 @@ class OrderReviser:
         if gate is not None:
             return _refused(gate)
         return await self._checked_revision(request, order, plan_context, now)
+
+    def _target_refusal(self, order: TrackedOrder, now: datetime) -> str | None:
+        """대상 주문 자체가 정정 가능한지 본다. 계좌·시세 조회 전에 끝낸다."""
+        if order.state not in _OPEN_STATES or order.broker_org_no is None:
+            return _NOT_OPEN
+        if order.quantity - order.filled_quantity <= 0:
+            return _NOTHING_LEFT
+        if not within_order_window(now, self.limits):
+            return BlockCode.MARKET_CLOSED.value
+        return None
 
     def _gate(self, plan_context: PlanContext, now: datetime) -> str | None:
         if plan_context.automation.state is not AutomationState.RUNNING:

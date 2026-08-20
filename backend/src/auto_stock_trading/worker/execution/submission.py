@@ -171,10 +171,17 @@ async def revise_order(arguments: Arguments) -> str:
     settings = _paper_settings()
     if arguments.broker_order_id is None or arguments.price_offset_pct is None:
         raise RuntimeError(_REVISE_NEEDS)
+    database_url = settings.database_url.get_secret_value()
     bundle = planner_bundle(settings)
     broker = KisOrderAdapter(_http_client(settings), load_kis_account(settings), paper=True)
-    revisions = PostgresRevisionStore.from_url(settings.database_url.get_secret_value())
-    reviser = OrderReviser(context=bundle.planner, broker=broker, store=revisions)
+    revisions = PostgresRevisionStore.from_url(database_url)
+    notifications = PostgresNotificationStore.from_url(database_url)
+    reviser = OrderReviser(
+        context=bundle.planner,
+        broker=broker,
+        store=revisions,
+        listener=notifications,
+    )
     request = RevisionInput(
         environment=settings.kis_environment.value,
         broker_order_id=arguments.broker_order_id,
@@ -183,6 +190,7 @@ async def revise_order(arguments: Arguments) -> str:
     try:
         result = await reviser.revise(request, datetime.now(UTC))
     finally:
+        await notifications.close()
         await revisions.close()
         await broker.close()
         await bundle.close()
