@@ -33,6 +33,7 @@ class AccountSnapshotRow(Base):
     orderable_cash: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     position_value: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     nav: Mapped[Decimal] = mapped_column(Numeric(24, 0))
+    broker_position_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 0))
     broker_net_asset: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     trading_date: Mapped[date] = mapped_column(Date)
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))

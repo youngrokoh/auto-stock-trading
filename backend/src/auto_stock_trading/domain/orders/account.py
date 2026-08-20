@@ -38,6 +38,9 @@ class AccountSnapshot:
     orderable_cash: Decimal
     position_value: Decimal
     nav: Decimal
+    # 증권사 요약의 유가증권 평가금액. 보유 행 합계와 시세 시점이 달라 장중에는 값이 어긋나므로
+    # 계좌 대조는 이 값으로 한다(ADR 없는 실측 정정, 계약에 기록).
+    broker_position_value: Decimal
     broker_net_asset: Decimal
     trading_date: date
     as_of: datetime

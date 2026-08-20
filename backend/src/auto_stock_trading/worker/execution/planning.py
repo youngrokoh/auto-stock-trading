@@ -29,6 +29,7 @@ from auto_stock_trading.application.trading.planning import (
 )
 from auto_stock_trading.domain.orders.models import AutomationState, OrderSide
 from auto_stock_trading.domain.risk.engine import SignalCandidate
+from auto_stock_trading.domain.risk.limits import seoul_trading_date
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.kis_credentials import (
     load_kis_account,
@@ -98,7 +99,7 @@ async def set_automation_state(state_text: str) -> str:
                 requested=AutomationState(state_text),
                 reason_code=_MANUAL_REASON,
                 occurred_at=now,
-                trading_date=now.date(),
+                trading_date=seoul_trading_date(now),
             )
         )
     finally:
@@ -163,7 +164,7 @@ async def plan_orders(arguments: Arguments) -> str:
         signal_date=(
             date.fromisoformat(arguments.signal_date)
             if arguments.signal_date is not None
-            else now.date()
+            else seoul_trading_date(now)
         ),
         candidates=(SignalCandidate(arguments.symbol, OrderSide(arguments.side)),),
     )

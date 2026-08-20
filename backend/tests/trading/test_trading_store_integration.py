@@ -159,6 +159,7 @@ def _snapshot_observation(*, nav: Decimal, held: int = 0) -> AccountSnapshotObse
         orderable_cash=nav - position_value,
         position_value=position_value,
         nav=nav,
+        broker_position_value=Decimal(0),
         broker_net_asset=nav,
         trading_date=_TRADING_DATE,
         as_of=_NOW,

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import date, datetime
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 
@@ -89,6 +89,11 @@ PAPER_RISK_LIMITS: Final = RiskLimits(
     quote_max_age_seconds=10,
     price_band=Decimal("0.01"),
 )
+
+
+def seoul_trading_date(now: datetime) -> date:
+    """거래일은 거래소 시간대로 정한다. UTC 날짜를 쓰면 09:00 KST 이전에 하루가 밀린다."""
+    return now.astimezone(_SEOUL).date()
 
 
 def within_order_window(now: datetime, limits: RiskLimits) -> bool:

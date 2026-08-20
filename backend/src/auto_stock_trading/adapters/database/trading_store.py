@@ -238,6 +238,7 @@ class PostgresTradingStore:
                     orderable_cash=snapshot.orderable_cash,
                     position_value=snapshot.position_value,
                     nav=snapshot.nav,
+                    broker_position_value=snapshot.broker_position_value,
                     broker_net_asset=snapshot.broker_net_asset,
                     trading_date=snapshot.trading_date,
                     as_of=snapshot.as_of,

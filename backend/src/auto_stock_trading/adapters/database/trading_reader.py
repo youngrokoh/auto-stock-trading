@@ -80,6 +80,13 @@ def _snapshot(
             orderable_cash=_won(row.orderable_cash),
             position_value=_won(row.position_value),
             nav=_won(row.nav),
+            # 컬럼 도입 전 스냅샷은 값이 없다. 0으로 만들면 대조가 통과하므로 순자산금액과 다른
+            # 값으로 두어 fail-closed를 유지한다.
+            broker_position_value=(
+                _won(row.broker_position_value)
+                if row.broker_position_value is not None
+                else _won(row.position_value)
+            ),
             broker_net_asset=_won(row.broker_net_asset),
             trading_date=row.trading_date,
             as_of=row.as_of,

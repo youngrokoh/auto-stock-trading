@@ -157,6 +157,7 @@ class StubTradingReader:
                     orderable_cash=Decimal(89_020_000),
                     position_value=Decimal(10_980_000),
                     nav=Decimal(100_000_000),
+                    broker_position_value=Decimal(0),
                     broker_net_asset=Decimal(100_000_000),
                     trading_date=_TRADING_DATE,
                     as_of=_NOW,

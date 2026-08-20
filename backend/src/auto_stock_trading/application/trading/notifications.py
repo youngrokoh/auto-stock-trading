@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Protocol
 from zoneinfo import ZoneInfo
 
+import anyio
+
 from auto_stock_trading.application.trading.planning import AutomationTransition
 from auto_stock_trading.domain.orders.fills import OrderSnapshot, ReconcileProblem
 from auto_stock_trading.domain.orders.models import (
@@ -36,6 +38,11 @@ _ATTACHED: Final = "LISTENER_ATTACHED"
 _DETACHED: Final = "LISTENER_DETACHED"
 _FAILED: Final = "LISTENER_ERROR"
 _SUPERSEDED: Final = "SUPERSEDED"
+# 증권사는 주문 접수 HTTP 응답을 돌려주기 전에 통보를 밀어준다. 그래서 우리 주문번호 커밋보다
+# 통보가 먼저 도착할 수 있다(2026-08-20 실측: 주문 5건 중 2건). 조회를 몇 번 다시 해 본 뒤에만
+# 설명할 수 없는 불일치로 판정한다.
+_UNMATCHED_RETRIES: Final = 5
+_UNMATCHED_DELAY_SECONDS: Final = 0.2
 _PAUSABLE: Final = frozenset({AutomationState.ARMED, AutomationState.RUNNING})
 
 
@@ -144,6 +151,8 @@ class FillNotificationListener:
     notifications: NotificationSink
     environment: str
     account_reference: str
+    unmatched_retries: int = _UNMATCHED_RETRIES
+    unmatched_delay_seconds: float = _UNMATCHED_DELAY_SECONDS
 
     async def attach(self, transaction_id: str, now: datetime) -> AttachResult:
         """세션을 시작한다. 미체결 주문이 있으면 놓친 통보가 있을 수 있어 차단한다."""
@@ -210,10 +219,7 @@ class FillNotificationListener:
         masked_payload: str,
         received_at: datetime,
     ) -> NotificationOutcome:
-        order = await self.notifications.order_by_broker_order_id(
-            self.environment,
-            notification.broker_order_id,
-        )
+        order = await self._order_for(notification.broker_order_id)
         if order is None:
             return await self._unmatched(notification, masked_payload, received_at)
         result = apply_notification(_snapshot(order), notification)
@@ -251,6 +257,19 @@ class FillNotificationListener:
             state=state,
             problem=problem,
         )
+
+    async def _order_for(self, broker_order_id: str) -> TrackedOrder | None:
+        """통보가 우리 커밋보다 먼저 올 수 있으므로 잠깐 기다리며 다시 찾는다."""
+        for attempt in range(self.unmatched_retries + 1):
+            order = await self.notifications.order_by_broker_order_id(
+                self.environment,
+                broker_order_id,
+            )
+            if order is not None:
+                return order
+            if attempt < self.unmatched_retries:
+                await anyio.sleep(self.unmatched_delay_seconds)
+        return None
 
     async def _unmatched(
         self,

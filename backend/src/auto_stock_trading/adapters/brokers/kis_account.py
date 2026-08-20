@@ -139,6 +139,7 @@ class KisAccountAdapter:
             orderable_cash=settled_cash,
             position_value=position_value,
             nav=settled_cash + position_value,
+            broker_position_value=Decimal(summary.scts_evlu_amt),
             broker_net_asset=Decimal(summary.nass_amt),
             trading_date=raw.received_at.astimezone(_SEOUL).date(),
             as_of=raw.received_at,

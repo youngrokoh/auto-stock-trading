@@ -35,6 +35,7 @@ from auto_stock_trading.application.trading.submission import (
     SubmissionInput,
 )
 from auto_stock_trading.domain.orders.models import AutomationState, OrderState
+from auto_stock_trading.domain.risk.limits import seoul_trading_date
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.kis_credentials import load_kis_account, load_kis_credentials
 
@@ -225,7 +226,7 @@ async def emergency_stop() -> str:
                 requested=AutomationState.EMERGENCY_STOP,
                 reason_code=_EMERGENCY_REASON,
                 occurred_at=now,
-                trading_date=now.date(),
+                trading_date=seoul_trading_date(now),
             )
         )
         summary = await collaborators.submitter.cancel_open_orders(

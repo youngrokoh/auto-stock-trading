@@ -180,8 +180,13 @@ def _account_state(
 
 
 def _reconciled(snapshot: AccountSnapshot, counters: StoredCounters) -> bool:
-    """미체결 대조가 끝났고 우리 NAV가 증권사 순자산금액과 일치할 때만 조정 완료다."""
-    return not counters.unreconciled_orders and snapshot.nav == snapshot.broker_net_asset
+    """미체결 대조가 끝났고 계좌 항등식이 성립할 때만 조정 완료다.
+
+    항등식은 판정 현금 + 증권사 평가합계 = 증권사 순자산금액이다. 우리 보유 합계를 쓰면
+    같은 응답 안에서도 시세 시점이 달라(실측 주당 500원) 장중에 항상 어긋난다.
+    """
+    identity = snapshot.orderable_cash + snapshot.broker_position_value
+    return not counters.unreconciled_orders and identity == snapshot.broker_net_asset
 
 
 def _order_record(request: PlanInput, order: PlannedOrder) -> OrderRecord:

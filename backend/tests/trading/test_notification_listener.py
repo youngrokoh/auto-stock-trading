@@ -135,6 +135,9 @@ class FakeOrders:
 @dataclass
 class FakeNotifications:
     order: TrackedOrder | None = None
+    # 증권사는 HTTP 응답보다 먼저 통보를 밀어줄 수 있다. 그 사이 조회는 아직 주문을 못 본다.
+    lookups_until_visible: int = 0
+    lookups: int = 0
     records: list[FillNotificationRecord] = field(default_factory=list)
     sessions: list[tuple[str, UUID]] = field(default_factory=list)
     events: list[str] = field(default_factory=list)
@@ -147,6 +150,9 @@ class FakeNotifications:
         broker_order_id: str,
     ) -> TrackedOrder | None:
         assert environment == _ENVIRONMENT
+        self.lookups += 1
+        if self.lookups <= self.lookups_until_visible:
+            return None
         if self.order is None or self.order.broker_order_id != broker_order_id:
             return None
         return self.order
@@ -203,7 +209,40 @@ def _listener(
         notifications=notifications,
         environment=_ENVIRONMENT,
         account_reference=_ACCOUNT,
+        unmatched_delay_seconds=0.0,
     )
+
+
+def test_a_notification_that_arrives_before_our_commit_is_not_a_mismatch() -> None:
+    """증권사는 HTTP 응답 전에 통보를 밀어준다. 아직 커밋되지 않은 우리 주문은 불일치가 아니다."""
+
+    async def run() -> None:
+        orders = FakeOrders()
+        notifications = FakeNotifications(order=_order(), lookups_until_visible=2)
+
+        result = await _listener(orders, notifications).handle(_payload(), _NOW)
+
+        assert not result.blocked
+        assert result.outcomes[0].problem is None
+        assert result.outcomes[0].state is OrderState.PARTIALLY_FILLED
+        assert orders.problems == []
+        assert orders.transitions == []
+
+    anyio.run(run)
+
+
+def test_an_order_that_never_appears_is_still_a_mismatch() -> None:
+    async def run() -> None:
+        orders = FakeOrders()
+        notifications = FakeNotifications(order=None)
+
+        result = await _listener(orders, notifications).handle(_payload(), _NOW)
+
+        assert result.blocked
+        assert result.outcomes[0].problem is ReconcileProblem.UNKNOWN_BROKER_ORDER
+        assert notifications.lookups > 1
+
+    anyio.run(run)
 
 
 def test_execution_notification_confirms_the_order_and_is_stored() -> None:

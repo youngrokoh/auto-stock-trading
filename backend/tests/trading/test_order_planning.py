@@ -169,6 +169,8 @@ class FakeAccounts:
     nav: Decimal = _NAV
     held_quantity: int = 0
     broker_net_asset: Decimal | None = None
+    # 증권사 요약의 평가합계. 장중에는 보유 행 합계와 시세 시점이 달라 값이 어긋난다.
+    broker_position_value: Decimal | None = None
 
     async def fetch_balance(self) -> AccountSnapshotObservation:
         self.calls += 1
@@ -199,6 +201,9 @@ class FakeAccounts:
             orderable_cash=self.nav - position_value,
             position_value=position_value,
             nav=self.nav,
+            broker_position_value=(
+                position_value if self.broker_position_value is None else self.broker_position_value
+            ),
             broker_net_asset=self.nav if self.broker_net_asset is None else self.broker_net_asset,
             trading_date=_TRADING_DATE,
             as_of=_NOW,
@@ -530,11 +535,29 @@ def test_pending_orders_from_earlier_plans_consume_the_exposure_cap() -> None:
     assert order.reject_code == RiskRule.SYMBOL_EXPOSURE.value
 
 
-def test_nav_mismatch_with_the_broker_blocks_as_unreconciled() -> None:
-    """정책 §7.2: 내부 계산 NAV와 증권사 순자산금액이 다르면 주문을 만들지 않는다."""
+def test_a_cash_basis_mismatch_with_the_broker_blocks_as_unreconciled() -> None:
+    """정책 §7.2: 판정 현금 + 증권사 평가합계가 순자산금액과 다르면 주문을 만들지 않는다."""
     harness = _harness(accounts=FakeAccounts(broker_net_asset=_NAV - Decimal(1)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
     assert plan.block_code == BlockCode.ACCOUNT_NOT_RECONCILED
     assert plan.orders == ()
+
+
+def test_intraday_valuation_drift_between_holdings_and_summary_does_not_block() -> None:
+    """증권사 응답 안에서도 보유 행과 요약의 시세 시점이 달라 평가금액이 어긋난다(실측).
+
+    대조는 판정 현금 + 증권사 평가합계 = 순자산금액으로 하므로 이 차이는 차단 사유가 아니다.
+    """
+    drift = Decimal(2500)
+    accounts = FakeAccounts(
+        held_quantity=1,
+        broker_position_value=_PRICE + drift,
+        broker_net_asset=_NAV + drift,
+    )
+    harness = _harness(accounts=accounts)
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    assert plan.block_code != BlockCode.ACCOUNT_NOT_RECONCILED
