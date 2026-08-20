@@ -17,7 +17,11 @@ from auto_stock_trading.adapters.database.market_data_rows import (
     SyncStatusRow,
 )
 from auto_stock_trading.application.market_data import MarketDataCollector
-from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
+from auto_stock_trading.domain.market_data.models import (
+    InstrumentIdentityConflictError,
+    InstrumentTarget,
+    ProductType,
+)
 from auto_stock_trading.settings.runtime import Settings
 from tests.brokers.kis_fixture import create_fixture_adapter
 from tests.market_data.db_cleanup import purge_instruments
@@ -126,3 +130,57 @@ def test_kis_transport_error_does_not_include_credentials() -> None:
 
     assert "app" not in str(error).lower()
     assert "secret" not in str(error).lower()
+
+
+def test_a_conflicting_product_type_is_refused_instead_of_adding_a_second_row() -> None:
+    """같은 단축코드가 다른 상품유형으로 들어오면 종목 행을 하나 더 만들지 않는다.
+
+    실측 사고: ETF를 주식 전용 확정 패스에 넘겨 `product_type=stock` 종목 행과 봉이
+    새로 생겼다. 정체성 유일 제약이 상품유형을 포함하므로 DB는 막지 못한다.
+    """
+
+    async def run() -> None:
+        settings = Settings()
+        engine = create_async_engine(settings.database_url.get_secret_value())
+        adapter, _ = create_fixture_adapter()
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            repository = PostgresMarketDataRepository.from_connection(connection)
+            collector = MarketDataCollector(adapter, repository)
+            symbol = "005930"
+            window = (date(2026, 8, 12), date(2026, 8, 13))
+            started_at = datetime(2026, 8, 14, 1, tzinfo=UTC)
+            try:
+                await purge_instruments(connection, (symbol,))
+                _ = await collector.collect(
+                    InstrumentTarget(symbol, ProductType.STOCK),
+                    window[0],
+                    window[1],
+                    started_at,
+                )
+                before = await connection.scalar(
+                    select(func.count(InstrumentRow.id)).where(InstrumentRow.symbol == symbol)
+                )
+
+                with pytest.raises(InstrumentIdentityConflictError):
+                    _ = await collector.collect(
+                        InstrumentTarget(symbol, ProductType.ETF),
+                        window[0],
+                        window[1],
+                        started_at,
+                    )
+
+                after = await connection.scalar(
+                    select(func.count(InstrumentRow.id)).where(InstrumentRow.symbol == symbol)
+                )
+                assert (before, after) == (1, 1)
+                stored = await connection.scalar(
+                    select(InstrumentRow.product_type).where(InstrumentRow.symbol == symbol)
+                )
+                assert stored == ProductType.STOCK.value
+            finally:
+                await repository.close()
+                await transaction.rollback()
+        await engine.dispose()
+
+    anyio.run(run)

@@ -3,7 +3,8 @@ from decimal import Decimal
 from typing import Final
 
 import anyio
-from sqlalchemy import delete, select, update
+import pytest
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from auto_stock_trading.adapters.database.market_data_rows import (
@@ -17,6 +18,7 @@ from auto_stock_trading.adapters.database.reference_stock_rows import StockProfi
 from auto_stock_trading.domain.market_data.listed_shares import ListedShareCount
 from auto_stock_trading.domain.market_data.models import (
     BrokerOperation,
+    InstrumentIdentityConflictError,
     ProductType,
     Quote,
     QuoteSnapshotObservation,
@@ -195,6 +197,67 @@ def test_stock_profiles_are_versioned_and_instrument_rows_keep_trading_status() 
                     )
                 )
                 assert shares == 5_969_782_550
+            finally:
+                await store.close()
+                await transaction.rollback()
+        await engine.dispose()
+
+    anyio.run(run)
+
+
+def test_the_master_refuses_a_symbol_already_stored_as_another_product_type() -> None:
+    """마스터 수집도 같은 규칙을 쓴다. ETF로 저장된 코드를 주식으로 덮어쓰지 않는다."""
+
+    async def run() -> None:
+        settings = Settings()
+        engine = create_async_engine(settings.database_url.get_secret_value())
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            store = PostgresStockStore.from_connection(connection)
+            try:
+                _ = await connection.execute(
+                    delete(InstrumentRow).where(InstrumentRow.symbol == "900030")
+                )
+                _ = await connection.execute(
+                    delete(StockProfileRow).where(StockProfileRow.symbol == "900030")
+                )
+                _ = await connection.execute(
+                    insert(InstrumentRow).values(
+                        id=instrument_id_for(
+                            country="KR",
+                            exchange="XKRX",
+                            symbol="900030",
+                            product_type=ProductType.ETF,
+                            currency="KRW",
+                        ),
+                        country="KR",
+                        exchange="XKRX",
+                        symbol="900030",
+                        product_type=ProductType.ETF.value,
+                        currency="KRW",
+                        name="테스트ETF",
+                        trading_status="active",
+                        source="KIS",
+                        source_as_of=_NOW.date(),
+                        created_at=_NOW,
+                        updated_at=_NOW,
+                    )
+                )
+
+                bundle = _bundle({"900030": ("테스트전자", "5")}, _NOW)
+                with pytest.raises(InstrumentIdentityConflictError):
+                    _ = await store.save_master_bundle(bundle)
+
+                rows = (
+                    await connection.execute(
+                        select(InstrumentRow.product_type).where(InstrumentRow.symbol == "900030")
+                    )
+                ).all()
+                assert [row[0] for row in rows] == [ProductType.ETF.value]
+                profiles = await connection.scalar(
+                    select(func.count(StockProfileRow.id)).where(StockProfileRow.symbol == "900030")
+                )
+                assert profiles == 0
             finally:
                 await store.close()
                 await transaction.rollback()

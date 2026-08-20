@@ -44,6 +44,7 @@ from auto_stock_trading.domain.market_data.models import (
     BrokerOperation,
     DailyBar,
     Instrument,
+    InstrumentIdentityConflictError,
     InstrumentTarget,
     MarketDataBundle,
     ProductType,
@@ -127,6 +128,7 @@ class PostgresMarketDataRepository:
                         payload_json=raw.payload_json,
                     )
                 )
+            await _reject_product_type_conflict(session, bundle)
             instrument_id = instrument_identifier(bundle)
             _ = await session.execute(instrument_upsert(bundle, instrument_id, bundle.collected_at))
             _ = await session.execute(quote_upsert(bundle, instrument_id, raw_ids))
@@ -274,3 +276,23 @@ def _instrument(row: InstrumentRow) -> Instrument:
         source=row.source,
         source_as_of=row.source_as_of,
     )
+
+
+async def _reject_product_type_conflict(session: AsyncSession, bundle: MarketDataBundle) -> None:
+    """같은 단축코드가 다른 상품유형으로 저장되려 하면 아무것도 저장하지 않고 거부한다."""
+    instrument = bundle.instrument
+    stored = await session.scalar(
+        select(InstrumentRow.product_type).where(
+            InstrumentRow.country == instrument.country,
+            InstrumentRow.exchange == instrument.exchange,
+            InstrumentRow.symbol == instrument.symbol,
+            InstrumentRow.currency == instrument.currency,
+            InstrumentRow.product_type != instrument.product_type.value,
+        )
+    )
+    if stored is not None:
+        raise InstrumentIdentityConflictError(
+            symbol=instrument.symbol,
+            stored=stored,
+            requested=instrument.product_type.value,
+        )

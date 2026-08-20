@@ -42,6 +42,26 @@ class InvalidMarketBarError(Exception):
         return self.invariant.value
 
 
+@dataclass(frozen=True, slots=True)
+class InstrumentIdentityConflictError(Exception):
+    """같은 단축코드가 다른 상품유형으로 저장되려는 상태.
+
+    정체성 유일 제약이 상품유형을 포함하므로 DB는 이것을 막지 못하고 행을 하나 더 만든다.
+    조용히 늘어난 종목 행은 이후 모든 조인을 둘로 쪼개므로 저장 시점에 거부한다.
+    """
+
+    symbol: str
+    stored: str
+    requested: str
+
+    @override
+    def __str__(self) -> str:
+        return (
+            f"instrument {self.symbol} is stored as {self.stored} "
+            f"but was collected as {self.requested}"
+        )
+
+
 class BrokerOperation(StrEnum):
     INSTRUMENT = "instrument"
     QUOTE = "quote"

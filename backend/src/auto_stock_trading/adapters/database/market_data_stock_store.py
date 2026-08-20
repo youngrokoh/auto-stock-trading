@@ -31,7 +31,10 @@ from auto_stock_trading.adapters.database.market_data_sync_statements import (
     sync_succeeded,
 )
 from auto_stock_trading.adapters.database.reference_stock_rows import StockProfileRow
-from auto_stock_trading.domain.market_data.models import ProductType
+from auto_stock_trading.domain.market_data.models import (
+    InstrumentIdentityConflictError,
+    ProductType,
+)
 from auto_stock_trading.domain.market_data.stocks import VersionedStockProfile
 
 if TYPE_CHECKING:
@@ -113,6 +116,7 @@ class PostgresStockStore:
             raw_id = _add_raw_row(session, bundle.raw)
             saved = 0
             for profile in bundle.profiles:
+                await _reject_product_type_conflict(session, profile.symbol)
                 _ = await session.execute(_instrument_upsert(profile, bundle.collected_at))
                 if await _save_profile(session, profile, raw_id):
                     saved += 1
@@ -196,6 +200,25 @@ def _add_raw_row(session: AsyncSession, raw: RawBrokerResponse) -> UUID:
         )
     )
     return raw_id
+
+
+async def _reject_product_type_conflict(session: AsyncSession, symbol: str) -> None:
+    """이미 다른 상품유형으로 저장된 코드는 주식 종목 행을 새로 만들지 않는다."""
+    stored = await session.scalar(
+        select(InstrumentRow.product_type).where(
+            InstrumentRow.country == _COUNTRY,
+            InstrumentRow.exchange == _EXCHANGE,
+            InstrumentRow.symbol == symbol,
+            InstrumentRow.currency == _CURRENCY,
+            InstrumentRow.product_type != ProductType.STOCK.value,
+        )
+    )
+    if stored is not None:
+        raise InstrumentIdentityConflictError(
+            symbol=symbol,
+            stored=stored,
+            requested=ProductType.STOCK.value,
+        )
 
 
 def _instrument_upsert(profile: StockProfile, now: datetime):  # noqa: ANN202
