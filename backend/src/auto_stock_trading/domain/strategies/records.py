@@ -31,3 +31,28 @@ class BacktestRunRecord:
     failure_code: str | None
     metrics: BacktestMetrics | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PortfolioRunRecord:
+    """다종목 실행 기록. 대표 종목이 없으므로 유니버스를 행으로 보존한다(계약 v2)."""
+
+    run_id: UUID
+    strategy_name: str
+    strategy_version: str
+    parameters_json: str
+    universe: tuple[str, ...]
+    benchmark_symbol: str
+    range_start: date
+    range_end: date
+    initial_cash: Decimal
+    signal_method: str
+    engine_version: str
+    cost_rule_versions: str
+    input_bar_version_hash: str
+    action_version_hash: str
+    benchmark_dataset_id: UUID | None
+    status: str
+    failure_code: str | None
+    metrics: BacktestMetrics | None
+    created_at: datetime

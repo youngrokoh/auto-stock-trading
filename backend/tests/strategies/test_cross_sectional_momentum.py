@@ -47,7 +47,7 @@ def test_top_holdings_are_ranked_by_lookback_return() -> None:
         _series("000003", ("100", "100", "100", "110"), dates),
     )
 
-    ranked = momentum_rebalances(dates[-1:], series, _PARAMS)
+    ranked = momentum_rebalances(dates[-1:], series, _PARAMS, dates)
 
     assert [(item.symbol, item.momentum) for item in ranked[0].selected] == [
         ("000001", Decimal("0.30")),
@@ -62,7 +62,7 @@ def test_a_tie_is_broken_by_symbol_code_so_runs_reproduce() -> None:
         _series("000002", ("100", "100", "100", "120"), dates),
     )
 
-    ranked = momentum_rebalances(dates[-1:], series, MomentumParameters(2, 1))
+    ranked = momentum_rebalances(dates[-1:], series, MomentumParameters(2, 1), dates)
 
     assert [item.symbol for item in ranked[0].selected] == ["000002"]
 
@@ -76,7 +76,9 @@ def test_symbols_without_a_full_lookback_window_are_not_candidates() -> None:
         closes={dates[2]: Decimal(100), dates[3]: Decimal(200)},
     )
 
-    ranked = momentum_rebalances(dates[-1:], (complete, listed_late), MomentumParameters(2, 2))
+    ranked = momentum_rebalances(
+        dates[-1:], (complete, listed_late), MomentumParameters(2, 2), dates
+    )
 
     assert [item.symbol for item in ranked[0].selected] == ["000001"]
 
@@ -89,7 +91,7 @@ def test_a_missing_bar_on_the_signal_date_excludes_the_symbol() -> None:
     )
     complete = _series("000001", ("100", "100", "100", "105"), dates)
 
-    ranked = momentum_rebalances(dates[-1:], (complete, halted), MomentumParameters(2, 2))
+    ranked = momentum_rebalances(dates[-1:], (complete, halted), MomentumParameters(2, 2), dates)
 
     assert [item.symbol for item in ranked[0].selected] == ["000001"]
 
@@ -102,7 +104,7 @@ def test_the_ranking_uses_only_data_up_to_the_signal_date() -> None:
         _series("000002", ("100", "100", "100", "120", "500", "500"), dates),
     )
 
-    full = momentum_rebalances((dates[3],), series, MomentumParameters(2, 1))
+    full = momentum_rebalances((dates[3],), series, MomentumParameters(2, 1), dates)
     prefix = momentum_rebalances(
         (dates[3],),
         tuple(
@@ -113,6 +115,7 @@ def test_the_ranking_uses_only_data_up_to_the_signal_date() -> None:
             for item in series
         ),
         MomentumParameters(2, 1),
+        dates,
     )
 
     assert full == prefix
@@ -122,3 +125,31 @@ def test_the_ranking_uses_only_data_up_to_the_signal_date() -> None:
 def test_invalid_parameters_are_refused(lookback: int, holdings: int) -> None:
     with pytest.raises(ValueError, match="momentum"):
         _ = MomentumParameters(lookback, holdings).validated()
+
+
+def test_a_signal_date_without_a_full_lookback_window_produces_no_rebalance() -> None:
+    """실측 결함: 기준일을 시그널일로 되돌리면 전 종목 모멘텀이 0이 되어 코드순 상위 K가 뽑혔다.
+
+    lookback 구간이 창 안에 없으면 순위를 만들 수 없으므로 그 회차를 만들지 않는다.
+    빈 선정으로 회차를 만들면 엔진이 보유 전량을 매도해 버리므로 회차 자체를 건너뛴다.
+    """
+    dates = _dates(5)
+    series = (
+        _series("000009", ("100", "100", "100", "100", "150"), dates),
+        _series("000002", ("100", "100", "100", "100", "110"), dates),
+    )
+
+    early = momentum_rebalances((dates[1],), series, MomentumParameters(4, 1), dates)
+    late = momentum_rebalances((dates[4],), series, MomentumParameters(4, 1), dates)
+
+    assert early == ()
+    assert [item.symbol for item in late[0].selected] == ["000009"]
+
+
+def test_the_trading_calendar_is_required_to_locate_the_lookback_basis() -> None:
+    dates = _dates(4)
+    series = (_series("000001", ("100", "100", "100", "130"), dates),)
+
+    ranked = momentum_rebalances((dates[3],), series, MomentumParameters(2, 1), dates)
+
+    assert ranked[0].selected[0].momentum == Decimal("0.30")

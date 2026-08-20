@@ -1,4 +1,3 @@
-import hashlib
 import json
 from dataclasses import dataclass, replace
 from datetime import timedelta
@@ -7,6 +6,10 @@ from functools import partial
 from typing import TYPE_CHECKING, Final, Protocol
 from uuid import uuid4
 
+from auto_stock_trading.application.backtests.lineage import (
+    action_version_hash,
+    bar_version_hash,
+)
 from auto_stock_trading.domain.market_data.calendar import (
     CalendarSessionRange,
     CalendarVerificationState,
@@ -139,27 +142,6 @@ def canonical_parameters_json(parameters: MaRsiParameters) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-
-
-def _bar_version_hash(bars: tuple[VersionedDailyBar, ...]) -> str:
-    lines = "\n".join(
-        f"{item.bar.trading_date.isoformat()}:{item.version}"
-        for item in sorted(bars, key=lambda item: item.bar.trading_date)
-    )
-    return hashlib.sha256(lines.encode("utf-8")).hexdigest()
-
-
-def _action_version_hash(
-    actions: tuple[tuple[date, VersionedCorporateAction], ...],
-) -> str:
-    lines = "\n".join(
-        f"{ex_date.isoformat()}:{item.action_key}:{item.version}"
-        for ex_date, item in sorted(
-            actions,
-            key=lambda entry: (entry[0], str(entry[1].action_key)),
-        )
-    )
-    return hashlib.sha256(lines.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,8 +285,8 @@ class BacktestRunner:
         )
         return _LoadedInputs(
             engine_inputs=engine_inputs,
-            input_bar_version_hash=_bar_version_hash(bars),
-            action_version_hash=_action_version_hash(cash_actions),
+            input_bar_version_hash=bar_version_hash(bars),
+            action_version_hash=action_version_hash(cash_actions),
             signal_dataset_id=signal_dataset.dataset_id,
             benchmark_dataset_id=benchmark_dataset.dataset_id,
         )

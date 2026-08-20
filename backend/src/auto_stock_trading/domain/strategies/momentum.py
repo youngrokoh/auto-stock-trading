@@ -70,22 +70,28 @@ def momentum_rebalances(
     signal_dates: Sequence[date],
     universe: Sequence[SymbolSeries],
     parameters: MomentumParameters,
-    trading_dates: Sequence[date] | None = None,
+    trading_dates: Sequence[date],
 ) -> tuple[Rebalance, ...]:
-    """회차별 선정 종목. 동점은 종목코드 오름차순으로 끊어 재현성을 지킨다."""
+    """회차별 선정 종목. 동점은 종목코드 오름차순으로 끊어 재현성을 지킨다.
+
+    lookback 구간이 거래일 달력 안에 없으면 그 회차를 만들지 않는다. 기준일을 시그널일로
+    되돌리면 전 종목 모멘텀이 0이 되어 코드순 상위 K가 뽑히고, 빈 선정으로 회차를 만들면
+    엔진이 보유 전량을 매도한다. 둘 다 전략이 아니다(2026-08-20 실측 결함).
+    """
     settings = parameters.validated()
-    calendar = tuple(trading_dates) if trading_dates is not None else tuple(signal_dates)
+    calendar = tuple(trading_dates)
     index_of = {day: index for index, day in enumerate(calendar)}
     rebalances: list[Rebalance] = []
     for signal_date in signal_dates:
         position = index_of.get(signal_date)
-        basis_index = -1 if position is None else position - settings.lookback_days
-        basis_date = (
-            _basis_from_series(universe, signal_date, settings.lookback_days)
-            if basis_index < 0
-            else calendar[basis_index]
-        )
-        ranked = _ranked(universe, signal_date, basis_date)
+        if position is None:
+            continue
+        basis_index = position - settings.lookback_days
+        if basis_index < 0:
+            continue
+        ranked = _ranked(universe, signal_date, calendar[basis_index])
+        if not ranked:
+            continue
         rebalances.append(
             Rebalance(
                 signal_date=signal_date,
@@ -93,17 +99,6 @@ def momentum_rebalances(
             )
         )
     return tuple(rebalances)
-
-
-def _basis_from_series(
-    universe: Sequence[SymbolSeries],
-    signal_date: date,
-    lookback_days: int,
-) -> date:
-    """거래일 목록을 따로 주지 않으면 종목들이 가진 날짜 합집합을 달력으로 쓴다."""
-    days = sorted({day for series in universe for day in series.closes if day <= signal_date})
-    position = len(days) - 1 - lookback_days
-    return days[position] if position >= 0 else signal_date
 
 
 def _ranked(

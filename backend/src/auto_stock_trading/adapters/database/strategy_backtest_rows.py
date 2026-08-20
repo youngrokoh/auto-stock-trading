@@ -27,7 +27,8 @@ class BacktestRunRow(Base):
     strategy_name: Mapped[str] = mapped_column(String(40), index=True)
     strategy_version: Mapped[str] = mapped_column(String(16))
     parameters_json: Mapped[str] = mapped_column(Text)
-    instrument_id: Mapped[UUID] = mapped_column(
+    # 다종목 실행은 대표 종목이 없다(계약 v2). 유니버스는 별도 행으로 보존한다.
+    instrument_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("reference.instrument.id", ondelete="CASCADE"),
     )
     benchmark_symbol: Mapped[str] = mapped_column(String(9))
@@ -82,6 +83,7 @@ class BacktestTradeRow(Base):
     slippage: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     tax: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     skip_reason: Mapped[str | None] = mapped_column(String(32))
+    symbol: Mapped[str | None] = mapped_column(String(9))
 
 
 @final
@@ -101,3 +103,17 @@ class BacktestEquityRow(Base):
     cash: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     position_value: Mapped[Decimal] = mapped_column(Numeric(24, 0))
     nav: Mapped[Decimal] = mapped_column(Numeric(24, 0))
+
+
+@final
+class BacktestRunInstrumentRow(Base):
+    __tablename__: str = "backtest_run_instrument"
+    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+        UniqueConstraint("run_id", "instrument_id", name="uq_backtest_run_instrument"),
+        {"schema": "strategy"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("strategy.backtest_run.id"))
+    instrument_id: Mapped[UUID] = mapped_column(ForeignKey("reference.instrument.id"))
+    symbol: Mapped[str] = mapped_column(String(9))
