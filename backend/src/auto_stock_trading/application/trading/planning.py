@@ -129,6 +129,8 @@ class PlanInput:
     parameters_json: str
     signal_date: date
     candidates: tuple[SignalCandidate, ...]
+    # 기준가 대비 상대 버전트. 검증용으로 즉시 체결되지 않는 주문을 만들 때만 0이 아니다.
+    price_offset: Decimal = Decimal(0)
 
 
 _EMPTY_ACCOUNT: Final = AccountState(
@@ -270,6 +272,7 @@ class OrderPlanner:
                 now=now,
                 limits=self.limits,
                 pending=pending,
+                price_offset=request.price_offset,
             )
         )
         if evaluation.pause_rule is not None:

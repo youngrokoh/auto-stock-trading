@@ -209,6 +209,7 @@ class FillNotificationRow(Base):
     masked_payload: Mapped[str] = mapped_column(Text)
     problem: Mapped[str | None] = mapped_column(String(40))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

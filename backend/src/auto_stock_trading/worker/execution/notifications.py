@@ -31,6 +31,7 @@ from auto_stock_trading.application.trading.notifications import (
     AttachResult,
     FillNotificationListener,
     HandleResult,
+    NotificationReplay,
 )
 from auto_stock_trading.domain.orders.account import account_reference
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
@@ -74,6 +75,7 @@ class NotificationStream(Protocol):
 class Arguments(argparse.Namespace):
     listen: bool = False
     status: bool = False
+    replay: bool = False
     max_sessions: int = 0
 
 
@@ -233,6 +235,22 @@ async def _watch_signals(scope: anyio.CancelScope) -> None:
             return
 
 
+async def replay() -> str:
+    """대조 실패로 반영되지 않은 저장된 통보를 다시 반영한다. 증권사 호출은 없다."""
+    settings = _paper_settings()
+    notifications = PostgresNotificationStore.from_url(settings.database_url.get_secret_value())
+    try:
+        summary = await NotificationReplay(
+            store=notifications,
+            environment=settings.kis_environment.value,
+        ).replay(_now())
+    finally:
+        await notifications.close()
+    return (
+        f"applied={summary.applied} unresolved={summary.unresolved} unreadable={summary.unreadable}"
+    )
+
+
 async def status() -> str:
     settings = _paper_settings()
     notifications = PostgresNotificationStore.from_url(settings.database_url.get_secret_value())
@@ -249,10 +267,14 @@ def main() -> None:
     )
     _ = parser.add_argument("--listen", action="store_true")
     _ = parser.add_argument("--status", action="store_true")
+    _ = parser.add_argument("--replay", action="store_true")
     _ = parser.add_argument("--max-sessions", type=int, default=0)
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.status:
         print(anyio.run(status))  # noqa: T201
+        return
+    if arguments.replay:
+        print(anyio.run(replay))  # noqa: T201
         return
     if arguments.listen:
         try:
@@ -262,7 +284,7 @@ def main() -> None:
                 raise
             print("stopped=interrupt")  # noqa: T201
         return
-    parser.error("--listen 또는 --status 중 하나가 필요하다")
+    parser.error("--listen, --status, --replay 중 하나가 필요하다")
 
 
 if __name__ == "__main__":

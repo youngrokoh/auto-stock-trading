@@ -80,6 +80,31 @@ def _order(
     )
 
 
+def test_a_cancel_notification_reports_the_original_broker_order_id() -> None:
+    """실측: 취소 요청은 자체 주문번호를 받고 원주문번호로 대상 주문을 가리킨다."""
+    (notification,) = parse_notifications(
+        _payload(
+            broker_order_id="0000017468",
+            original_broker_order_id="0000017323",
+            kind="1",
+            revise_code="2",
+            accept_code="2",
+            quantity="0",
+            price="0",
+        )
+    )
+
+    assert notification.broker_order_id == "0000017468"
+    assert notification.original_broker_order_id == "0000017323"
+    assert notification.matched_broker_order_id == "0000017323"
+
+
+def test_a_plain_order_notification_matches_on_its_own_order_id() -> None:
+    (notification,) = parse_notifications(_payload())
+
+    assert notification.matched_broker_order_id == "0000012345"
+
+
 def test_execution_notification_is_parsed_into_broker_facts() -> None:
     (notification,) = parse_notifications(_payload())
 
@@ -211,10 +236,54 @@ def test_order_notification_without_rejection_changes_nothing() -> None:
     assert outcome.problem is None
 
 
-def test_cancel_confirmation_does_not_transition_yet() -> None:
+def test_a_cancel_confirmation_cancels_the_order() -> None:
+    """실측(2026-08-20): 취소 확인 통보는 `RCTF_CLS=2`·`ACPT_YN=2`로 오고 단가는 0이다."""
     (notification,) = parse_notifications(
-        _payload(kind="1", revise_code="2", accept_code="3", quantity="4")
+        _payload(kind="1", revise_code="2", accept_code="2", quantity="0", price="0")
     )
+
+    outcome = apply_notification(_order(), notification)
+
+    assert outcome.state is OrderState.CANCELED
+    assert outcome.filled_quantity == 0
+    assert outcome.changed
+    assert outcome.problem is None
+
+
+def test_a_cancel_after_a_partial_fill_keeps_the_filled_quantity() -> None:
+    (notification,) = parse_notifications(
+        _payload(kind="1", revise_code="2", accept_code="2", quantity="0", price="0")
+    )
+
+    outcome = apply_notification(
+        _order(
+            quantity=4,
+            filled_quantity=1,
+            average_fill_price=Decimal(250000),
+            state=OrderState.PARTIALLY_FILLED,
+        ),
+        notification,
+    )
+
+    assert outcome.state is OrderState.CANCELED
+    assert outcome.filled_quantity == 1
+    assert outcome.average_fill_price == Decimal(250000)
+
+
+def test_a_revision_confirmation_does_not_transition() -> None:
+    """정정 확인(`RCTF_CLS=1`)은 수량·가격 재계산 규칙이 없어 전이하지 않는다."""
+    (notification,) = parse_notifications(
+        _payload(kind="1", revise_code="1", accept_code="2", quantity="0", price="0")
+    )
+
+    outcome = apply_notification(_order(), notification)
+
+    assert outcome.state is OrderState.SUBMITTED
+    assert not outcome.changed
+
+
+def test_an_order_acceptance_notification_does_not_cancel() -> None:
+    (notification,) = parse_notifications(_payload(kind="1", accept_code="1", quantity="4"))
 
     outcome = apply_notification(_order(), notification)
 

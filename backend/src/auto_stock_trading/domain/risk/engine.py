@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
 from auto_stock_trading.domain.orders.models import AutomationState, OrderSide
-from auto_stock_trading.domain.orders.pricing import round_to_tick, within_price_band
+from auto_stock_trading.domain.orders.pricing import offset_limit_price, within_price_band
 from auto_stock_trading.domain.risk.limits import BlockCode, RiskRule, within_order_window
 
 if TYPE_CHECKING:
@@ -83,6 +83,8 @@ class PlanRequest:
     now: datetime
     limits: RiskLimits
     pending: tuple[PendingExposure, ...] = ()
+    # 기준가 대비 상대 버전트. 0이면 기준가를 호가단위로 반올림한 값이 지정가다.
+    price_offset: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +147,7 @@ class _PlanState:
     buy_amount: Decimal = Decimal(0)
     created: int = 0
     sequence: int = 0
+    price_offset: Decimal = Decimal(0)
 
     def next_sequence(self) -> int:
         self.sequence += 1
@@ -204,7 +207,7 @@ def _add_exposure(
 def _seed_state(request: PlanRequest) -> _PlanState:
     """보유 포지션과 미체결·계획 주문을 모두 예상 노출로 넣는다(정책 §2)."""
     quotes = {quote.symbol: quote for quote in request.quotes}
-    state = _PlanState()
+    state = _PlanState(price_offset=request.price_offset)
     state.buy_amount = request.counters.daily_buy_amount
     for position in request.account.positions:
         quote = quotes.get(position.symbol)
@@ -309,6 +312,11 @@ def _order_decisions(
     )
 
 
+def _limit_price(state: _PlanState, quote: MarketQuote) -> Decimal:
+    """계획의 지정가. 기준가에서 요청된 상대 버전트만큼 옮긴 뒤 호가단위로 반올림한다."""
+    return offset_limit_price(quote.price, quote.product_type, state.price_offset)
+
+
 def _rejected(
     state: _PlanState,
     candidate: SignalCandidate,
@@ -316,7 +324,7 @@ def _rejected(
     reject_code: str,
     decisions: tuple[RiskDecision, ...] = (),
 ) -> PlannedOrder:
-    limit_price = None if quote is None else round_to_tick(quote.price, quote.product_type)
+    limit_price = None if quote is None else _limit_price(state, quote)
     return PlannedOrder(
         sequence=state.next_sequence(),
         symbol=candidate.symbol,
@@ -354,7 +362,7 @@ def _plan_buy(
 ) -> tuple[PlannedOrder, ...]:
     limits = request.limits
     account = request.account
-    limit_price = round_to_tick(quote.price, quote.product_type)
+    limit_price = _limit_price(state, quote)
     held = next(
         (item for item in account.positions if item.symbol == candidate.symbol),
         None,
@@ -466,7 +474,7 @@ def _plan_sell(
     )
     if held is None or held.quantity == 0:
         return ()
-    limit_price = round_to_tick(quote.price, quote.product_type)
+    limit_price = _limit_price(state, quote)
     sellable = min(held.quantity, held.orderable_quantity)
     per_order_quantity = int(request.account.nav * limits.order_amount / limit_price)
     if sellable == 0 or per_order_quantity == 0:
@@ -525,7 +533,7 @@ def _candidate_orders(
         return (_rejected(state, candidate, quote, BlockCode.DATA_STALE.value),)
     if quote.trading_status != _ACTIVE_TRADING_STATUS:
         return (_rejected(state, candidate, quote, BlockCode.SYMBOL_SUSPENDED.value),)
-    limit_price = round_to_tick(quote.price, quote.product_type)
+    limit_price = _limit_price(state, quote)
     if not within_price_band(candidate.side, limit_price, quote.price):
         return (_rejected(state, candidate, quote, RiskRule.ORDER_PRICE_BAND.value),)
     if candidate.side is OrderSide.BUY:

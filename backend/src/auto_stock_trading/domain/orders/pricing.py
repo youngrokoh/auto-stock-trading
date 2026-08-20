@@ -33,6 +33,19 @@ def round_to_tick(price: Decimal, product_type: ProductType) -> Decimal:
     return steps * tick
 
 
+def offset_limit_price(
+    reference_price: Decimal,
+    product_type: ProductType,
+    offset: Decimal,
+) -> Decimal:
+    """기준가에서 상대 버전트만큼 옮긴 지정가. 절대가를 사람이 지정하지 않는다.
+
+    검증용으로 즉시 체결되지 않는 주문을 만들 때 쓴다. 정책 §4의 ±1% 밴드를 넘는 버전트는
+    기존 `RISK_ORDER_PRICE_BAND` 규칙이 거절하므로 여기서 따로 막지 않는다.
+    """
+    return round_to_tick(reference_price * (Decimal(1) + offset), product_type)
+
+
 def within_price_band(side: OrderSide, limit_price: Decimal, reference_price: Decimal) -> bool:
     if side is OrderSide.BUY:
         return limit_price <= reference_price * (1 + _PRICE_BAND)

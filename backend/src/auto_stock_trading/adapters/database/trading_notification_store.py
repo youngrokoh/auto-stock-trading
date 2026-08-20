@@ -24,6 +24,10 @@ from auto_stock_trading.adapters.database.trading_rows import (
     FillNotificationRow,
     NotificationSessionRow,
 )
+from auto_stock_trading.application.trading.notifications import (
+    PendingNotification,
+    ReplayApplication,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -36,6 +40,7 @@ if TYPE_CHECKING:
 
 _LISTENER_STATE: Final = "listener_state"
 _FILL_NOTIFICATION: Final = "FILL_NOTIFICATION"
+_REPLAY: Final = "FILL_NOTIFICATION_REPLAY"
 _CONNECTED: Final = "connected"
 _CLOSED: Final = "closed"
 _DISCONNECTED: Final = "disconnected"
@@ -128,6 +133,59 @@ class PostgresNotificationStore:
                     occurred_at=record.received_at,
                     values=values,
                 ),
+            )
+
+    async def pending_notifications(
+        self,
+        environment: str,
+    ) -> tuple[PendingNotification, ...]:
+        """대조 실패로 반영되지 않은 통보. 한 번 반영되면 `resolved_at`이 채워져 빠진다."""
+        statement = (
+            select(
+                FillNotificationRow.id,
+                FillNotificationRow.masked_payload,
+                FillNotificationRow.received_at,
+                FillNotificationRow.problem,
+            )
+            .where(
+                FillNotificationRow.environment == environment,
+                FillNotificationRow.problem.is_not(None),
+                FillNotificationRow.resolved_at.is_(None),
+            )
+            .order_by(FillNotificationRow.received_at)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(
+            PendingNotification(
+                notification_id=row[0],
+                payload=row[1],
+                received_at=row[2],
+                problem=row[3] or "",
+            )
+            for row in rows
+        )
+
+    async def apply_replay(self, application: ReplayApplication) -> None:
+        """저장된 증권사 사실을 다시 반영한다. 전이와 해소 표시를 같은 트랜잭션에 넣는다."""
+        values: dict[str, object] = {"filled_quantity": application.filled_quantity}
+        if application.average_fill_price is not None:
+            values["average_fill_price"] = application.average_fill_price
+        async with self._sessions.begin() as session:
+            await transition_order(
+                session,
+                OrderTransition(
+                    order_id=application.order_id,
+                    state=application.state,
+                    reason_code=_REPLAY,
+                    occurred_at=application.occurred_at,
+                    values=values,
+                ),
+            )
+            _ = await session.execute(
+                update(FillNotificationRow)
+                .where(FillNotificationRow.id == application.notification_id)
+                .values(resolved_at=application.occurred_at)
             )
 
     async def start_session(self, environment: str, transaction_id: str, at: datetime) -> UUID:

@@ -38,6 +38,9 @@ _MASKED_FIELDS: Final = (_CUSTOMER_ID, _ACCOUNT_NUMBER, _ACCOUNT_NAME)
 
 _SIDES: Final = {"01": OrderSide.SELL, "02": OrderSide.BUY}
 _REJECTED_FLAG: Final = "1"
+# 실측(2026-08-20): 취소 확인 통보는 정정구분 `2`, 접수여부 `2`로 오고 자체 주문번호를 받는다.
+_REVISE_CANCEL: Final = "2"
+_ACCEPT_CONFIRMED: Final = "2"
 _TERMINAL_STATES: Final = frozenset({OrderState.FILLED, OrderState.REJECTED, OrderState.CANCELED})
 
 
@@ -81,6 +84,22 @@ class FillNotification:
     order_kind: str
     order_condition: str
     branch_no: str
+
+    @property
+    def cancel_confirmed(self) -> bool:
+        """취소 확인 통보. 정정 확인은 목표 포지션 재계산 규칙이 없어 포함하지 않는다."""
+        return (
+            self.kind is NotificationKind.ORDER
+            and self.revise_code == _REVISE_CANCEL
+            and self.accept_code == _ACCEPT_CONFIRMED
+        )
+
+    @property
+    def matched_broker_order_id(self) -> str:
+        """대조 키. 취소·정정 통보는 자체 주문번호를 받으므로 원주문번호로 맞춘다."""
+        if self.original_broker_order_id and self.revise_code != "0":
+            return self.original_broker_order_id
+        return self.broker_order_id
 
 
 def _records(payload: str) -> tuple[tuple[str, ...], ...]:
@@ -173,7 +192,7 @@ def _problem(
 ) -> ReconcileProblem | None:
     if notification.symbol != order.symbol:
         return ReconcileProblem.SYMBOL_MISMATCH
-    if notification.order_quantity != order.quantity:
+    if not notification.cancel_confirmed and notification.order_quantity != order.quantity:
         return ReconcileProblem.ORDER_QUANTITY_MISMATCH
     if order.state in _TERMINAL_STATES:
         return ReconcileProblem.TERMINAL_STATE_CHANGED
@@ -205,6 +224,15 @@ def apply_notification(order: OrderSnapshot, notification: FillNotification) -> 
         return FillOutcome(
             client_order_id=order.client_order_id,
             state=OrderState.REJECTED,
+            filled_quantity=order.filled_quantity,
+            average_fill_price=order.average_fill_price,
+            changed=True,
+            problem=None,
+        )
+    if notification.cancel_confirmed:
+        return FillOutcome(
+            client_order_id=order.client_order_id,
+            state=OrderState.CANCELED,
             filled_quantity=order.filled_quantity,
             average_fill_price=order.average_fill_price,
             changed=True,

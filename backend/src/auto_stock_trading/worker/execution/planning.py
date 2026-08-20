@@ -1,5 +1,6 @@
 import argparse
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Final, final
 
 import anyio
@@ -57,6 +58,7 @@ class MissingAccountSource:
 _STRATEGY_NAME: Final = "ma-rsi"
 _STRATEGY_VERSION: Final = "1"
 _MANUAL_REASON: Final = "USER_COMMAND"
+_PERCENT: Final = Decimal(100)
 
 
 class Arguments(argparse.Namespace):
@@ -66,6 +68,7 @@ class Arguments(argparse.Namespace):
     parameters: str = '{"long_period":20,"rsi_overbought":"70","rsi_period":14,"short_period":5}'
     automation: str | None = None
     account_snapshot: bool = False
+    price_offset_pct: str | None = None
 
 
 def _http_client(settings: Settings) -> KisHttpClient:
@@ -167,6 +170,11 @@ async def plan_orders(arguments: Arguments) -> str:
             else seoul_trading_date(now)
         ),
         candidates=(SignalCandidate(arguments.symbol, OrderSide(arguments.side)),),
+        price_offset=(
+            Decimal(0)
+            if arguments.price_offset_pct is None
+            else Decimal(arguments.price_offset_pct) / _PERCENT
+        ),
     )
     try:
         plan = await planner.plan(request, now)
@@ -198,6 +206,7 @@ def main() -> None:
         choices=tuple(state.value for state in AutomationState),
     )
     _ = parser.add_argument("--account-snapshot", action="store_true")
+    _ = parser.add_argument("--price-offset-pct")
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.account_snapshot:
         print(anyio.run(collect_account_snapshot))  # noqa: T201

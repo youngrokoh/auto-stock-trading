@@ -27,6 +27,7 @@ from auto_stock_trading.domain.risk.limits import BlockCode
 
 if TYPE_CHECKING:
     from datetime import date, datetime
+    from decimal import Decimal
     from uuid import UUID
 
     from auto_stock_trading.application.trading.submission import TrackedOrder
@@ -41,8 +42,10 @@ _SUPERSEDED: Final = "SUPERSEDED"
 # 증권사는 주문 접수 HTTP 응답을 돌려주기 전에 통보를 밀어준다. 그래서 우리 주문번호 커밋보다
 # 통보가 먼저 도착할 수 있다(2026-08-20 실측: 주문 5건 중 2건). 조회를 몇 번 다시 해 본 뒤에만
 # 설명할 수 없는 불일치로 판정한다.
-_UNMATCHED_RETRIES: Final = 5
-_UNMATCHED_DELAY_SECONDS: Final = 0.2
+# 실측 2026-08-20: 1초 창으로는 부족했다(제출 3건 중 1건이 오탐). 접수 응답과 커밋 지연을 덮도록
+# 5초로 넓힌다. 실제 외부 주문은 재조회해도 계속 없으므로 검출이 늦어질 뿐 사라지지 않는다.
+_UNMATCHED_RETRIES: Final = 10
+_UNMATCHED_DELAY_SECONDS: Final = 0.5
 _PAUSABLE: Final = frozenset({AutomationState.ARMED, AutomationState.RUNNING})
 
 
@@ -122,6 +125,108 @@ class NotificationSink(Protocol):
         detail: str,
         occurred_at: datetime,
     ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PendingNotification:
+    """대조 실패로 반영되지 않은 저장된 통보. 본문은 마스킹된 그대로다."""
+
+    notification_id: UUID
+    payload: str
+    received_at: datetime
+    problem: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayApplication:
+    """재반영 한 건. 전이와 해소 표시를 같은 트랜잭션에 넣기 위한 입력이다."""
+
+    notification_id: UUID
+    order_id: UUID
+    state: OrderState
+    filled_quantity: int
+    average_fill_price: Decimal | None
+    occurred_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaySummary:
+    applied: int
+    unresolved: int
+    unreadable: int
+
+
+class NotificationReplayStore(Protocol):
+    async def pending_notifications(
+        self,
+        environment: str,
+    ) -> tuple[PendingNotification, ...]: ...
+
+    async def order_by_broker_order_id(
+        self,
+        environment: str,
+        broker_order_id: str,
+    ) -> TrackedOrder | None: ...
+
+    async def apply_replay(self, application: ReplayApplication) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationReplay:
+    """대조 버그로 반영되지 않은 저장된 증권사 사실을 다시 반영한다.
+
+    사람의 진술이 아니라 이미 저장된 증권사 통보를 적용하는 것이므로 ADR-0010의 종결 경로와 다르다.
+    한 번 반영된 통보는 `resolved_at`이 채워져 다시 대상이 되지 않는다.
+    """
+
+    store: NotificationReplayStore
+    environment: str
+
+    async def replay(self, now: datetime) -> ReplaySummary:
+        applied = 0
+        unresolved = 0
+        unreadable = 0
+        for pending in await self.store.pending_notifications(self.environment):
+            try:
+                notifications = parse_notifications(pending.payload)
+            except NotificationFormatError:
+                unreadable += 1
+                continue
+            for notification in notifications:
+                if await self._apply_one(pending, notification, now):
+                    applied += 1
+                else:
+                    unresolved += 1
+        return ReplaySummary(applied=applied, unresolved=unresolved, unreadable=unreadable)
+
+    async def _apply_one(
+        self,
+        pending: PendingNotification,
+        notification: FillNotification,
+        now: datetime,
+    ) -> bool:
+        order = await self.store.order_by_broker_order_id(
+            self.environment,
+            notification.matched_broker_order_id,
+        )
+        if order is None:
+            return False
+        result = apply_notification(_snapshot(order), notification)
+        if result.problem is not None or not result.changed:
+            return False
+        if not _allowed(order, result.state):
+            return False
+        await self.store.apply_replay(
+            ReplayApplication(
+                notification_id=pending.notification_id,
+                order_id=order.order_id,
+                state=result.state,
+                filled_quantity=result.filled_quantity,
+                average_fill_price=result.average_fill_price,
+                occurred_at=now,
+            )
+        )
+        return True
 
 
 def _snapshot(order: TrackedOrder) -> OrderSnapshot:
@@ -219,7 +324,7 @@ class FillNotificationListener:
         masked_payload: str,
         received_at: datetime,
     ) -> NotificationOutcome:
-        order = await self._order_for(notification.broker_order_id)
+        order = await self._order_for(notification.matched_broker_order_id)
         if order is None:
             return await self._unmatched(notification, masked_payload, received_at)
         result = apply_notification(_snapshot(order), notification)
@@ -294,12 +399,12 @@ class FillNotificationListener:
         )
         await self.orders.record_reconcile_problem(
             self.environment,
-            notification.broker_order_id,
+            notification.matched_broker_order_id,
             problem,
             received_at,
         )
         return NotificationOutcome(
-            broker_order_id=notification.broker_order_id,
+            broker_order_id=notification.matched_broker_order_id,
             client_order_id=None,
             state=None,
             problem=problem,
