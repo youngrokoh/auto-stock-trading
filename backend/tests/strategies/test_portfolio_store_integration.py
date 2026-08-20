@@ -4,15 +4,18 @@ from typing import Final
 from uuid import UUID, uuid4
 
 import anyio
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
+from auto_stock_trading.adapters.database.market_data_statements import instrument_id_for
 from auto_stock_trading.adapters.database.strategy_backtest_rows import (
     BacktestRunInstrumentRow,
     BacktestRunRow,
     BacktestTradeRow,
 )
 from auto_stock_trading.adapters.database.strategy_backtest_store import PostgresBacktestStore
+from auto_stock_trading.domain.market_data.models import ProductType
 from auto_stock_trading.domain.strategies.backtest_metrics import BacktestMetrics, EquityPoint
 from auto_stock_trading.domain.strategies.portfolio_backtest import (
     PortfolioSkipReason,
@@ -22,7 +25,8 @@ from auto_stock_trading.domain.strategies.records import PortfolioRunRecord
 from auto_stock_trading.settings.runtime import Settings
 
 _NOW: Final = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
-_UNIVERSE: Final = ("005930", "000660")
+# CI는 빈 DB로 돌므로 테스트가 스스로 종목을 만든다(실데이터 가정 금지).
+_UNIVERSE: Final = ("900110", "900120")
 
 
 def _metrics() -> BacktestMetrics:
@@ -69,7 +73,7 @@ def _trades() -> tuple[PortfolioTrade, ...]:
     return (
         PortfolioTrade(
             sequence=1,
-            symbol="005930",
+            symbol=_UNIVERSE[0],
             signal_date=date(2025, 1, 31),
             execution_date=date(2025, 2, 3),
             action="buy",
@@ -83,7 +87,7 @@ def _trades() -> tuple[PortfolioTrade, ...]:
         ),
         PortfolioTrade(
             sequence=2,
-            symbol="000660",
+            symbol=_UNIVERSE[1],
             signal_date=date(2025, 1, 31),
             execution_date=None,
             action="buy",
@@ -110,6 +114,32 @@ def test_a_portfolio_run_stores_its_universe_as_rows_without_a_lead_instrument()
                 _ = await connection.execute(
                     delete(BacktestRunRow).where(BacktestRunRow.id == run_id)
                 )
+                _ = await connection.execute(
+                    delete(InstrumentRow).where(InstrumentRow.symbol.in_(_UNIVERSE))
+                )
+                for symbol in _UNIVERSE:
+                    _ = await connection.execute(
+                        insert(InstrumentRow).values(
+                            id=instrument_id_for(
+                                country="KR",
+                                exchange="XKRX",
+                                symbol=symbol,
+                                product_type=ProductType.STOCK,
+                                currency="KRW",
+                            ),
+                            country="KR",
+                            exchange="XKRX",
+                            symbol=symbol,
+                            product_type=ProductType.STOCK.value,
+                            currency="KRW",
+                            name=f"테스트{symbol}",
+                            trading_status="active",
+                            source="TEST",
+                            source_as_of=_NOW.date(),
+                            created_at=_NOW,
+                            updated_at=_NOW,
+                        )
+                    )
                 await store.save_portfolio_run(
                     _record(run_id),
                     _trades(),
@@ -141,7 +171,7 @@ def test_a_portfolio_run_stores_its_universe_as_rows_without_a_lead_instrument()
                         .order_by(BacktestRunInstrumentRow.symbol)
                     )
                 ).scalars()
-                assert tuple(universe.all()) == ("000660", "005930")
+                assert tuple(universe.all()) == _UNIVERSE
 
                 trades = (
                     await connection.execute(
@@ -155,8 +185,8 @@ def test_a_portfolio_run_stores_its_universe_as_rows_without_a_lead_instrument()
                     )
                 ).all()
                 assert trades == [
-                    ("005930", "rebalance", None),
-                    ("000660", "rebalance", "missing_confirmed_bar"),
+                    (_UNIVERSE[0], "rebalance", None),
+                    (_UNIVERSE[1], "rebalance", "missing_confirmed_bar"),
                 ]
             finally:
                 await store.close()

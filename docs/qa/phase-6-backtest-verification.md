@@ -92,6 +92,13 @@
   유니버스 배당 수집 후 재실행해야 총수익 기준 비교가 된다.
 - 모멘텀을 비수정 종가로 계산한다(계약 v2 한계).
 
+### CI 동등 조건 확인
+
+다종목 실행 저장 통합 테스트가 수집된 종목이 있다고 가정해 CI(빈 DB)에서
+`unknown instruments`로 떨어졌다. 테스트가 트랜잭션 안에서 전용 종목을 만들도록 고쳤고,
+확인은 빈 `ci_check` 데이터베이스에 마이그레이션을 적용해 전체 테스트를 돌려서 했다.
+백엔드 통합 테스트는 실데이터를 가정하지 않는다는 규칙의 실측 사례로 남긴다.
+
 ## 자동 검증 명령
 
 ```bash
@@ -99,6 +106,14 @@ cd backend
 uv run pytest tests/strategies tests/api/test_backtests_api.py tests/migrations
 uv run python -m auto_stock_trading.worker.backtests --symbol 005930 \
   --start-date 2025-01-02 --end-date 2026-08-14 --initial-cash 10000000
+uv run python -m auto_stock_trading.worker.backtests --cross-momentum \
+  --start-date 2025-01-02 --end-date 2026-08-14 --lookback-days 126 --holdings 10
+
+# CI 동등(빈 DB) 확인
+AUTO_STOCK_DATABASE_URL=postgresql+asyncpg://auto_stock:auto_stock@localhost:5432/ci_check \
+  uv run alembic upgrade head && \
+AUTO_STOCK_DATABASE_URL=postgresql+asyncpg://auto_stock:auto_stock@localhost:5432/ci_check \
+  uv run pytest -q
 ```
 
 ## 남은 범위
