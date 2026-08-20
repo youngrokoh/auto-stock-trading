@@ -154,6 +154,11 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CREATE TABLE reference.dart_corp_code",
         "CONSTRAINT uq_dart_corp_code_version UNIQUE",
         "CREATE UNIQUE INDEX uq_dart_corp_code_current",
+        "ALTER TABLE strategy.backtest_run ALTER COLUMN instrument_id DROP NOT NULL",
+        "CREATE TABLE strategy.backtest_run_instrument",
+        "CONSTRAINT uq_backtest_run_instrument UNIQUE",
+        "CREATE INDEX ix_backtest_run_instrument_symbol",
+        "ALTER TABLE strategy.backtest_trade ADD COLUMN symbol VARCHAR(9)",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

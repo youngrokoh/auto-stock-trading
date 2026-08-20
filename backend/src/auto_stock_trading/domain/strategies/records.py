@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from decimal import Decimal
     from uuid import UUID
 
-    from auto_stock_trading.domain.strategies.backtest import BacktestMetrics
+    from auto_stock_trading.domain.strategies.backtest_metrics import BacktestMetrics
 
 
 @dataclass(frozen=True, slots=True)

@@ -26,10 +26,8 @@ from auto_stock_trading.domain.strategies.backtest import (
     BacktestError,
     BacktestFailure,
     BacktestInputs,
-    BacktestMetrics,
     BacktestResult,
     BacktestTrade,
-    EquityPoint,
     ExecutionBar,
     run_backtest,
 )
@@ -61,6 +59,10 @@ if TYPE_CHECKING:
     from auto_stock_trading.domain.market_data.models import (
         Instrument,
         VersionedDailyBar,
+    )
+    from auto_stock_trading.domain.strategies.backtest_metrics import (
+        BacktestMetrics,
+        EquityPoint,
     )
     from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 

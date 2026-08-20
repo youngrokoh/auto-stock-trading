@@ -1,8 +1,14 @@
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final, override
 
+from auto_stock_trading.domain.strategies.backtest_metrics import (
+    BacktestMetrics,
+    EquityPoint,
+    MetricsInputs,
+    backtest_metrics,
+)
 from auto_stock_trading.domain.strategies.costs import (
     TradeSide,
     UncoveredCostDateError,
@@ -92,37 +98,10 @@ class BacktestTrade:
 
 
 @dataclass(frozen=True, slots=True)
-class EquityPoint:
-    trading_date: date
-    cash: Decimal
-    position_value: Decimal
-    nav: Decimal
-
-
-@dataclass(frozen=True, slots=True)
-class BacktestMetrics:
-    total_return_pct: Decimal
-    pre_cost_return_pct: Decimal
-    benchmark_return_pct: Decimal
-    excess_return_pct: Decimal
-    mdd_pct: Decimal
-    sharpe: Decimal | None
-    turnover_pct: Decimal
-    total_fee: Decimal
-    total_slippage: Decimal
-    total_tax: Decimal
-    trade_count: int
-
-
-@dataclass(frozen=True, slots=True)
 class BacktestResult:
     trades: tuple[BacktestTrade, ...]
     equity_curve: tuple[EquityPoint, ...]
     metrics: BacktestMetrics
-
-
-def _percent(value: Decimal) -> Decimal:
-    return (value * 100).quantize(_PERCENT_PLACES, rounding=ROUND_HALF_UP)
 
 
 def _validate_inputs(inputs: BacktestInputs) -> None:
@@ -290,52 +269,17 @@ def _metrics(
     equity_curve: Sequence[EquityPoint],
     executed_count: int,
 ) -> BacktestMetrics:
-    initial = inputs.initial_cash
-    final_nav = equity_curve[-1].nav
-    total_costs = account.total_fee + account.total_slippage + account.total_tax
-    benchmark_first = inputs.benchmark_closes[0]
-    benchmark_last = inputs.benchmark_closes[-1]
-    total_return = _percent((final_nav - initial) / initial)
-    benchmark_return = _percent(benchmark_last / benchmark_first - 1)
-    peak = equity_curve[0].nav
-    max_drawdown = Decimal(0)
-    for point in equity_curve:
-        peak = max(peak, point.nav)
-        max_drawdown = min(max_drawdown, point.nav / peak - 1)
-    daily_returns = [
-        equity_curve[index].nav / equity_curve[index - 1].nav - 1
-        for index in range(1, len(equity_curve))
-    ]
-    sharpe: Decimal | None = None
-    if daily_returns:
-        mean = sum(daily_returns, Decimal(0)) / len(daily_returns)
-        variance = sum(
-            ((value - mean) ** 2 for value in daily_returns),
-            Decimal(0),
-        ) / len(daily_returns)
-        if variance > 0:
-            sharpe = (mean / variance.sqrt() * _TRADING_DAYS_PER_YEAR.sqrt()).quantize(
-                _SHARPE_PLACES,
-                rounding=ROUND_HALF_UP,
-            )
-    average_nav = sum((point.nav for point in equity_curve), Decimal(0)) / len(equity_curve)
-    years = Decimal(len(equity_curve)) / _TRADING_DAYS_PER_YEAR
-    turnover = (account.traded_amount / average_nav / years * 100).quantize(
-        _PERCENT_PLACES,
-        rounding=ROUND_HALF_UP,
-    )
-    return BacktestMetrics(
-        total_return_pct=total_return,
-        pre_cost_return_pct=_percent((final_nav + total_costs - initial) / initial),
-        benchmark_return_pct=benchmark_return,
-        excess_return_pct=total_return - benchmark_return,
-        mdd_pct=_percent(max_drawdown),
-        sharpe=sharpe,
-        turnover_pct=turnover,
-        total_fee=account.total_fee,
-        total_slippage=account.total_slippage,
-        total_tax=account.total_tax,
-        trade_count=executed_count,
+    return backtest_metrics(
+        MetricsInputs(
+            initial_cash=inputs.initial_cash,
+            benchmark_closes=inputs.benchmark_closes,
+            total_fee=account.total_fee,
+            total_slippage=account.total_slippage,
+            total_tax=account.total_tax,
+            traded_amount=account.traded_amount,
+            executed_count=executed_count,
+        ),
+        equity_curve,
     )
 
 

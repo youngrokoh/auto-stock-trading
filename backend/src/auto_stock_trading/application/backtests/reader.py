@@ -3,7 +3,8 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from auto_stock_trading.domain.strategies.backtest import BacktestTrade, EquityPoint
+    from auto_stock_trading.domain.strategies.backtest import BacktestTrade
+    from auto_stock_trading.domain.strategies.backtest_metrics import EquityPoint
     from auto_stock_trading.domain.strategies.records import BacktestRunRecord
 
 

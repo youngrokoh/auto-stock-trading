@@ -49,7 +49,8 @@ from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 if TYPE_CHECKING:
     from auto_stock_trading.domain.market_data.calendar import CalendarSessionRange
     from auto_stock_trading.domain.market_data.corporate_actions import CorporateActionRange
-    from auto_stock_trading.domain.strategies.backtest import BacktestTrade, EquityPoint
+    from auto_stock_trading.domain.strategies.backtest import BacktestTrade
+    from auto_stock_trading.domain.strategies.backtest_metrics import EquityPoint
     from auto_stock_trading.domain.strategies.records import BacktestRunRecord
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")

@@ -20,7 +20,8 @@ from auto_stock_trading.adapters.database.strategy_backtest_rows import (
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-    from auto_stock_trading.domain.strategies.backtest import BacktestTrade, EquityPoint
+    from auto_stock_trading.domain.strategies.backtest import BacktestTrade
+    from auto_stock_trading.domain.strategies.backtest_metrics import EquityPoint
     from auto_stock_trading.domain.strategies.records import BacktestRunRecord
 
 

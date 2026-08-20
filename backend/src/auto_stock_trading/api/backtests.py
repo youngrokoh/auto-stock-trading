@@ -15,9 +15,9 @@ from auto_stock_trading.api.backtests_models import (
 
 if TYPE_CHECKING:
     from auto_stock_trading.application.backtests.reader import BacktestReader
-    from auto_stock_trading.domain.strategies.backtest import (
+    from auto_stock_trading.domain.strategies.backtest import BacktestTrade
+    from auto_stock_trading.domain.strategies.backtest_metrics import (
         BacktestMetrics,
-        BacktestTrade,
         EquityPoint,
     )
     from auto_stock_trading.domain.strategies.records import BacktestRunRecord

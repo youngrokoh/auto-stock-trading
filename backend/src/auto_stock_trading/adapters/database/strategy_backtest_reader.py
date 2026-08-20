@@ -16,10 +16,12 @@ from auto_stock_trading.adapters.database.strategy_backtest_rows import (
     BacktestTradeRow,
 )
 from auto_stock_trading.domain.strategies.backtest import (
-    BacktestMetrics,
     BacktestTrade,
-    EquityPoint,
     TradeSkipReason,
+)
+from auto_stock_trading.domain.strategies.backtest_metrics import (
+    BacktestMetrics,
+    EquityPoint,
 )
 from auto_stock_trading.domain.strategies.ma_rsi import SignalAction, SignalReason
 from auto_stock_trading.domain.strategies.records import BacktestRunRecord
