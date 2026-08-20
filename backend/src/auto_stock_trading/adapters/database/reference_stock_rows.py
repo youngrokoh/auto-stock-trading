@@ -45,3 +45,31 @@ class StockProfileRow(Base):
     raw_response_id: Mapped[UUID] = mapped_column(
         ForeignKey("operations.raw_api_response.id"),
     )
+
+
+@final
+class DartCorpCodeRow(Base):
+    __tablename__: str = "dart_corp_code"
+    __table_args__: tuple[UniqueConstraint, Index, dict[str, str]] = (
+        UniqueConstraint("symbol", "version", name="uq_dart_corp_code_version"),
+        Index(
+            "uq_dart_corp_code_current",
+            "symbol",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+        {"schema": "reference"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(9))
+    corp_code: Mapped[str] = mapped_column(String(8))
+    corp_name: Mapped[str] = mapped_column(String(160))
+    source: Mapped[str] = mapped_column(String(32))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operations.raw_api_response.id"),
+    )

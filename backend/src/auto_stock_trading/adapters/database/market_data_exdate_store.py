@@ -56,6 +56,25 @@ class PostgresExDateStore:
         )
         return cls(None, sessions)
 
+    async def symbols_missing_ex_date(self) -> tuple[str, ...]:
+        """락일이 아직 없는 사실을 가진 종목만. 유니버스 전수를 돌리지 않는다."""
+        statement = (
+            select(InstrumentRow.symbol)
+            .join(CorporateActionRow, CorporateActionRow.instrument_id == InstrumentRow.id)
+            .where(
+                CorporateActionRow.superseded_at.is_(None),
+                CorporateActionRow.ex_date.is_(None),
+                CorporateActionRow.record_date.is_not(None),
+                CorporateActionRow.action_type.in_(_CASH_ACTION_TYPES),
+                CorporateActionRow.lifecycle_status != CorporateActionLifecycle.CANCELLED.value,
+                CorporateActionRow.quality_state != CorporateActionQuality.CONFLICT.value,
+            )
+            .distinct()
+            .order_by(InstrumentRow.symbol)
+        )
+        async with self._sessions() as session:
+            return tuple((await session.scalars(statement)).all())
+
     async def actions_missing_ex_date(
         self,
         symbol: str,

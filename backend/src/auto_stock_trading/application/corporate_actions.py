@@ -1,10 +1,16 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
+
+import anyio
 
 if TYPE_CHECKING:
     from datetime import date, datetime
 
+    from auto_stock_trading.domain.market_data.corp_codes import DartCorpCode
     from auto_stock_trading.domain.market_data.corporate_actions import CorporateActionBundle
+
+# 종목당 상한. 응답이 매달리면 한 종목이 전체 수집을 멈춘다(시세 스윕 실측).
+_SYMBOL_TIMEOUT_SECONDS: Final = 120.0
 
 
 class CorporateActionSource(Protocol):
@@ -75,3 +81,67 @@ class CorporateActionCollector:
             raise
         await self.store.mark_sync_succeeded(source_name, symbol, bundle.collected_at)
         return bundle
+
+
+class UniverseCorpCodes(Protocol):
+    async def universe_symbols(self) -> tuple[str, ...]: ...
+
+    async def universe_corp_codes(self) -> tuple[DartCorpCode, ...]: ...
+
+
+class UniverseDividendSource(Protocol):
+    async def collect_symbol(
+        self,
+        symbol: str,
+        corp_code: str,
+        start_date: date,
+        end_date: date,
+        now: datetime,
+    ) -> int: ...
+
+
+@dataclass(frozen=True, slots=True)
+class UniverseDividendResult:
+    symbols: int
+    observations: int
+    failed: int
+    missing_corp_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class UniverseDividendCollection:
+    """유니버스 전 종목 배당 수집. 고유번호가 없는 종목은 조회 방법이 없으므로 보고한다."""
+
+    codes: UniverseCorpCodes
+    source: UniverseDividendSource
+    symbol_timeout_seconds: float = _SYMBOL_TIMEOUT_SECONDS
+
+    async def run(
+        self,
+        start_date: date,
+        end_date: date,
+        now: datetime,
+    ) -> UniverseDividendResult:
+        universe = await self.codes.universe_symbols()
+        known = await self.codes.universe_corp_codes()
+        mapped = {item.symbol: item.corp_code for item in known}
+        observations = 0
+        failed = 0
+        for item in known:
+            try:
+                with anyio.fail_after(self.symbol_timeout_seconds):
+                    observations += await self.source.collect_symbol(
+                        item.symbol,
+                        item.corp_code,
+                        start_date,
+                        end_date,
+                        now,
+                    )
+            except Exception:  # noqa: BLE001 — 종목 실패는 수집을 멈추지 않는다
+                failed += 1
+        return UniverseDividendResult(
+            symbols=len(known),
+            observations=observations,
+            failed=failed,
+            missing_corp_codes=tuple(symbol for symbol in universe if symbol not in mapped),
+        )

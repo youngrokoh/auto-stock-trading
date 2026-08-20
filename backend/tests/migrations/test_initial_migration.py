@@ -151,6 +151,9 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT ck_stock_profile_version",
         "CONSTRAINT ck_stock_profile_validity",
         "CREATE UNIQUE INDEX uq_stock_profile_current",
+        "CREATE TABLE reference.dart_corp_code",
+        "CONSTRAINT uq_dart_corp_code_version UNIQUE",
+        "CREATE UNIQUE INDEX uq_dart_corp_code_current",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

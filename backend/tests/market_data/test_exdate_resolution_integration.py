@@ -319,3 +319,26 @@ async def _rows(sessions: Sessions) -> tuple[CorporateActionRow, ...]:
                 )
             ).all()
         )
+
+
+def test_symbols_missing_ex_dates_are_listed_for_universe_resolution() -> None:
+    """유니버스 확정 패스는 미확정 사실이 있는 종목만 돌린다(200종목 전수 조회를 피한다)."""
+
+    async def scenario(
+        connection: AsyncConnection,
+        sessions: Sessions,
+        instrument_id: UUID,
+        raw_id: UUID,
+    ) -> None:
+        await _seed_calendar(connection)
+        await _seed_dividend(sessions, instrument_id, raw_id, record_date=date(2026, 9, 25))
+        store = PostgresExDateStore.from_connection(connection)
+
+        pending = await store.symbols_missing_ex_date()
+        assert _SYMBOL in pending
+
+        _ = await _resolve(connection)
+
+        assert _SYMBOL not in await store.symbols_missing_ex_date()
+
+    anyio.run(_run_scenario, scenario)

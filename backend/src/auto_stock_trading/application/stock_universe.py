@@ -4,6 +4,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Final, Protocol
 
 import anyio
@@ -11,12 +12,15 @@ import anyio
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import date, datetime
 
+    from auto_stock_trading.application.market_data import DailyBarConfirmation
     from auto_stock_trading.domain.market_data.models import QuoteSnapshotObservation
     from auto_stock_trading.domain.market_data.stocks import StockMasterBundle
 
 _MASTER_OPERATION: Final = "stock_master"
+_CHUNK_DAYS: Final = 120
+_CHUNK_TIMEOUT_SECONDS: Final = 120.0
 _QUOTE_OPERATION: Final = "universe_quote"
 _SWEEP_KEY: Final = "KOSPI200"
 _PARTIAL_FAILURE: Final = "partial_failure"
@@ -130,3 +134,123 @@ class QuoteSweeper:
         else:
             await self.store.mark_succeeded(_QUOTE_OPERATION, _SWEEP_KEY, now)
         return QuoteSweepResult(collected=collected, failed=failed)
+
+
+class UniverseSymbols(Protocol):
+    async def universe_symbols(self) -> tuple[str, ...]: ...
+
+
+class BarCollector(Protocol):
+    """일봉 수집 한 단위. `MarketDataCollector`가 그대로 만족한다."""
+
+    async def collect(
+        self,
+        target: InstrumentTarget,
+        start_date: date,
+        end_date: date,
+        started_at: datetime,
+    ) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class BackfillResult:
+    symbols: int
+    collected_chunks: int
+    failed_chunks: int
+
+
+def _chunks(start_date: date, end_date: date, chunk_days: int) -> tuple[tuple[date, date], ...]:
+    """회당 최대 100봉 제한 때문에 창을 나눈다. 구간은 겹치지 않고 하루도 비지 않는다."""
+    windows: list[tuple[date, date]] = []
+    cursor = start_date
+    step = timedelta(days=chunk_days - 1)
+    while cursor <= end_date:
+        stop = min(cursor + step, end_date)
+        windows.append((cursor, stop))
+        cursor = stop + timedelta(days=1)
+    return tuple(windows)
+
+
+@dataclass(frozen=True, slots=True)
+class UniverseBarBackfill:
+    """유니버스 전 종목 일봉 백필. 종목·구간 하나가 전체를 멈추지 못하게 한다."""
+
+    universe: UniverseSymbols
+    collector: BarCollector
+    chunk_days: int = _CHUNK_DAYS
+    chunk_timeout_seconds: float = _CHUNK_TIMEOUT_SECONDS
+
+    async def run(self, start_date: date, end_date: date, now: datetime) -> BackfillResult:
+        symbols = await self.universe.universe_symbols()
+        windows = _chunks(start_date, end_date, self.chunk_days)
+        collected = 0
+        failed = 0
+        for symbol in symbols:
+            target = InstrumentTarget(symbol, ProductType.STOCK)
+            for window_start, window_end in windows:
+                try:
+                    with anyio.fail_after(self.chunk_timeout_seconds):
+                        _ = await self.collector.collect(target, window_start, window_end, now)
+                except Exception:  # noqa: BLE001 — 구간 실패는 백필을 멈추지 않는다
+                    failed += 1
+                else:
+                    collected += 1
+        return BackfillResult(
+            symbols=len(symbols),
+            collected_chunks=collected,
+            failed_chunks=failed,
+        )
+
+
+class BarConfirmer(Protocol):
+    """일봉 확정 한 단위. `DailyBarConfirmer`가 그대로 만족한다."""
+
+    async def confirm(
+        self,
+        target: InstrumentTarget,
+        start_date: date,
+        end_date: date,
+        now: datetime,
+    ) -> DailyBarConfirmation: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmationResult:
+    symbols: int
+    confirmed: int
+    pending: int
+    failed_chunks: int
+
+
+@dataclass(frozen=True, slots=True)
+class UniverseBarConfirmation:
+    """유니버스 전 종목 일봉 확정 패스. 확정 규칙 자체는 `DailyBarConfirmer`가 갖는다."""
+
+    universe: UniverseSymbols
+    confirmer: BarConfirmer
+    chunk_days: int = _CHUNK_DAYS
+    chunk_timeout_seconds: float = _CHUNK_TIMEOUT_SECONDS
+
+    async def run(self, start_date: date, end_date: date, now: datetime) -> ConfirmationResult:
+        symbols = await self.universe.universe_symbols()
+        windows = _chunks(start_date, end_date, self.chunk_days)
+        confirmed = 0
+        pending = 0
+        failed = 0
+        for symbol in symbols:
+            target = InstrumentTarget(symbol, ProductType.STOCK)
+            for window_start, window_end in windows:
+                try:
+                    with anyio.fail_after(self.chunk_timeout_seconds):
+                        result = await self.confirmer.confirm(target, window_start, window_end, now)
+                except Exception:  # noqa: BLE001 — 구간 실패는 확정 패스를 멈추지 않는다
+                    failed += 1
+                else:
+                    confirmed += result.confirmed
+                    pending += result.pending
+        return ConfirmationResult(
+            symbols=len(symbols),
+            confirmed=confirmed,
+            pending=pending,
+            failed_chunks=failed,
+        )
