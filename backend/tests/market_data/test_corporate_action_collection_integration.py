@@ -203,7 +203,12 @@ async def _remove_instrument(sessions: Sessions, symbol: str = _TARGET.symbol) -
             delete(CorporateActionRow).where(CorporateActionRow.source.in_(("DART", "KODEX")))
         )
         _ = await session.execute(
-            delete(RawApiResponseRow).where(RawApiResponseRow.source.in_(("DART", "KODEX")))
+            # 원본 정리는 이 테스트가 쓰는 작업으로 좁힌다. 출처 전체를 지우면 다른
+            # 사실 테이블(예: `reference.dart_corp_code`)이 참조하는 원본까지 건드린다.
+            delete(RawApiResponseRow).where(
+                RawApiResponseRow.source.in_(("DART", "KODEX")),
+                RawApiResponseRow.operation == "corporate_actions",
+            )
         )
 
 
@@ -261,7 +266,11 @@ async def _raw_rows(
         return tuple(
             (
                 await session.scalars(
-                    select(RawApiResponseRow).where(RawApiResponseRow.source == source)
+                    select(RawApiResponseRow).where(
+                        RawApiResponseRow.source == source,
+                        # 이 테스트가 만든 작업만 센다. 다른 작업의 원본은 이 테스트와 무관하다.
+                        RawApiResponseRow.operation == "corporate_actions",
+                    )
                 )
             ).all()
         )

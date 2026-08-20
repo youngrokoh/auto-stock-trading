@@ -105,6 +105,8 @@ class UniverseDividendResult:
     symbols: int
     observations: int
     failed: int
+    # 실패한 종목을 이름으로 남긴다. 개수만 세면 운영자가 무엇을 다시 돌릴지 알 수 없다.
+    failed_symbols: tuple[str, ...]
     missing_corp_codes: tuple[str, ...]
 
 
@@ -126,7 +128,7 @@ class UniverseDividendCollection:
         known = await self.codes.universe_corp_codes()
         mapped = {item.symbol: item.corp_code for item in known}
         observations = 0
-        failed = 0
+        failures: list[str] = []
         for item in known:
             try:
                 with anyio.fail_after(self.symbol_timeout_seconds):
@@ -138,10 +140,11 @@ class UniverseDividendCollection:
                         now,
                     )
             except Exception:  # noqa: BLE001 — 종목 실패는 수집을 멈추지 않는다
-                failed += 1
+                failures.append(item.symbol)
         return UniverseDividendResult(
             symbols=len(known),
             observations=observations,
-            failed=failed,
+            failed=len(failures),
+            failed_symbols=tuple(failures),
             missing_corp_codes=tuple(symbol for symbol in universe if symbol not in mapped),
         )

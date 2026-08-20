@@ -186,7 +186,7 @@ async def collect_dart_corp_codes() -> tuple[int, int]:
 async def collect_universe_dividends(
     start_date_text: str | None = None,
     end_date_text: str | None = None,
-) -> tuple[int, int, int, tuple[str, ...]]:
+) -> tuple[int, int, tuple[str, ...], tuple[str, ...]]:
     settings = Settings()
     api_key = load_dart_api_key(settings)
     start_date, end_date = _collection_range(start_date_text, end_date_text)
@@ -204,7 +204,12 @@ async def collect_universe_dividends(
         await client.close()
         await codes.close()
         await store.close()
-    return result.symbols, result.observations, result.failed, result.missing_corp_codes
+    return (
+        result.symbols,
+        result.observations,
+        result.failed_symbols,
+        result.missing_corp_codes,
+    )
 
 
 async def confirm_universe_ex_dates() -> tuple[int, int, int]:
@@ -318,7 +323,8 @@ def main() -> None:
         )
         report = (
             f"dividends symbols={symbols} observations={observations} "
-            f"failed={failed} missing_corp_codes={len(missing)}"
+            f"failed={len(failed)}{':' + ','.join(failed) if failed else ''} "
+            f"missing_corp_codes={len(missing)}"
         )
         print(report)  # noqa: T201
     elif arguments.etf_distributions:

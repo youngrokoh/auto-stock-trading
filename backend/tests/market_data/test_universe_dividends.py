@@ -104,6 +104,8 @@ def test_a_failing_symbol_does_not_stop_the_collection() -> None:
         )
 
         assert (result.symbols, result.observations, result.failed) == (2, 3, 1)
+        # 어느 종목이 실패했는지 알 수 없으면 운영자가 손을 쓸 수 없다.
+        assert result.failed_symbols == ("005930",)
         assert ("000660", "00164779") in source.calls
 
     anyio.run(run)

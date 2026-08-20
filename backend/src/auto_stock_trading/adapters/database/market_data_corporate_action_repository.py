@@ -174,13 +174,25 @@ def _new_corporate_action_row(
 
 
 def _corporate_action_facts_match(row: CorporateActionRow, action: CorporateAction) -> bool:
+    """같은 사실인지 판정한다.
+
+    락일(`ex_date`)과 품질 상태는 원천이 주지 않고 `ExDateResolver`가 파생한다. 두 필드를
+    그대로 비교하면 재수집이 확정된 버전을 supersede하고 확정이 다시 그것을 supersede해
+    수집과 확정이 서로를 되돌린다(2026-08-21 실측: 재수집 한 번에 확정 422건이 7건이 됐다).
+
+    그래서 **락일이 없는 관측은 "락일에 대해 의견이 없다"로 읽는다.** 원천 재수집(락일 없음)은
+    확정된 버전을 건드리지 않고 근거만 갱신하고, 확정(락일 있음)은 새 버전을 만든다. 원천 값이
+    바뀌면 새 버전이 되고 그때는 확정을 다시 수행해야 한다.
+    """
+    if action.ex_date is not None and row.ex_date != action.ex_date:
+        return False
+    if action.ex_date is not None and row.quality_state != action.quality.value:
+        return False
     return (
         row.action_type == action.action_type.value
         and row.lifecycle_status == action.lifecycle.value
-        and row.quality_state == action.quality.value
         and row.announced_at == action.announced_at
         and row.time_precision == action.time_precision.value
-        and row.ex_date == action.ex_date
         and row.effective_date == action.effective_date
         and row.record_date == action.record_date
         and row.payment_date == action.payment_date

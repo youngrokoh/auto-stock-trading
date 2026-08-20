@@ -63,3 +63,21 @@ def test_a_missing_or_malformed_stock_code_is_skipped_without_failing() -> None:
     codes = parse_corp_codes(content, _NOW)
 
     assert [item.symbol for item in codes] == ["005930"]
+
+
+def test_alphanumeric_stock_codes_are_kept() -> None:
+    """실측: DART 종목코드 3,984개 중 56개가 문자를 포함한다(예: 삼성에피스홀딩스 0126Z0).
+
+    6자리 숫자만 받으면 유니버스 종목이 조용히 매핑에서 빠져 배당을 조회할 수 없다.
+    """
+    content = _document(
+        _entry("01965324", "삼성에피스홀딩스", "0126Z0"),
+        _entry("00126380", "삼성전자", "005930"),
+    )
+
+    codes = parse_corp_codes(content, _NOW)
+
+    assert [(item.symbol, item.corp_code) for item in codes] == [
+        ("0126Z0", "01965324"),
+        ("005930", "00126380"),
+    ]

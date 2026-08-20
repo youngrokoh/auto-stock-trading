@@ -354,3 +354,60 @@ async def _rows(sessions: Sessions) -> tuple[CorporateActionRow, ...]:
                 )
             ).all()
         )
+
+
+def test_recollection_after_ex_date_confirmation_keeps_the_derived_fields() -> None:
+    """실측 결함: 재수집이 락일 확정을 되돌렸다(422건 → 7건).
+
+    락일과 품질 상태는 원천이 주지 않고 우리가 파생한다. 원천 값이 그대로면 재수집은
+    같은 사실이므로 근거만 갱신해야 한다. 파생 필드를 비교에 넣으면 수집과 확정이 서로
+    상대의 버전을 계속 supersede한다.
+    """
+
+    async def scenario(sessions: Sessions, instrument_id: UUID, raw_id: UUID) -> None:
+        # 원천(DART 현금배당결정)은 락일을 주지 않는다. 수집 시점 사실은 락일이 비어 있다.
+        source = _dividend_evidence(instrument_id, raw_id)
+        evidence = CorporateActionEvidence(
+            action=replace(source.action, ex_date=None),
+            action_key=source.action_key,
+            instrument_id=instrument_id,
+            raw_response_id=raw_id,
+        )
+        await _save(sessions, evidence)
+        confirmed = CorporateActionEvidence(
+            action=replace(
+                evidence.action,
+                ex_date=date(2026, 9, 24),
+                quality=CorporateActionQuality.VERIFIED,
+                received_at=_RECEIVED_AT + timedelta(hours=1),
+            ),
+            action_key=evidence.action_key,
+            instrument_id=instrument_id,
+            raw_response_id=raw_id,
+        )
+        await _save(sessions, confirmed)
+        assert [(row.version, row.ex_date) for row in await _rows(sessions)] == [
+            (1, None),
+            (2, date(2026, 9, 24)),
+        ]
+
+        replay_raw_id = await _add_raw_response(sessions)
+        await _save(
+            sessions,
+            CorporateActionEvidence(
+                action=replace(evidence.action, received_at=_RECEIVED_AT + timedelta(hours=2)),
+                action_key=uuid4(),
+                instrument_id=instrument_id,
+                raw_response_id=replay_raw_id,
+            ),
+        )
+
+        rows = await _rows(sessions)
+        current = [row for row in rows if row.superseded_at is None]
+        assert len(current) == 1
+        assert current[0].version == 2
+        assert current[0].ex_date == date(2026, 9, 24)
+        assert current[0].quality_state == CorporateActionQuality.VERIFIED.value
+        assert current[0].raw_response_id == replay_raw_id
+
+    anyio.run(_run_scenario, scenario)

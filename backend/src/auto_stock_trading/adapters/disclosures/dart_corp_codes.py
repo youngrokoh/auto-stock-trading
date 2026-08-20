@@ -19,7 +19,8 @@ DART_CORP_CODE_ENDPOINT: Final = "/api/corpCode.xml"
 _SOURCE: Final = "DART"
 _ENTRY: Final = re.compile(r"<list>(.*?)</list>", re.DOTALL)
 _FIELD: Final = "<{name}>(.*?)</{name}>"
-_STOCK_CODE: Final = re.compile(r"^\d{6}$")
+# 실측: 종목코드 3,984개 중 56개가 문자를 포함한다(예: 0126Z0). 숫자만 받으면 유니버스가 빠진다.
+_STOCK_CODE: Final = re.compile(r"^[0-9A-Z]{6}$")
 _ZIP_MAGIC: Final = b"PK"
 
 
