@@ -52,6 +52,9 @@ class OrderPlanRecord:
     block_code: str | None
     planned_at: datetime
     orders: tuple[OrderRecord, ...]
+    # 실제로 저장된 주문 수. 같은 신호를 다시 계획하면 `client_order_id` 중복으로 저장이 생략되므로
+    # 엔진이 만든 수와 다를 수 있다. 저장 전에는 비어 있다.
+    stored_orders: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

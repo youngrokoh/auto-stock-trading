@@ -46,6 +46,8 @@ from auto_stock_trading.domain.risk.engine import PendingExposure, SignalCandida
 from auto_stock_trading.domain.risk.limits import BlockCode, RiskRule
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from auto_stock_trading.domain.market_data.models import InstrumentTarget
     from auto_stock_trading.domain.orders.records import OrderPlanRecord
 
@@ -238,6 +240,7 @@ class FakeStore:
     peak: Decimal | None = None
     pending: tuple[PendingExposure, ...] = ()
     failures: int = 0
+    skipped_orders: int = 0
     transitions: list[AutomationTransition] = field(default_factory=list[AutomationTransition])
     api_failures: list[str] = field(default_factory=list[str])
     plans: list[OrderPlanRecord] = field(default_factory=list["OrderPlanRecord"])
@@ -299,6 +302,11 @@ class FakeStore:
 
     async def save_plan(self, plan: OrderPlanRecord) -> None:
         self.plans.append(plan)
+
+    async def stored_order_count(self, plan_id: UUID) -> int:
+        """중복 식별자로 저장이 생략된 주문 수를 재현하려면 `skipped_orders`를 올린다."""
+        stored = [plan for plan in self.plans if plan.plan_id == plan_id]
+        return sum(len(plan.orders) for plan in stored) - self.skipped_orders
 
 
 @dataclass
@@ -364,7 +372,8 @@ def test_running_session_creates_planned_orders_with_lineage() -> None:
     assert first.reference_source == "KIS"
     assert first.reference_received_at is not None
     assert first.decisions
-    assert harness.store.plans == [plan]
+    # 저장된 레코드는 저장 결과(stored_orders)만 다르다.
+    assert harness.store.plans == [replace(plan, stored_orders=None)]
 
 
 def test_replanning_the_same_signal_reuses_client_order_ids() -> None:
@@ -533,6 +542,24 @@ def test_pending_orders_from_earlier_plans_consume_the_exposure_cap() -> None:
     (order,) = plan.orders
     assert order.quantity == 0
     assert order.reject_code == RiskRule.SYMBOL_EXPOSURE.value
+
+
+def test_the_plan_reports_orders_that_were_actually_stored() -> None:
+    """같은 신호를 다시 계획하면 중복 식별자로 저장이 생략된다. 보고는 저장 결과를 센다."""
+    harness = _harness()
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    assert plan.orders
+    assert plan.stored_orders == len(plan.orders)
+
+
+def test_duplicate_identifiers_are_reported_as_not_stored() -> None:
+    harness = _harness(store=FakeStore(skipped_orders=2))
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    assert plan.stored_orders == len(plan.orders) - 2
 
 
 def test_a_cash_basis_mismatch_with_the_broker_blocks_as_unreconciled() -> None:

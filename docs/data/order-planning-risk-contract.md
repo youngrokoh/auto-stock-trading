@@ -183,7 +183,11 @@ PLANNED -> SUBMITTED -> PARTIALLY_FILLED -> FILLED
 - 전이는 위 그래프만 허용하고 그 외는 오류다. `PLANNED -> REJECTED`, `PLANNED -> CANCELED`도
   허용한다(제출 전 거절·철회).
 - `client_order_id`는 `sha256("전략|전략버전|신호일|종목|구분|순번")`의 앞 32자 hex이며 UNIQUE다.
-  같은 신호를 다시 계획해도 같은 식별자가 나오므로 중복 주문이 구조적으로 차단된다. 이 식별자는
+  같은 신호를 다시 계획해도 같은 식별자가 나오므로 중복 주문이 구조적으로 차단된다. 저장은
+  `on_conflict_do_nothing`이라 중복 주문은 조용히 생략되고 계획 행만 남는다. **계획 실행 보고는
+  저장된 주문 수(`stored`)와 엔진이 만든 수(`evaluated`), 생략된 수(`duplicates`)를 구분해 낸다**
+  (2026-08-20 실측: 같은 신호를 다시 계획하니 `stored=0 evaluated=3 duplicates=3`). 이전에는
+  엔진 산출 수만 `planned`으로 보고해 저장된 것처럼 보였다. 이 식별자는
   내부 전용이며 증권사 주문 API는 자체 주문번호를 반환한다.
 - 주문은 계획(`order_plan`), 계좌 스냅샷, 기준가 출처·시각, 전략·신호 버전을 참조한다.
 - `trading.order_event`는 상태 전이와 사유를 append-only로 남긴다. 거절 주문도 규칙 판정과 함께

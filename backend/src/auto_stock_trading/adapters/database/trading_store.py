@@ -514,6 +514,12 @@ class PostgresTradingStore:
             for order in plan.orders:
                 await _save_order(session, plan, order)
 
+    async def stored_order_count(self, plan_id: UUID) -> int:
+        """그 계획에 실제로 저장된 주문 수. 중복 식별자로 생략된 주문은 세지 않는다."""
+        statement = select(func.count()).select_from(OrderRow).where(OrderRow.plan_id == plan_id)
+        async with self._sessions() as session:
+            return await session.scalar(statement) or 0
+
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()

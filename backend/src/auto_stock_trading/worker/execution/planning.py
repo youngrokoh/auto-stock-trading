@@ -186,12 +186,14 @@ async def plan_orders(arguments: Arguments) -> str:
         await store.close()
     if plan.status == "blocked":
         return f"blocked plan_id={plan.plan_id} block_code={plan.block_code}"
-    planned = sum(1 for order in plan.orders if order.reject_code is None)
+    evaluated = sum(1 for order in plan.orders if order.reject_code is None)
     rejected = tuple(order.reject_code for order in plan.orders if order.reject_code is not None)
+    stored = plan.stored_orders if plan.stored_orders is not None else 0
+    skipped = max(len(plan.orders) - stored, 0)
     return (
-        f"created plan_id={plan.plan_id} planned={planned} "
-        f"rejected={len(rejected)} reasons={','.join(rejected) or '-'} "
-        f"nav={plan.nav_basis}"
+        f"created plan_id={plan.plan_id} stored={stored} evaluated={evaluated} "
+        f"duplicates={skipped} rejected={len(rejected)} "
+        f"reasons={','.join(rejected) or '-'} nav={plan.nav_basis}"
     )
 
 

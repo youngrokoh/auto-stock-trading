@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final, Protocol
@@ -41,6 +41,8 @@ from auto_stock_trading.domain.risk.engine import (
 from auto_stock_trading.domain.risk.limits import PAPER_RISK_LIMITS
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from auto_stock_trading.domain.market_data.calendar import MarketCalendarRecord
     from auto_stock_trading.domain.market_data.models import Instrument, QuoteObservation
     from auto_stock_trading.domain.orders.account import (
@@ -119,6 +121,8 @@ class TradingStore(Protocol):
     ) -> tuple[PendingExposure, ...]: ...
 
     async def save_plan(self, plan: OrderPlanRecord) -> None: ...
+
+    async def stored_order_count(self, plan_id: UUID) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,7 +307,8 @@ class OrderPlanner:
             orders=tuple(_order_record(request, order) for order in evaluation.orders),
         )
         await self.store.save_plan(plan)
-        return plan
+        # 중복 식별자로 저장이 생략될 수 있으므로 보고는 저장 결과를 센다.
+        return replace(plan, stored_orders=await self.store.stored_order_count(plan.plan_id))
 
     async def _automation_for_day(
         self,
