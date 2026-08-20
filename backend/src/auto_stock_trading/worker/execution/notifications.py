@@ -193,6 +193,8 @@ async def listen(arguments: Arguments) -> str:
         ),
     )
     try:
+        state = await listener.reset_on_start(_now())
+        logger.info("KIS notification listener starting with automation %s", state.value)
         return await run_sessions(listener, socket, arguments.max_sessions)
     finally:
         await approvals.close()

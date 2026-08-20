@@ -39,6 +39,7 @@ _ATTACHED: Final = "LISTENER_ATTACHED"
 _DETACHED: Final = "LISTENER_DETACHED"
 _FAILED: Final = "LISTENER_ERROR"
 _SUPERSEDED: Final = "SUPERSEDED"
+_PROCESS_START: Final = "PROCESS_START"
 # 증권사는 주문 접수 HTTP 응답을 돌려주기 전에 통보를 밀어준다. 그래서 우리 주문번호 커밋보다
 # 통보가 먼저 도착할 수 있다(2026-08-20 실측: 주문 5건 중 2건). 조회를 몇 번 다시 해 본 뒤에만
 # 설명할 수 없는 불일치로 판정한다.
@@ -258,6 +259,26 @@ class FillNotificationListener:
     account_reference: str
     unmatched_retries: int = _UNMATCHED_RETRIES
     unmatched_delay_seconds: float = _UNMATCHED_DELAY_SECONDS
+
+    async def reset_on_start(self, now: datetime) -> AutomationState:
+        """프로세스 시작 시 자동매매를 DISABLED로 돌린다(정책 §6).
+
+        리스너는 거래 관련 유일한 상시 프로세스다. 세션 내부 재연결은 프로세스 시작이 아니므로
+        여기서만 호출한다. 사람이 다시 armed·running으로 올려야 주문이 나갈 수 있다.
+        """
+        record = await self.orders.automation_record(self.environment)
+        if record is None or record.state is AutomationState.DISABLED:
+            return AutomationState.DISABLED
+        applied = await self.orders.transition_automation(
+            AutomationTransition(
+                environment=self.environment,
+                requested=AutomationState.DISABLED,
+                reason_code=_PROCESS_START,
+                occurred_at=now,
+                trading_date=now.astimezone(_SEOUL).date(),
+            )
+        )
+        return applied.state
 
     async def attach(self, transaction_id: str, now: datetime) -> AttachResult:
         """세션을 시작한다. 미체결 주문이 있으면 놓친 통보가 있을 수 있어 차단한다."""

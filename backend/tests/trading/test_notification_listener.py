@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final, final
 from uuid import UUID, uuid4
 
 import anyio
+import pytest
 
 from auto_stock_trading.application.trading.notifications import (
     FillNotificationListener,
@@ -211,6 +212,44 @@ def _listener(
         account_reference=_ACCOUNT,
         unmatched_delay_seconds=0.0,
     )
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        AutomationState.RUNNING,
+        AutomationState.ARMED,
+        AutomationState.PAUSED,
+        AutomationState.EMERGENCY_STOP,
+    ],
+)
+def test_the_listener_start_returns_automation_to_disabled(state: AutomationState) -> None:
+    """정책 §6: 프로세스 시작 시 자동매매는 항상 DISABLED로 돌아간다."""
+
+    async def run() -> None:
+        orders = FakeOrders(state=state)
+
+        result = await _listener(orders, FakeNotifications()).reset_on_start(_NOW)
+
+        assert result is AutomationState.DISABLED
+        assert [transition.requested for transition in orders.transitions] == [
+            AutomationState.DISABLED
+        ]
+        assert orders.transitions[0].reason_code == "PROCESS_START"
+
+    anyio.run(run)
+
+
+def test_a_listener_start_with_automation_already_disabled_changes_nothing() -> None:
+    async def run() -> None:
+        orders = FakeOrders(state=AutomationState.DISABLED)
+
+        result = await _listener(orders, FakeNotifications()).reset_on_start(_NOW)
+
+        assert result is AutomationState.DISABLED
+        assert orders.transitions == []
+
+    anyio.run(run)
 
 
 def test_a_notification_that_arrives_before_our_commit_is_not_a_mismatch() -> None:
