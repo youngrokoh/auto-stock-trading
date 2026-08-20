@@ -155,6 +155,7 @@ class OrderRow(Base):
     broker_order_time: Mapped[str | None] = mapped_column(String(6))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     average_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 8))
+    revision_count: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -234,7 +235,7 @@ class NotificationSessionRow(Base):
 class RiskDecisionRow(Base):
     __tablename__: str = "risk_decision"
     __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
-        UniqueConstraint("order_id", "rule_code", name="uq_risk_decision_rule"),
+        UniqueConstraint("order_id", "rule_code", "attempt", name="uq_risk_decision_rule"),
         {"schema": "trading"},
     )
 
@@ -244,6 +245,7 @@ class RiskDecisionRow(Base):
         index=True,
     )
     rule_code: Mapped[str] = mapped_column(String(40))
+    attempt: Mapped[int] = mapped_column(Integer)
     limit_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     projected_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     passed: Mapped[bool] = mapped_column(Boolean)

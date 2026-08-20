@@ -34,6 +34,7 @@ _LIVE_FILLS_TR: Final = "TTTC8001R"
 
 _LIMIT_ORDER_DIVISION: Final = "00"
 _CANCEL_DIVISION: Final = "02"
+_REVISE_DIVISION: Final = "01"
 _ALL_QUANTITY: Final = "Y"
 _CANCELED: Final = "Y"
 
@@ -82,6 +83,16 @@ class CancelRequest:
     broker_org_no: str
     broker_order_id: str
     quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReviseRequest:
+    """정정 요청. 수량은 잔여 수량 그대로이고 지정가만 바뀐다(ADR-0011 결정 2)."""
+
+    broker_org_no: str
+    broker_order_id: str
+    quantity: int
+    limit_price: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +203,32 @@ class KisOrderAdapter:
                 "RVSE_CNCL_DVSN_CD": _CANCEL_DIVISION,
                 "ORD_QTY": str(request.quantity),
                 "ORD_UNPR": "0",
+                "QTY_ALL_ORD_YN": _ALL_QUANTITY,
+            },
+            request_fingerprint=fingerprint,
+        )
+        response = _validate(
+            raw_response.payload_json,
+            KisOrderResponse,
+            BrokerOperation.ORDER_CANCEL,
+        )
+        return _acknowledgement(response, raw_from(BrokerOperation.ORDER_CANCEL, raw_response))
+
+    async def revise(self, request: ReviseRequest) -> BrokerAcknowledgement:
+        """지정가 정정. 취소와 같은 엔드포인트이며 구분코드만 다르다."""
+        transaction_id = _PAPER_CANCEL_TR if self._paper else _LIVE_CANCEL_TR
+        fingerprint = f"order_revise:{self._account.reference}:{request.broker_order_id}"
+        raw_response = await self._client.post(
+            endpoint=REVISE_CANCEL_ENDPOINT,
+            transaction_id=transaction_id,
+            body={
+                **self._account_body(),
+                "KRX_FWDG_ORD_ORGNO": request.broker_org_no,
+                "ORGN_ODNO": request.broker_order_id,
+                "ORD_DVSN": _LIMIT_ORDER_DIVISION,
+                "RVSE_CNCL_DVSN_CD": _REVISE_DIVISION,
+                "ORD_QTY": str(request.quantity),
+                "ORD_UNPR": f"{request.limit_price:.0f}",
                 "QTY_ALL_ORD_YN": _ALL_QUANTITY,
             },
             request_fingerprint=fingerprint,

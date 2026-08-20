@@ -72,6 +72,7 @@ _STATE_CHANGE: Final = "state_change"
 _API_FAILURE: Final = "api_failure"
 _RECONCILE_PROBLEM: Final = "reconcile_problem"
 _FILL_SYNC: Final = "FILL_SYNC"
+_FIRST_ATTEMPT: Final = 1
 _OPEN_STATES: Final = (OrderState.SUBMITTED.value, OrderState.PARTIALLY_FILLED.value)
 _BUY_COUNTED_STATES: Final = (
     OrderState.PLANNED.value,
@@ -449,13 +450,14 @@ class PostgresTradingStore:
         self,
         environment: str,
         trading_date: date,
+        exclude_order_id: UUID | None = None,
     ) -> tuple[PendingExposure, ...]:
+        """정정 판정에서는 대상 주문 자신을 제외해야 자기 노출을 두 번 세지 않는다."""
+        statement = pending_exposure_query(environment, trading_date)
+        if exclude_order_id is not None:
+            statement = statement.where(OrderRow.id != exclude_order_id)
         async with self._sessions() as session:
-            rows = (
-                (await session.execute(pending_exposure_query(environment, trading_date)))
-                .tuples()
-                .all()
-            )
+            rows = (await session.execute(statement)).tuples().all()
         return tuple(
             PendingExposure(symbol=symbol, amount=Decimal(amount)) for symbol, amount in rows
         )
@@ -575,6 +577,7 @@ async def _save_order(
             state=order.state.value,
             reject_code=order.reject_code,
             broker_order_id=None,
+            revision_count=0,
             created_at=plan.planned_at,
             updated_at=plan.planned_at,
         )
@@ -601,6 +604,7 @@ async def _save_order(
                 id=uuid4(),
                 order_id=order_id,
                 rule_code=decision.rule.value,
+                attempt=_FIRST_ATTEMPT,
                 limit_value=decision.limit_value,
                 projected_value=decision.projected_value,
                 passed=decision.passed,

@@ -50,7 +50,7 @@ if TYPE_CHECKING:
         AccountSnapshotObservation,
     )
     from auto_stock_trading.domain.orders.records import StoredAccountSnapshot
-    from auto_stock_trading.domain.risk.limits import RiskLimits
+    from auto_stock_trading.domain.risk.limits import RiskLimits, RiskRule
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _COUNTRY: Final = "KR"
@@ -118,6 +118,7 @@ class TradingStore(Protocol):
         self,
         environment: str,
         trading_date: date,
+        exclude_order_id: UUID | None = None,
     ) -> tuple[PendingExposure, ...]: ...
 
     async def save_plan(self, plan: OrderPlanRecord) -> None: ...
@@ -222,6 +223,20 @@ def _order_record(request: PlanInput, order: PlannedOrder) -> OrderRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanContext:
+    """계획·정정 판정에 쓰는 수집 결과. 두 경로가 같은 입력을 쓰게 만든다."""
+
+    trading_date: date
+    automation: AutomationRecord
+    trading_day: bool
+    snapshot: StoredAccountSnapshot | None
+    account: AccountState
+    quotes: tuple[MarketQuote, ...]
+    counters: SessionCounters
+    pending: tuple[PendingExposure, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class OrderPlanner:
     calendar: PlanCalendar
     instruments: InstrumentReader
@@ -230,65 +245,98 @@ class OrderPlanner:
     store: TradingStore
     limits: RiskLimits = PAPER_RISK_LIMITS
 
-    async def plan(self, request: PlanInput, now: datetime) -> OrderPlanRecord:
+    async def context(
+        self,
+        environment: str,
+        symbols: tuple[str, ...],
+        now: datetime,
+        exclude_order_id: UUID | None = None,
+    ) -> PlanContext:
+        """계획과 정정이 같은 입력으로 판정하도록 수집 단계를 공유한다.
+
+        `exclude_order_id`는 정정 대상 주문 자신을 예상 노출과 미체결 카운트에서 뺀다. 정정은 주문을
+        하나 더 만드는 것이 아니므로 자신을 두 번 세면 없는 위반을 만든다.
+        """
         trading_date = now.astimezone(_SEOUL).date()
-        automation = await self._automation_for_day(request.environment, trading_date, now)
+        automation = await self._automation_for_day(environment, trading_date, now)
         trading_day = await self._is_trading_day(trading_date)
         collect = automation.state is AutomationState.RUNNING and trading_day
-        stored_snapshot = await self._snapshot(request.environment, now) if collect else None
+        stored_snapshot = await self._snapshot(environment, now) if collect else None
         counters = (
-            await self.store.counters(request.environment, trading_date)
-            if collect
-            else _EMPTY_COUNTERS
+            await self.store.counters(environment, trading_date) if collect else _EMPTY_COUNTERS
         )
-        quotes = await self._quotes(request, now) if collect else ()
+        quotes = await self._quotes(environment, symbols, now) if collect else ()
         pending = (
-            await self.store.pending_exposure(request.environment, trading_date) if collect else ()
+            await self.store.pending_exposure(environment, trading_date, exclude_order_id)
+            if collect
+            else ()
         )
         account = (
             _EMPTY_ACCOUNT
             if stored_snapshot is None
             else _account_state(
                 stored_snapshot.snapshot,
-                await self.store.session_open_nav(request.environment, trading_date),
-                await self.store.peak_nav(request.environment),
+                await self.store.session_open_nav(environment, trading_date),
+                await self.store.peak_nav(environment),
                 reconciled=_reconciled(stored_snapshot.snapshot, counters),
             )
         )
         failures = await self.store.api_failures_since(
-            request.environment,
+            environment,
             now - timedelta(seconds=self.limits.api_failure_window_seconds),
         )
+        open_orders = counters.open_orders - (1 if exclude_order_id is not None else 0)
+        return PlanContext(
+            trading_date=trading_date,
+            automation=automation,
+            trading_day=trading_day,
+            snapshot=stored_snapshot,
+            account=account,
+            quotes=quotes,
+            counters=SessionCounters(
+                open_orders=max(open_orders, 0),
+                daily_order_attempts=counters.daily_order_attempts,
+                daily_buy_amount=counters.daily_buy_amount,
+                consecutive_rejects=counters.consecutive_rejects,
+                api_failures=failures,
+            ),
+            pending=pending,
+        )
+
+    async def pause(self, environment: str, rule: RiskRule, now: datetime) -> AutomationRecord:
+        return await self.store.transition_automation(
+            AutomationTransition(
+                environment=environment,
+                requested=AutomationState.PAUSED,
+                reason_code=rule.value,
+                occurred_at=now,
+                trading_date=now.astimezone(_SEOUL).date(),
+            )
+        )
+
+    async def plan(self, request: PlanInput, now: datetime) -> OrderPlanRecord:
+        symbols = tuple(candidate.symbol for candidate in request.candidates)
+        plan_context = await self.context(request.environment, symbols, now)
+        trading_date = plan_context.trading_date
+        automation = plan_context.automation
+        stored_snapshot = plan_context.snapshot
+        account = plan_context.account
         evaluation = evaluate_plan(
             PlanRequest(
                 candidates=request.candidates,
                 account=account,
-                quotes=quotes,
-                counters=SessionCounters(
-                    open_orders=counters.open_orders,
-                    daily_order_attempts=counters.daily_order_attempts,
-                    daily_buy_amount=counters.daily_buy_amount,
-                    consecutive_rejects=counters.consecutive_rejects,
-                    api_failures=failures,
-                ),
+                quotes=plan_context.quotes,
+                counters=plan_context.counters,
                 automation_state=automation.state,
-                trading_day=trading_day,
+                trading_day=plan_context.trading_day,
                 now=now,
                 limits=self.limits,
-                pending=pending,
+                pending=plan_context.pending,
                 price_offset=request.price_offset,
             )
         )
         if evaluation.pause_rule is not None:
-            automation = await self.store.transition_automation(
-                AutomationTransition(
-                    environment=request.environment,
-                    requested=AutomationState.PAUSED,
-                    reason_code=evaluation.pause_rule.value,
-                    occurred_at=now,
-                    trading_date=trading_date,
-                )
-            )
+            automation = await self.pause(request.environment, evaluation.pause_rule, now)
         plan = OrderPlanRecord(
             plan_id=uuid4(),
             environment=request.environment,
@@ -365,9 +413,14 @@ class OrderPlanner:
             raise
         return await self.store.save_account_snapshot(observation)
 
-    async def _quotes(self, request: PlanInput, now: datetime) -> tuple[MarketQuote, ...]:
+    async def _quotes(
+        self,
+        environment: str,
+        symbols: tuple[str, ...],
+        now: datetime,
+    ) -> tuple[MarketQuote, ...]:
         quotes: list[MarketQuote] = []
-        for symbol in dict.fromkeys(candidate.symbol for candidate in request.candidates):
+        for symbol in dict.fromkeys(symbols):
             instrument = await self.instruments.instrument(symbol)
             if instrument is None:
                 continue
@@ -377,7 +430,7 @@ class OrderPlanner:
                 )
             except Exception as error:
                 await self.store.record_api_failure(
-                    request.environment,
+                    environment,
                     f"quote:{type(error).__name__}",
                     now,
                 )

@@ -278,8 +278,9 @@ class FakeStore:
         self,
         environment: str,
         trading_date: date,
+        exclude_order_id: UUID | None = None,
     ) -> tuple[PendingExposure, ...]:
-        _ = (environment, trading_date)
+        _ = (environment, trading_date, exclude_order_id)
         return self.pending
 
     async def save_account_snapshot(

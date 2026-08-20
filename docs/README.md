@@ -161,6 +161,7 @@ Taskiq worker ── Valkey
 - [ADR-0008: 모의투자 주문 제출·체결 동기화 경계](decisions/0008-paper-order-submission.md)
 - [ADR-0009: 실시간 체결통보 수신 경계](decisions/0009-realtime-fill-notification.md)
 - [ADR-0010: 사람이 확인한 주문 대조 종결](decisions/0010-human-attested-order-reconciliation.md)
+- [ADR-0011: 모의투자 주문 정정 경계](decisions/0011-paper-order-revision.md)
 
 #### Governance
 

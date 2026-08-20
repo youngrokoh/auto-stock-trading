@@ -192,7 +192,8 @@ PLANNED -> SUBMITTED -> PARTIALLY_FILLED -> FILLED
 - 주문은 계획(`order_plan`), 계좌 스냅샷, 기준가 출처·시각, 전략·신호 버전을 참조한다.
 - `trading.order_event`는 상태 전이와 사유를 append-only로 남긴다. 거절 주문도 규칙 판정과 함께
   보존한다.
-- `trading.risk_decision`은 주문별로 규칙 코드·한도값·예상값·통과 여부를 남긴다. 계획 전체가
+- `trading.risk_decision`은 주문별로 규칙 코드·한도값·예상값·통과 여부를 회차(`attempt`)와 함께
+  남긴다. 계획 시점이 1회차이고 정정은 2회차부터다(리비전 `20260820_0020`, ADR-0011). 계획 전체가
   차단된 경우에는 주문 없이 계획에 사유 코드를 남긴다.
 
 ## 자동매매 상태

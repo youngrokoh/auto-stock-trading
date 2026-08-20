@@ -24,12 +24,14 @@ from auto_stock_trading.adapters.database.trading_attestation_store import (
 from auto_stock_trading.adapters.database.trading_notification_store import (
     PostgresNotificationStore,
 )
+from auto_stock_trading.adapters.database.trading_revision_store import PostgresRevisionStore
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.attestation import (
     AttestationInput,
     OrderAttestor,
 )
 from auto_stock_trading.application.trading.planning import AutomationTransition
+from auto_stock_trading.application.trading.revision import OrderReviser, RevisionInput
 from auto_stock_trading.application.trading.submission import (
     OrderSubmitter,
     SubmissionInput,
@@ -37,6 +39,7 @@ from auto_stock_trading.application.trading.submission import (
 from auto_stock_trading.domain.orders.models import AutomationState, OrderState
 from auto_stock_trading.domain.risk.limits import seoul_trading_date
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
+from auto_stock_trading.worker.execution.collaborators import planner_bundle
 from auto_stock_trading.worker.kis_credentials import load_kis_account, load_kis_credentials
 
 _EMERGENCY_REASON: Final = "EMERGENCY_STOP"
@@ -44,6 +47,8 @@ _PAPER_ONLY: Final = "order submission is allowed in the paper environment only"
 _WITHDRAW_REASON: Final = "USER_COMMAND"
 _WITHDRAW_NEEDS_PLAN: Final = "--withdraw requires --plan-id"
 _ATTEST_NEEDS: Final = "--attest requires {}"
+_REVISE_NEEDS: Final = "--revise requires --broker-order-id and --price-offset-pct"
+_PERCENT: Final = Decimal(100)
 
 
 class Arguments(argparse.Namespace):
@@ -53,6 +58,8 @@ class Arguments(argparse.Namespace):
     emergency_stop: bool = False
     withdraw: bool = False
     attest: bool = False
+    revise: bool = False
+    price_offset_pct: str | None = None
     broker_order_id: str | None = None
     state: str | None = None
     quantity: int | None = None
@@ -159,6 +166,31 @@ async def withdraw_plan(arguments: Arguments) -> str:
     return f"withdrawn={withdrawn} plan_id={arguments.plan_id}"
 
 
+async def revise_order(arguments: Arguments) -> str:
+    """지정가만 정정한다(ADR-0011). 새 주문과 같은 전수 위험검사를 통과해야 한다."""
+    settings = _paper_settings()
+    if arguments.broker_order_id is None or arguments.price_offset_pct is None:
+        raise RuntimeError(_REVISE_NEEDS)
+    bundle = planner_bundle(settings)
+    broker = KisOrderAdapter(_http_client(settings), load_kis_account(settings), paper=True)
+    revisions = PostgresRevisionStore.from_url(settings.database_url.get_secret_value())
+    reviser = OrderReviser(context=bundle.planner, broker=broker, store=revisions)
+    request = RevisionInput(
+        environment=settings.kis_environment.value,
+        broker_order_id=arguments.broker_order_id,
+        price_offset=Decimal(arguments.price_offset_pct) / _PERCENT,
+    )
+    try:
+        result = await reviser.revise(request, datetime.now(UTC))
+    finally:
+        await revisions.close()
+        await broker.close()
+        await bundle.close()
+    if not result.applied:
+        return f"refused reason={result.reject_code} decisions={len(result.decisions)}"
+    return f"revised price={result.limit_price} decisions={len(result.decisions)}"
+
+
 async def attest_order_state(arguments: Arguments) -> str:
     """사람이 확인한 사실로 주문을 종결한다(ADR-0010). 증권사 호출은 없다."""
     settings = _paper_settings()
@@ -253,6 +285,8 @@ def main() -> None:
     _ = parser.add_argument("--emergency-stop", action="store_true")
     _ = parser.add_argument("--withdraw", action="store_true")
     _ = parser.add_argument("--attest", action="store_true")
+    _ = parser.add_argument("--revise", action="store_true")
+    _ = parser.add_argument("--price-offset-pct")
     _ = parser.add_argument("--broker-order-id")
     _ = parser.add_argument(
         "--state",
@@ -269,6 +303,9 @@ def main() -> None:
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.attest:
         print(anyio.run(attest_order_state, arguments))  # noqa: T201
+        return
+    if arguments.revise:
+        print(anyio.run(revise_order, arguments))  # noqa: T201
         return
     if arguments.emergency_stop:
         print(anyio.run(emergency_stop))  # noqa: T201
