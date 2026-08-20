@@ -135,6 +135,8 @@ class TradingRiskState:
     max_order_amount: Decimal
     counters: StoredCounters
     api_failures: int
+    # 보유 종목의 업종 키. 비어 있으면 업종 사실이 아직 없다는 뜻이다.
+    sectors: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

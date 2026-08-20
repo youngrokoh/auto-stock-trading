@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Final
 from auto_stock_trading.domain.risk.limits import RiskRule
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from auto_stock_trading.domain.risk.limits import RiskLimits
 
 _RATIO_EXPONENT: Final = Decimal("0.000001")
@@ -52,6 +54,9 @@ class UsageState:
     settled_cash: Decimal | None
     position_value: Decimal | None
     max_position_value: Decimal | None
+    # 업종별 평가금액. None이면 업종 사실이 없어 소진율을 만들지 않는다.
+    sector_values: tuple[tuple[str, Decimal], ...] | None
+    unclassified_value: Decimal | None
     session_open_nav: Decimal | None
     peak_nav: Decimal | None
     max_order_amount: Decimal
@@ -83,7 +88,8 @@ class _Spec:
     numerator: Decimal | None
     denominator: Decimal | None
     missing: UsageReason
-    unavailable: UsageReason | None = None
+    # 현재값 자체를 만들 수 없을 때의 사유. 업종은 사실이 없을 때가 그렇다.
+    missing_numerator: UsageReason | None = None
 
 
 def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
@@ -127,10 +133,8 @@ def _usage_ratio(spec: _Spec, current: Decimal) -> Decimal | None:
 def _limit_usage(spec: _Spec) -> LimitUsage:
     numerator = spec.numerator
     denominator = spec.denominator
-    if spec.unavailable is not None:
-        return _unknown(spec, spec.unavailable)
     if numerator is None:
-        return _unknown(spec, UsageReason.MISSING_SNAPSHOT)
+        return _unknown(spec, spec.missing_numerator or UsageReason.MISSING_SNAPSHOT)
     if denominator is None:
         return _unknown(spec, spec.missing)
     if denominator == 0:
@@ -164,6 +168,32 @@ def _nav_spec(
         denominator=nav,
         missing=UsageReason.MISSING_SNAPSHOT,
     )
+
+
+def classify_positions(
+    holdings: tuple[tuple[str, Decimal], ...],
+    sectors: Mapping[str, str],
+) -> tuple[tuple[tuple[str, Decimal], ...], Decimal]:
+    """보유 평가금액을 업종별 합계와 미분류 합계로 나눈다(정책 §3).
+
+    업종 사실이 없는 종목은 미분류로 남는다. 분류를 추정해 채우지 않는다.
+    """
+    classified: dict[str, Decimal] = {}
+    unclassified = Decimal(0)
+    for symbol, value in holdings:
+        sector = sectors.get(symbol)
+        if sector is None:
+            unclassified += value
+            continue
+        classified[sector] = classified.get(sector, Decimal(0)) + value
+    return tuple(sorted(classified.items())), unclassified
+
+
+def _tightest_sector(values: tuple[tuple[str, Decimal], ...] | None) -> Decimal | None:
+    """가장 많이 찬 업종이 한도를 결정한다. 업종 사실이 없으면 값을 만들지 않는다."""
+    if values is None:
+        return None
+    return max((value for _, value in values), default=Decimal(0))
 
 
 def _count_spec(rule: RiskRule, limit_value: int, current: int) -> _Spec:
@@ -205,15 +235,15 @@ def _specs(state: UsageState, limits: RiskLimits) -> tuple[_Spec, ...]:
             comparison=UsageComparison.AT_MOST,
             mode=_Mode.RATIO,
             limit_value=limits.sector_exposure,
-            numerator=None,
+            numerator=_tightest_sector(state.sector_values),
             denominator=nav,
             missing=UsageReason.MISSING_SECTOR_DATA,
-            unavailable=UsageReason.MISSING_SECTOR_DATA,
+            missing_numerator=UsageReason.MISSING_SECTOR_DATA,
         ),
         _nav_spec(
             RiskRule.UNCLASSIFIED_EXPOSURE,
             limits.unclassified_exposure,
-            state.position_value,
+            state.unclassified_value,
             nav,
         ),
         _nav_spec(RiskRule.ORDER_AMOUNT, limits.order_amount, state.max_order_amount, nav),

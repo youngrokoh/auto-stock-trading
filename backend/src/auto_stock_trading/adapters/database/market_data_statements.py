@@ -9,19 +9,38 @@ from auto_stock_trading.adapters.database.market_data_rows import (
     QuoteRow,
     SyncStatusRow,
 )
-from auto_stock_trading.domain.market_data.models import BrokerOperation, SyncState
+from auto_stock_trading.domain.market_data.models import (
+    BrokerOperation,
+    ProductType,
+    SyncState,
+)
 
 if TYPE_CHECKING:
-    from auto_stock_trading.domain.market_data.models import MarketDataBundle
+    from auto_stock_trading.domain.market_data.models import MarketDataBundle, Quote
+
+
+def instrument_id_for(
+    *,
+    country: str,
+    exchange: str,
+    symbol: str,
+    product_type: ProductType,
+    currency: str,
+) -> UUID:
+    """종목 식별자는 정체성에서 결정적으로 나온다. 행을 읽지 않고 참조를 만들 수 있다."""
+    identity = f"{country}:{exchange}:{symbol}:{product_type.value}:{currency}"
+    return uuid5(NAMESPACE_URL, f"auto-stock-trading:instrument:{identity}")
 
 
 def instrument_identifier(bundle: MarketDataBundle) -> UUID:
     instrument = bundle.instrument
-    identity = (
-        f"{instrument.country}:{instrument.exchange}:{instrument.symbol}:"
-        f"{instrument.product_type.value}:{instrument.currency}"
+    return instrument_id_for(
+        country=instrument.country,
+        exchange=instrument.exchange,
+        symbol=instrument.symbol,
+        product_type=instrument.product_type,
+        currency=instrument.currency,
     )
-    return uuid5(NAMESPACE_URL, f"auto-stock-trading:instrument:{identity}")
 
 
 def instrument_upsert(
@@ -67,7 +86,18 @@ def quote_upsert(
     instrument_id: UUID,
     raw_ids: dict[BrokerOperation, UUID],
 ) -> Insert:
-    quote = bundle.quote
+    return quote_snapshot_upsert(
+        bundle.quote,
+        instrument_id,
+        raw_ids[BrokerOperation.QUOTE],
+    )
+
+
+def quote_snapshot_upsert(
+    quote: Quote,
+    instrument_id: UUID,
+    raw_response_id: UUID,
+) -> Insert:
     values = {
         "price": quote.price,
         "open_price": quote.open_price,
@@ -81,7 +111,7 @@ def quote_upsert(
         "currency": quote.currency,
         "as_of": quote.as_of,
         "received_at": quote.received_at,
-        "raw_response_id": raw_ids[BrokerOperation.QUOTE],
+        "raw_response_id": raw_response_id,
     }
     statement = insert(QuoteRow).values(
         id=uuid4(), instrument_id=instrument_id, source=quote.source, **values

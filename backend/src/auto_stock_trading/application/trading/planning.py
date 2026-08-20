@@ -86,6 +86,12 @@ class AccountSource(Protocol):
     async def fetch_balance(self) -> AccountSnapshotObservation: ...
 
 
+class SectorSource(Protocol):
+    """업종 키 원천(종목 유니버스 계약). 사실이 없으면 None이고 미분류로 판정된다."""
+
+    async def sector(self, symbol: str) -> str | None: ...
+
+
 class TradingStore(Protocol):
     async def automation_record(self, environment: str) -> AutomationRecord | None: ...
 
@@ -243,6 +249,7 @@ class OrderPlanner:
     quotes: QuoteSource
     accounts: AccountSource
     store: TradingStore
+    sectors: SectorSource
     limits: RiskLimits = PAPER_RISK_LIMITS
 
     async def context(
@@ -442,7 +449,7 @@ class OrderPlanner:
                     price=observation.quote.price,
                     received_at=observation.quote.received_at,
                     trading_status=instrument.trading_status,
-                    sector=None,
+                    sector=await self.sectors.sector(symbol),
                 )
             )
         return tuple(quotes)

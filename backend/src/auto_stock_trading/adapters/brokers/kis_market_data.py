@@ -19,6 +19,7 @@ from auto_stock_trading.domain.market_data.models import (
     InstrumentTarget,
     MarketDataBundle,
     QuoteObservation,
+    QuoteSnapshotObservation,
 )
 
 if TYPE_CHECKING:
@@ -143,6 +144,21 @@ class KisMarketDataAdapter:
         response = parse_response(raw, KisQuoteResponse, BrokerOperation.QUOTE)
         return QuoteObservation(
             quote=quote_from(target, response, raw.received_at),
+            raw=raw_from(BrokerOperation.QUOTE, raw),
+        )
+
+    async def fetch_quote_snapshot(self, target: InstrumentTarget) -> QuoteSnapshotObservation:
+        """유니버스 스윕용 관측. 같은 응답에서 상장주식수까지 읽어 요청을 늘리지 않는다."""
+        raw = await self._client.get(
+            endpoint=QUOTE_ENDPOINT,
+            transaction_id="FHKST01010100",
+            params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target.symbol},
+            request_fingerprint=f"quote:{target.symbol}",
+        )
+        response = parse_response(raw, KisQuoteResponse, BrokerOperation.QUOTE)
+        return QuoteSnapshotObservation(
+            quote=quote_from(target, response, raw.received_at),
+            listed_shares=listed_shares_from(target, response, raw.received_at),
             raw=raw_from(BrokerOperation.QUOTE, raw),
         )
 

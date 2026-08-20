@@ -22,6 +22,7 @@ from auto_stock_trading.adapters.database.market_calendar_repository import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.planning import OrderPlanner
 from auto_stock_trading.settings.runtime import KisEnvironment
@@ -81,12 +82,14 @@ class PlannerBundle:
     instruments: PostgresMarketDataRepository
     quotes: KisMarketDataAdapter
     accounts: KisAccountAdapter | MissingAccountSource
+    sectors: PostgresStockStore
 
     async def close(self) -> None:
         await self.quotes.close()
         await self.accounts.close()
         await self.calendar.close()
         await self.instruments.close()
+        await self.sectors.close()
         await self.store.close()
 
 
@@ -95,6 +98,7 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     instruments = PostgresMarketDataRepository.from_url(database_url)
     store = PostgresTradingStore.from_url(database_url)
+    sectors = PostgresStockStore.from_url(database_url)
     quotes = KisMarketDataAdapter(http_client(settings), instrument_details_available=False)
     accounts: KisAccountAdapter | MissingAccountSource
     try:
@@ -110,10 +114,12 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
             quotes=quotes,
             accounts=accounts,
             store=store,
+            sectors=sectors,
         ),
         store=store,
         calendar=calendar,
         instruments=instruments,
         quotes=quotes,
         accounts=accounts,
+        sectors=sectors,
     )

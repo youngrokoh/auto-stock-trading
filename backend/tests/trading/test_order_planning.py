@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, final
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -332,14 +332,37 @@ def _automation(
     )
 
 
-def _harness(
-    *,
-    automation: AutomationRecord | None = None,
-    calendar: FakeCalendar | None = None,
-    quotes: FakeQuotes | None = None,
-    accounts: FakeAccounts | None = None,
-    store: FakeStore | None = None,
-) -> _Harness:
+@final
+@dataclass
+class FakeSectors:
+    """업종 사실 원천. 값이 없는 종목은 미분류로 남는다."""
+
+    sectors: dict[str, str] = field(default_factory=lambda: {_SYMBOL: "5"})
+
+    async def sector(self, symbol: str) -> str | None:
+        return self.sectors.get(symbol)
+
+
+@dataclass(frozen=True, slots=True)
+class _Collaborators:
+    """테스트가 바꾸고 싶은 것만 넘기는 묶음."""
+
+    automation: AutomationRecord | None = None
+    calendar: FakeCalendar | None = None
+    quotes: FakeQuotes | None = None
+    accounts: FakeAccounts | None = None
+    store: FakeStore | None = None
+    sectors: FakeSectors | None = None
+
+
+def _harness(collaborators: _Collaborators | None = None) -> _Harness:
+    given = collaborators or _Collaborators()
+    automation = given.automation
+    calendar = given.calendar
+    quotes = given.quotes
+    accounts = given.accounts
+    store = given.store
+    sectors = given.sectors
     fake_calendar = calendar or FakeCalendar()
     fake_quotes = quotes or FakeQuotes()
     fake_accounts = accounts or FakeAccounts()
@@ -351,6 +374,7 @@ def _harness(
         quotes=fake_quotes,
         accounts=fake_accounts,
         store=fake_store,
+        sectors=sectors or FakeSectors(),
     )
     return _Harness(planner, fake_calendar, fake_quotes, fake_accounts, fake_store)
 
@@ -394,7 +418,7 @@ def test_replanning_the_same_signal_reuses_client_order_ids() -> None:
     [AutomationState.DISABLED, AutomationState.ARMED, AutomationState.PAUSED],
 )
 def test_non_running_automation_blocks_without_external_calls(state: AutomationState) -> None:
-    harness = _harness(automation=_automation(state))
+    harness = _harness(_Collaborators(automation=_automation(state)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -406,7 +430,7 @@ def test_non_running_automation_blocks_without_external_calls(state: AutomationS
 
 
 def test_closed_market_blocks_without_external_calls() -> None:
-    harness = _harness(calendar=FakeCalendar(closed=True))
+    harness = _harness(_Collaborators(calendar=FakeCalendar(closed=True)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -416,7 +440,7 @@ def test_closed_market_blocks_without_external_calls() -> None:
 
 
 def test_missing_calendar_session_blocks_as_market_closed() -> None:
-    harness = _harness(calendar=FakeCalendar(missing=True))
+    harness = _harness(_Collaborators(calendar=FakeCalendar(missing=True)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -433,7 +457,7 @@ def test_unreconciled_open_orders_block_the_plan() -> None:
             unreconciled_orders=True,
         )
     )
-    harness = _harness(store=store)
+    harness = _harness(_Collaborators(store=store))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -442,7 +466,7 @@ def test_unreconciled_open_orders_block_the_plan() -> None:
 
 
 def test_stale_quote_rejects_the_candidate_but_keeps_the_plan() -> None:
-    harness = _harness(quotes=FakeQuotes(age_seconds=11))
+    harness = _harness(_Collaborators(quotes=FakeQuotes(age_seconds=11)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -454,7 +478,7 @@ def test_stale_quote_rejects_the_candidate_but_keeps_the_plan() -> None:
 
 def test_daily_loss_limit_pauses_automation_and_blocks() -> None:
     store = FakeStore(session_open=Decimal(200_000_000))
-    harness = _harness(store=store)
+    harness = _harness(_Collaborators(store=store))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -467,7 +491,9 @@ def test_daily_loss_limit_pauses_automation_and_blocks() -> None:
 
 def test_trading_day_change_returns_automation_to_disabled() -> None:
     store = FakeStore()
-    harness = _harness(store=store, automation=_automation(trading_date=date(2026, 8, 14)))
+    harness = _harness(
+        _Collaborators(store=store, automation=_automation(trading_date=date(2026, 8, 14)))
+    )
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -479,7 +505,7 @@ def test_trading_day_change_returns_automation_to_disabled() -> None:
 
 def test_account_source_failure_records_api_failure_and_propagates() -> None:
     store = FakeStore()
-    harness = _harness(store=store, accounts=FakeAccounts(fails=True))
+    harness = _harness(_Collaborators(store=store, accounts=FakeAccounts(fails=True)))
 
     with pytest.raises(TimeoutError):
         _ = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
@@ -490,7 +516,7 @@ def test_account_source_failure_records_api_failure_and_propagates() -> None:
 
 def test_quote_source_failure_records_api_failure_and_propagates() -> None:
     store = FakeStore()
-    harness = _harness(store=store, quotes=FakeQuotes(fails=True))
+    harness = _harness(_Collaborators(store=store, quotes=FakeQuotes(fails=True)))
 
     with pytest.raises(TimeoutError):
         _ = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
@@ -500,7 +526,7 @@ def test_quote_source_failure_records_api_failure_and_propagates() -> None:
 
 
 def test_repeated_api_failures_block_the_plan() -> None:
-    harness = _harness(store=FakeStore(failures=3))
+    harness = _harness(_Collaborators(store=FakeStore(failures=3)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -509,7 +535,7 @@ def test_repeated_api_failures_block_the_plan() -> None:
 
 
 def test_sell_signal_liquidates_held_position_in_split_orders() -> None:
-    harness = _harness(accounts=FakeAccounts(held_quantity=100))
+    harness = _harness(_Collaborators(accounts=FakeAccounts(held_quantity=100)))
     request = replace(_PLAN_INPUT, candidates=(SignalCandidate(_SYMBOL, OrderSide.SELL),))
 
     plan = anyio.run(harness.planner.plan, request, _NOW)
@@ -533,9 +559,8 @@ def test_sell_signal_without_position_creates_no_order() -> None:
 
 def test_pending_orders_from_earlier_plans_consume_the_exposure_cap() -> None:
     """정책 §2대로 이전 계획의 미체결·계획 주문이 예상 노출에 포함돼야 한다."""
-    harness = _harness(
-        store=FakeStore(pending=(PendingExposure(symbol=_SYMBOL, amount=_NAV / 10),))
-    )
+    pending = (PendingExposure(symbol=_SYMBOL, amount=_NAV / 10),)
+    harness = _harness(_Collaborators(store=FakeStore(pending=pending)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -556,7 +581,7 @@ def test_the_plan_reports_orders_that_were_actually_stored() -> None:
 
 
 def test_duplicate_identifiers_are_reported_as_not_stored() -> None:
-    harness = _harness(store=FakeStore(skipped_orders=2))
+    harness = _harness(_Collaborators(store=FakeStore(skipped_orders=2)))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -565,7 +590,7 @@ def test_duplicate_identifiers_are_reported_as_not_stored() -> None:
 
 def test_a_cash_basis_mismatch_with_the_broker_blocks_as_unreconciled() -> None:
     """정책 §7.2: 판정 현금 + 증권사 평가합계가 순자산금액과 다르면 주문을 만들지 않는다."""
-    harness = _harness(accounts=FakeAccounts(broker_net_asset=_NAV - Decimal(1)))
+    harness = _harness(_Collaborators(accounts=FakeAccounts(broker_net_asset=_NAV - Decimal(1))))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
@@ -584,8 +609,29 @@ def test_intraday_valuation_drift_between_holdings_and_summary_does_not_block() 
         broker_position_value=_PRICE + drift,
         broker_net_asset=_NAV + drift,
     )
-    harness = _harness(accounts=accounts)
+    harness = _harness(_Collaborators(accounts=accounts))
 
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
     assert plan.block_code != BlockCode.ACCOUNT_NOT_RECONCILED
+
+
+def test_the_plan_uses_the_stored_sector_key_for_the_sector_limit() -> None:
+    """업종 사실이 있으면 업종 한도로 판정한다(정책 §3). 지금까지는 항상 미분류였다."""
+    harness = _harness()
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    decisions = {decision.rule for order in plan.orders for decision in order.decisions}
+    assert RiskRule.SECTOR_EXPOSURE in decisions
+    assert RiskRule.UNCLASSIFIED_EXPOSURE not in decisions
+
+
+def test_an_instrument_without_a_sector_fact_stays_unclassified() -> None:
+    harness = _harness(_Collaborators(sectors=FakeSectors(sectors={})))
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    decisions = {decision.rule for order in plan.orders for decision in order.decisions}
+    assert RiskRule.UNCLASSIFIED_EXPOSURE in decisions
+    assert RiskRule.SECTOR_EXPOSURE not in decisions

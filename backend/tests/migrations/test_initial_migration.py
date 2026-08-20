@@ -143,6 +143,14 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CREATE UNIQUE INDEX uq_notification_session_connected",
         "listener_state",
         "attestation",
+        "ALTER TABLE trading.risk_decision ADD COLUMN attempt INTEGER",
+        "CONSTRAINT ck_risk_decision_attempt",
+        'ALTER TABLE trading."order" ADD COLUMN revision_count INTEGER',
+        "CREATE TABLE reference.stock_profile",
+        "CONSTRAINT uq_stock_profile_version UNIQUE",
+        "CONSTRAINT ck_stock_profile_version",
+        "CONSTRAINT ck_stock_profile_validity",
+        "CREATE UNIQUE INDEX uq_stock_profile_current",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

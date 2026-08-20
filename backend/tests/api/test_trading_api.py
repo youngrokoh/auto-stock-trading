@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import final
+from typing import cast, final
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -104,6 +104,8 @@ def _plan() -> OrderPlanRecord:
 
 @final
 class StubTradingReader:
+    sectors: tuple[tuple[str, str], ...] = ()
+
     async def automation(self, environment: str) -> AutomationRecord | None:
         _ = environment
         return AutomationRecord(
@@ -223,6 +225,7 @@ class StubTradingReader:
             session_open_nav=Decimal(100_000_000),
             peak_nav=Decimal(100_000_000),
             max_order_amount=Decimal(5_000_000),
+            sectors=self.sectors,
             counters=StoredCounters(
                 open_orders=1,
                 daily_order_attempts=6,
@@ -240,12 +243,17 @@ class StubTradingReader:
         return None
 
 
-def _client() -> TestClient:
+def _client(sectors: tuple[tuple[str, str], ...] = ()) -> TestClient:
+    def reader() -> StubTradingReader:
+        stub = StubTradingReader()
+        stub.sectors = sectors
+        return stub
+
     app = create_app(
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,
-        trading_reader_factory=StubTradingReader,
+        trading_reader_factory=reader,
     )
     return TestClient(app)
 
@@ -606,3 +614,30 @@ def test_unknown_plan_returns_404_and_invalid_id_returns_422() -> None:
     assert client.get("/api/trading/order-plans/not-a-uuid").status_code == 422
     assert client.get("/api/trading/account-snapshots?limit=0").status_code == 422
     assert client.get("/api/trading/orders?limit=0").status_code == 422
+
+
+def test_sector_usage_is_reported_once_sector_facts_exist() -> None:
+    """업종 사실이 생기면 업종 한도가 값을 갖고 미분류는 비어야 한다(종목 유니버스 계약)."""
+    response = _client(sectors=(("005930", "5"),)).get("/api/trading/risk-limits")
+
+    assert response.status_code == 200
+    body = cast("dict[str, list[dict[str, str | None]]]", response.json())
+    usage = {item["rule_code"]: item for item in body["items"]}
+    assert usage["RISK_SECTOR_EXPOSURE"] == {
+        "rule_code": "RISK_SECTOR_EXPOSURE",
+        "basis": "nav_ratio",
+        "comparison": "at_most",
+        "limit_value": "0.30",
+        "current_value": "0.109800",
+        "usage_ratio": "0.366000",
+        "reason": None,
+    }
+    assert usage["RISK_UNCLASSIFIED_EXPOSURE"] == {
+        "rule_code": "RISK_UNCLASSIFIED_EXPOSURE",
+        "basis": "nav_ratio",
+        "comparison": "at_most",
+        "limit_value": "0.10",
+        "current_value": "0.000000",
+        "usage_ratio": "0.000000",
+        "reason": None,
+    }

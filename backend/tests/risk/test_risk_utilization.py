@@ -11,6 +11,7 @@ from auto_stock_trading.domain.risk.utilization import (
     UsageComparison,
     UsageReason,
     UsageState,
+    classify_positions,
     limit_usage,
 )
 
@@ -20,6 +21,8 @@ _STATE: Final = UsageState(
     settled_cash=Decimal(80_000_000),
     position_value=Decimal(20_000_000),
     max_position_value=Decimal(8_000_000),
+    sector_values=None,
+    unclassified_value=Decimal(20_000_000),
     session_open_nav=_NAV,
     peak_nav=_NAV,
     max_order_amount=Decimal(4_000_000),
@@ -198,6 +201,51 @@ def test_sector_exposure_has_no_current_value_without_sector_data() -> None:
     assert usage.limit_value == Decimal("0.30")
 
 
+def test_sector_exposure_reports_the_tightest_sector_when_facts_exist() -> None:
+    """업종 사실이 있으면 가장 많이 찬 업종이 소진율이다(정책 §3의 업종별 30%)."""
+    state = replace(
+        _STATE,
+        sector_values=(("5", Decimal(12_000_000)), ("6", Decimal(8_000_000))),
+        unclassified_value=Decimal(0),
+    )
+
+    usage = _usage(state, RiskRule.SECTOR_EXPOSURE)
+
+    # NAV_RATIO 규격의 현재값은 비중이다(12,000,000 / 100,000,000).
+    assert usage.current_value == Decimal("0.120000")
+    assert usage.usage_ratio == Decimal("0.400000")
+    assert usage.reason is None
+
+
+def test_a_classified_portfolio_reports_zero_unclassified_exposure() -> None:
+    state = replace(
+        _STATE,
+        sector_values=(("5", Decimal(20_000_000)),),
+        unclassified_value=Decimal(0),
+    )
+
+    usage = _usage(state, RiskRule.UNCLASSIFIED_EXPOSURE)
+
+    assert usage.current_value == Decimal("0.000000")
+    assert usage.usage_ratio == Decimal("0.000000")
+    assert usage.reason is None
+
+
+def test_holdings_without_sector_facts_still_fill_the_unclassified_limit() -> None:
+    state = replace(
+        _STATE,
+        sector_values=(),
+        unclassified_value=Decimal(20_000_000),
+    )
+
+    sector = _usage(state, RiskRule.SECTOR_EXPOSURE)
+    unclassified = _usage(state, RiskRule.UNCLASSIFIED_EXPOSURE)
+
+    assert sector.current_value == Decimal("0.000000")
+    assert unclassified.current_value == Decimal("0.200000")
+    assert unclassified.usage_ratio == Decimal("2.000000")
+
+
 def test_daily_loss_and_drawdown_use_signed_ratios() -> None:
     state = replace(
         _STATE,
@@ -253,6 +301,8 @@ def test_missing_snapshot_leaves_every_amount_limit_unknown() -> None:
         settled_cash=None,
         position_value=None,
         max_position_value=None,
+        sector_values=None,
+        unclassified_value=None,
         session_open_nav=None,
         peak_nav=None,
         max_order_amount=Decimal(0),
@@ -307,3 +357,26 @@ def test_zero_nav_leaves_exposure_ratios_unknown() -> None:
 
     assert usage.current_value is None
     assert usage.reason is UsageReason.ZERO_BASIS
+
+
+def test_positions_split_into_sector_totals_and_an_unclassified_remainder() -> None:
+    """업종 사실이 있는 종목만 업종에 합산하고 나머지는 미분류로 남는다."""
+    holdings = (
+        ("005930", Decimal(12_000_000)),
+        ("000660", Decimal(3_000_000)),
+        ("105560", Decimal(8_000_000)),
+        ("069500", Decimal(5_000_000)),
+    )
+    sectors = {"005930": "5", "000660": "5", "105560": "6"}
+
+    classified, unclassified = classify_positions(holdings, sectors)
+
+    assert classified == (("5", Decimal(15_000_000)), ("6", Decimal(8_000_000)))
+    assert unclassified == Decimal(5_000_000)
+
+
+def test_positions_without_any_sector_facts_are_all_unclassified() -> None:
+    classified, unclassified = classify_positions((("069500", Decimal(5_000_000)),), {})
+
+    assert classified == ()
+    assert unclassified == Decimal(5_000_000)

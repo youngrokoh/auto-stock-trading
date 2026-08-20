@@ -127,6 +127,7 @@ Taskiq worker ── Valkey
 - [재무 지표 정의 계약](data/financial-indicator-contract.md)
 - [수급·공시 연결 데이터 계약](data/investor-flow-disclosure-contract.md)
 - [ETF 탐색 데이터 계약](data/etf-exploration-data-contract.md)
+- [종목 유니버스·업종 분류 데이터 계약](data/stock-universe-data-contract.md)
 - [백테스트·규칙형 전략 계약](data/backtest-strategy-contract.md)
 - [주문 계획·위험검사 데이터 계약](data/order-planning-risk-contract.md)
 - [주문 제출·체결 동기화 계약](data/order-submission-contract.md)

@@ -22,6 +22,7 @@ from auto_stock_trading.adapters.database.market_calendar_repository import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.planning import (
     AutomationTransition,
@@ -143,6 +144,7 @@ async def plan_orders(arguments: Arguments) -> str:
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     market_data = PostgresMarketDataRepository.from_url(database_url)
     store = PostgresTradingStore.from_url(database_url)
+    sectors = PostgresStockStore.from_url(database_url)
     quotes = KisMarketDataAdapter(_http_client(settings), instrument_details_available=False)
     accounts: KisAccountAdapter | MissingAccountSource
     try:
@@ -157,6 +159,7 @@ async def plan_orders(arguments: Arguments) -> str:
         quotes=quotes,
         accounts=accounts,
         store=store,
+        sectors=sectors,
     )
     now = datetime.now(UTC)
     request = PlanInput(
@@ -183,6 +186,7 @@ async def plan_orders(arguments: Arguments) -> str:
         await accounts.close()
         await calendar.close()
         await market_data.close()
+        await sectors.close()
         await store.close()
     if plan.status == "blocked":
         return f"blocked plan_id={plan.plan_id} block_code={plan.block_code}"

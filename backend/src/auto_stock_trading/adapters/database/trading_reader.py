@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
+from auto_stock_trading.adapters.database.reference_stock_rows import StockProfileRow
 from auto_stock_trading.adapters.database.trading_queries import (
     buy_amount_query,
     consecutive_rejects,
@@ -297,6 +298,7 @@ class PostgresTradingReader:
             )
             baselines = await _nav_baselines(session, environment, basis_date)
             counters = await _counters(session, environment, basis_date)
+            sectors = await _sectors(session)
             failures = await session.scalar(
                 select(func.count())
                 .select_from(AutomationEventRow)
@@ -316,11 +318,24 @@ class PostgresTradingReader:
             max_order_amount=max_order_amount,
             counters=counters,
             api_failures=failures or 0,
+            sectors=sectors,
         )
 
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
+
+
+async def _sectors(session: AsyncSession) -> tuple[tuple[str, str], ...]:
+    """업종 사실의 현재 버전만 읽는다(종목 유니버스 계약)."""
+    rows = (
+        await session.execute(
+            select(StockProfileRow.symbol, StockProfileRow.sector_code)
+            .where(StockProfileRow.superseded_at.is_(None))
+            .order_by(StockProfileRow.symbol)
+        )
+    ).tuples()
+    return tuple((symbol, sector) for symbol, sector in rows)
 
 
 def _entry(row: OrderRow, symbol: str, trading_date: date) -> OrderListEntry:

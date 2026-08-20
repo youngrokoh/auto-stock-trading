@@ -23,6 +23,7 @@
 | [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md) | `docs/data/order-planning-risk-contract.md` | 구현 기준 |
 | [주문 제출·체결 동기화 계약](../data/order-submission-contract.md) | `docs/data/order-submission-contract.md` | 구현 기준 |
 | [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md) | `docs/data/realtime-fill-notification-contract.md` | 구현 기준 |
+| [종목 유니버스·업종 분류 데이터 계약](../data/stock-universe-data-contract.md) | `docs/data/stock-universe-data-contract.md` | 구현 기준 |
 | [ADR-0001: 모듈형 모놀리스 채택](../decisions/0001-modular-monolith.md) | `docs/decisions/0001-modular-monolith.md` | 승인 |
 | [ADR-0002: Python·React 기술 기준선 채택](../decisions/0002-technology-baseline.md) | `docs/decisions/0002-technology-baseline.md` | 승인 |
 | [ADR-0003: PostgreSQL 중심 데이터 아키텍처 채택](../decisions/0003-data-architecture.md) | `docs/decisions/0003-data-architecture.md` | 승인 |

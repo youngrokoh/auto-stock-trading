@@ -51,6 +51,7 @@ class BrokerOperation(StrEnum):
     INVESTOR_FLOWS = "investor_flows"
     ETF_MASTER = "etf_master"
     ETF_NAV = "etf_nav"
+    STOCK_MASTER = "stock_master"
     ACCOUNT_BALANCE = "account_balance"
     ORDER_SUBMIT = "order_submit"
     ORDER_CANCEL = "order_cancel"
@@ -136,6 +137,15 @@ class VersionedDailyBar:
 @dataclass(frozen=True, slots=True)
 class QuoteObservation:
     quote: Quote
+    raw: RawBrokerResponse
+
+
+@dataclass(frozen=True, slots=True)
+class QuoteSnapshotObservation:
+    """유니버스 스윕용 관측. 같은 응답에서 상장주식수까지 함께 읽는다."""
+
+    quote: Quote
+    listed_shares: ListedShareCount
     raw: RawBrokerResponse
 
 

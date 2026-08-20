@@ -9,6 +9,9 @@ import { SafetyBanner } from "../components/safety-banner";
 import { StatusBadge } from "../components/status-badge";
 import { formatDecimal, formatKstDateTime } from "../lib/format";
 
+// 개요 표는 요약이다. 유니버스가 커져도 화면이 종목 수만큼 요청을 보내지 않게 한다.
+const OVERVIEW_INSTRUMENT_LIMIT = 10;
+
 const serviceLabel = (status: "loading" | "ok" | "unavailable"): string =>
   status === "ok" ? "정상" : status === "loading" ? "확인 중" : "연결 안 됨";
 
@@ -31,7 +34,9 @@ export const Overview = () => {
     queryKey: ["instruments"],
     retry: false,
   });
-  const instruments = instrumentsQuery.data?.instruments ?? [];
+  const allInstruments = instrumentsQuery.data?.instruments ?? [];
+  // 개요는 요약 화면이다. 유니버스 전수는 시장 데이터 화면이 담당한다.
+  const instruments = allInstruments.slice(0, OVERVIEW_INSTRUMENT_LIMIT);
   const quoteQueries = useQueries({
     queries: instruments.map((instrument) => ({
       queryFn: () => fetchQuote(instrument.symbol),
@@ -117,7 +122,7 @@ export const Overview = () => {
             coord="A5"
             label="수집 종목"
             sub={instrumentsQuery.isError ? "목록 조회 실패" : undefined}
-            value={instrumentsQuery.data === undefined ? "—" : String(instruments.length)}
+            value={instrumentsQuery.data === undefined ? "—" : String(allInstruments.length)}
           />
           <CoordinateCell coord="A6" label="실전 주문" tone="warn" value="잠금" />
         </KpiGrid>
@@ -211,6 +216,8 @@ export const Overview = () => {
               </div>
               <div className="card__note">
                 출처 KIS 모의환경 배치 수집 · 실시간 시세가 아니며 수집 시점 값입니다
+                {allInstruments.length > instruments.length &&
+                  ` · 종목코드 오름차순 ${String(instruments.length)}개 표시 (전체 ${String(allInstruments.length)}종목은 시장 데이터 화면)`}
               </div>
             </section>
           </div>

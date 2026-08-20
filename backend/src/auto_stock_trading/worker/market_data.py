@@ -19,6 +19,7 @@ from auto_stock_trading.adapters.brokers.kis_investor_flows import KisInvestorFl
 from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAdapter
 from auto_stock_trading.adapters.brokers.kis_master_files import (
     KisEtfMasterAdapter,
+    KisStockMasterAdapter,
     create_master_http_client,
 )
 from auto_stock_trading.adapters.brokers.kis_minute_bars import KisMinuteBarAdapter
@@ -35,10 +36,12 @@ from auto_stock_trading.adapters.database.market_data_minute_bar_store import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.application.etf import EtfMasterCollector, EtfNavSweeper
 from auto_stock_trading.application.investor_flows import InvestorFlowCollector
 from auto_stock_trading.application.market_data import DailyBarConfirmer, MarketDataCollector
 from auto_stock_trading.application.minute_bars import MinuteBarCollector
+from auto_stock_trading.application.stock_universe import QuoteSweeper, StockUniverseCollector
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker import market_calendar
@@ -66,6 +69,8 @@ class Arguments(argparse.Namespace):
     collect_investor_flows: bool = False
     collect_etf_master: bool = False
     collect_etf_nav: bool = False
+    collect_stock_master: bool = False
+    collect_universe_quotes: bool = False
 
 
 def load_kis_credentials(settings: Settings) -> KisCredentials:
@@ -268,6 +273,50 @@ async def collect_etf_nav() -> tuple[int, int]:
     return result.collected, result.failed
 
 
+async def collect_stock_master() -> tuple[int, int]:
+    """KOSPI200 유니버스 마스터 수집. 인증이 필요 없는 공식 파일이다."""
+    settings = Settings()
+    source = KisStockMasterAdapter(create_master_http_client(settings.kis_master_base_url))
+    store = PostgresStockStore.from_url(settings.database_url.get_secret_value())
+    collector = StockUniverseCollector(source=source, store=store)
+    try:
+        result = await collector.collect(datetime.now(UTC))
+    finally:
+        await source.close()
+        await store.close()
+    return result.observed, result.saved
+
+
+async def collect_universe_quotes() -> tuple[int, int]:
+    """유니버스 전 종목 현재가 스윕. 종목당 요청 1회다."""
+    settings = Settings()
+    credentials = load_kis_credentials(settings)
+    http_client = KisHttpClient(
+        create_kis_http_client(settings.kis_base_url),
+        credentials,
+        ValkeyKisRequestCoordinator.from_url(
+            settings.valkey_url.get_secret_value(),
+            kis_coordination_scope(
+                settings.kis_environment.value,
+                credentials.app_key,
+                credentials.app_secret,
+            ),
+        ),
+    )
+    source = KisMarketDataAdapter(
+        http_client,
+        instrument_details_available=settings.kis_environment is KisEnvironment.LIVE,
+    )
+    store = PostgresStockStore.from_url(settings.database_url.get_secret_value())
+    sweeper = QuoteSweeper(source=source, store=store)
+    try:
+        result = await sweeper.collect(datetime.now(UTC))
+    finally:
+        await source.close()
+        await store.close()
+    return result.collected, result.failed
+
+
 async def collect_krx_market_calendar(year: int | None = None) -> int:
     return await market_calendar.collect_krx_market_calendar(year, Settings())
 
@@ -287,8 +336,16 @@ def main() -> None:
     _ = parser.add_argument("--collect-investor-flows", action="store_true")
     _ = parser.add_argument("--collect-etf-master", action="store_true")
     _ = parser.add_argument("--collect-etf-nav", action="store_true")
+    _ = parser.add_argument("--collect-stock-master", action="store_true")
+    _ = parser.add_argument("--collect-universe-quotes", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.collect_etf_master:
+    if arguments.collect_stock_master:
+        observed, saved = anyio.run(collect_stock_master)
+        print(f"universe observed={observed} new_versions={saved}")  # noqa: T201
+    elif arguments.collect_universe_quotes:
+        collected, failed = anyio.run(collect_universe_quotes)
+        print(f"quotes collected={collected} failed={failed}")  # noqa: T201
+    elif arguments.collect_etf_master:
         _ = anyio.run(collect_etf_master)
     elif arguments.collect_etf_nav:
         _ = anyio.run(collect_etf_nav)

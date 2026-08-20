@@ -23,7 +23,11 @@ from auto_stock_trading.api.trading.models import (
 )
 from auto_stock_trading.domain.orders.models import AutomationState
 from auto_stock_trading.domain.risk.limits import PAPER_RISK_LIMITS
-from auto_stock_trading.domain.risk.utilization import UsageState, limit_usage
+from auto_stock_trading.domain.risk.utilization import (
+    UsageState,
+    classify_positions,
+    limit_usage,
+)
 
 if TYPE_CHECKING:
     from auto_stock_trading.domain.orders.records import (
@@ -208,6 +212,9 @@ def _usage_state(state: TradingRiskState) -> UsageState:
     snapshot = None if stored is None else stored.snapshot
     counters = state.counters
     positions = () if snapshot is None else snapshot.positions
+    sectors = dict(state.sectors)
+    holdings = tuple((position.symbol, position.evaluation_amount) for position in positions)
+    classified, unclassified = classify_positions(holdings, sectors)
     return UsageState(
         nav=None if snapshot is None else snapshot.nav,
         settled_cash=None if snapshot is None else snapshot.orderable_cash,
@@ -217,6 +224,9 @@ def _usage_state(state: TradingRiskState) -> UsageState:
             if snapshot is None
             else max((position.evaluation_amount for position in positions), default=Decimal(0))
         ),
+        # 업종 사실이 하나도 없으면 소진율을 만들지 않는다(MISSING_SECTOR_DATA).
+        sector_values=classified if sectors else None,
+        unclassified_value=None if snapshot is None else unclassified,
         session_open_nav=state.session_open_nav,
         peak_nav=state.peak_nav,
         max_order_amount=state.max_order_amount,

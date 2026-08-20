@@ -34,7 +34,9 @@ test("운영 개요가 실제 상태와 안전 경계를 표시한다", async ({
   await expect(page.getByText("A3 · Valkey")).toBeVisible();
   await expect(page.getByText("수집 파이프라인")).toBeVisible();
   if (expectData) {
-    await expect(page.getByText("삼성전자 005930")).toBeVisible();
+    // 개요 표는 종목코드 오름차순 상위 10개만 보여준다(유니버스 201종목).
+    await expect(page.getByText("전체 201종목은 시장 데이터 화면")).toBeVisible();
+    await expect(page.getByText("SK하이닉스 000660")).toBeVisible();
   }
 
   await expectNoSecretsAndNoOverflow(page);
@@ -50,11 +52,13 @@ test("시장 데이터 화면이 실데이터 시세·차트·표를 제공한�
   await expect(page.getByText("A1 · 현재가 (원)")).toBeVisible();
   await expect(page.getByText("지연 데이터")).toBeVisible();
   if (expectData) {
+    // 유니버스가 201종목이라 기본 선택 종목에는 일봉이 없다. 일봉을 가진 종목을 명시한다.
+    const select = page.getByLabel("종목 선택");
+    await select.selectOption("005930");
     await expect(page.getByRole("img", { name: "일봉 캔들 차트" })).toBeVisible();
     await expect(page.getByRole("img", { name: "RSI 차트" })).toBeVisible();
     await expect(page.getByRole("img", { name: "MACD 차트" })).toBeVisible();
 
-    const select = page.getByLabel("종목 선택");
     await select.selectOption("069500");
     await expect(page.getByText("D1")).toBeVisible();
     await expect(page.getByText("069500", { exact: true })).toBeVisible();
@@ -84,6 +88,8 @@ test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공�
   await expect(page.getByText("A5 · ROE (지배주주)")).toBeVisible();
   await expect(page.getByText("공시 연결")).toBeVisible();
   if (expectData) {
+    // 유니버스가 201종목이라 기본 선택 종목에는 재무 사실이 없다. 수집된 종목을 명시한다.
+    await page.getByLabel("종목 선택").selectOption("005930");
     await expect(page.getByText("사업보고서 · 접수번호").first()).toBeVisible();
     await expect(page.getByRole("img", { name: "연간 실적 막대 차트" })).toBeVisible();
     await expect(page.getByText("연도별 지표")).toBeVisible();
