@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, final
@@ -6,6 +7,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
+from auto_stock_trading.api.fundamentals_models import FinancialIndicatorsResponse
 from auto_stock_trading.domain.fundamentals.disclosures import Disclosure, DisclosureType
 from auto_stock_trading.domain.fundamentals.financial_statements import (
     FinancialStatementLine,
@@ -176,7 +178,22 @@ class StubFinancialReportReader:
         return None
 
 
-def _client() -> TestClient:
+@final
+@dataclass
+class StubSectorSource:
+    """업종 코드 원천. `None`은 업종 사실이 없다는 뜻이다."""
+
+    code: str | None = None
+
+    async def sector(self, symbol: str) -> str | None:
+        _ = symbol
+        return self.code
+
+    async def close(self) -> None:
+        return None
+
+
+def _client(sector_code: str | None = None) -> TestClient:
     app = create_app(
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
@@ -184,6 +201,7 @@ def _client() -> TestClient:
         market_data_reader_factory=StubMarketDataReader,
         financial_report_reader_factory=StubFinancialReportReader,
         disclosure_reader_factory=StubDisclosureReader,
+        sector_source_factory=lambda: StubSectorSource(sector_code),
     )
     return TestClient(app)
 
@@ -910,3 +928,27 @@ def test_disclosures_expose_receipts_types_and_sources() -> None:
         ],
     }
     assert unknown.status_code == 404
+
+
+def _latest_indicator_reasons(sector_code: str) -> dict[str, str | None]:
+    response = _client(sector_code).get(f"/api/fundamentals/instruments/{_SYMBOL}/indicators")
+    assert response.status_code == 200
+    payload = FinancialIndicatorsResponse.model_validate(response.json())
+    year = payload.years[-1]
+    return {item.key: item.unavailable_reason for item in year.indicators}
+
+
+def test_financial_issuer_indicators_report_the_sector_account_basis() -> None:
+    """금융업은 매출액·영업이익 표준계정을 쓰지 않는다. 계정 누락과 구별해 표기한다."""
+    reasons = _latest_indicator_reasons("6")
+
+    assert reasons["revenue_growth"] == "SECTOR_ACCOUNT_BASIS"
+    assert reasons["operating_margin"] == "SECTOR_ACCOUNT_BASIS"
+    assert reasons["roe"] == "MISSING_ACCOUNT"
+
+
+def test_non_financial_issuer_keeps_the_missing_account_reason() -> None:
+    reasons = _latest_indicator_reasons("2")
+
+    assert "SECTOR_ACCOUNT_BASIS" not in set(reasons.values())
+    assert reasons["revenue_growth"] == "MISSING_ACCOUNT"

@@ -171,3 +171,83 @@ def test_eps_falls_back_to_the_comprehensive_income_statement() -> None:
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value == Decimal(11)
     assert items["per"].unavailable_reason is None
+
+
+def _eps_line_of(
+    account_id: str,
+    thstrm: str | None,
+    line_seq: int = 2,
+    sj_div: StatementDivision = StatementDivision.COMPREHENSIVE_INCOME,
+) -> FinancialStatementLine:
+    return FinancialStatementLine(
+        line_seq=line_seq,
+        sj_div=sj_div,
+        account_id=account_id,
+        account_nm="주당이익",
+        account_detail=None,
+        ord=line_seq,
+        thstrm_nm="제 57 기",
+        thstrm_amount=None if thstrm is None else Decimal(thstrm),
+        frmtrm_nm="제 56 기",
+        frmtrm_amount=None,
+        bfefrmtrm_nm=None,
+        bfefrmtrm_amount=None,
+    )
+
+
+_CONTINUING = "ifrs-full_BasicEarningsLossPerShareFromContinuingOperations"
+_DISCONTINUED = "ifrs-full_BasicEarningsLossPerShareFromDiscontinuedOperations"
+
+
+def test_split_reported_eps_is_the_sum_of_continuing_and_discontinued() -> None:
+    """실측(태광산업): 계속 +33,256 / 중단 -55,240 이라 계속영업만 쓰면 적자가 흑자로 보인다."""
+    lines = (
+        _eps_line_of(_CONTINUING, "33256", 1),
+        _eps_line_of(_DISCONTINUED, "-55240", 2),
+    )
+
+    valuation = compute_valuation(_report(), lines, _quote(), _shares())
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value == Decimal(-21984)
+
+
+def test_continuing_eps_alone_is_the_total_when_no_discontinued_row_exists() -> None:
+    """실측(삼성중공업·롯데쇼핑·효성중공업): 중단영업 관련 행이 원문에 아예 없다."""
+    valuation = compute_valuation(
+        _report(),
+        (_eps_line_of(_CONTINUING, "75", 1),),
+        _quote(),
+        _shares(),
+    )
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value == Decimal(75)
+    assert items["eps"].unavailable_reason is None
+
+
+def test_a_discontinued_row_without_an_amount_fails_closed() -> None:
+    """실측(씨에스윈드): 중단영업 행은 있고 금액이 공란이다. 0으로 가정하지 않는다."""
+    lines = (
+        _eps_line_of(_CONTINUING, "480", 1),
+        _eps_line_of(_DISCONTINUED, None, 2),
+    )
+
+    valuation = compute_valuation(_report(), lines, _quote(), _shares())
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value is None
+    assert items["eps"].unavailable_reason is IndicatorUnavailableReason.MISSING_AMOUNT
+
+
+def test_the_total_eps_account_wins_over_the_split_accounts() -> None:
+    lines = (
+        _eps_line("6605"),
+        _eps_line_of(_CONTINUING, "9999", 2),
+        _eps_line_of(_DISCONTINUED, "1111", 3),
+    )
+
+    valuation = compute_valuation(_report(), lines, _quote(), _shares())
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value == Decimal(6605)

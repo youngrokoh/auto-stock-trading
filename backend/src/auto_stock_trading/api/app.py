@@ -20,6 +20,7 @@ from auto_stock_trading.adapters.database.market_data_etf_reader import Postgres
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.adapters.database.strategy_backtest_reader import (
     PostgresBacktestReader,
 )
@@ -40,6 +41,7 @@ from auto_stock_trading.application.adjusted_prices import (
 from auto_stock_trading.application.backtests.reader import BacktestReader
 from auto_stock_trading.application.disclosures import DisclosureReader
 from auto_stock_trading.application.etf import EtfReader
+from auto_stock_trading.application.financial_indicators import SectorSource
 from auto_stock_trading.application.financial_statements import FinancialReportReader
 from auto_stock_trading.application.health import HealthProbe, HealthService
 from auto_stock_trading.application.market_data import MarketDataReader
@@ -54,6 +56,7 @@ DisclosureReaderFactory = Callable[[], DisclosureReader]
 EtfReaderFactory = Callable[[], EtfReader]
 BacktestReaderFactory = Callable[[], BacktestReader]
 TradingReaderFactory = Callable[[], TradingReader]
+SectorSourceFactory = Callable[[], SectorSource]
 
 
 def create_app(  # noqa: PLR0913
@@ -69,6 +72,7 @@ def create_app(  # noqa: PLR0913
     etf_reader_factory: EtfReaderFactory | None = None,
     backtest_reader_factory: BacktestReaderFactory | None = None,
     trading_reader_factory: TradingReaderFactory | None = None,
+    sector_source_factory: SectorSourceFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -118,6 +122,10 @@ def create_app(  # noqa: PLR0913
         lambda: PostgresTradingReader.from_url(runtime_settings.database_url.get_secret_value())
     )
     trading_reader = trading_factory()
+    sector_factory = sector_source_factory or (
+        lambda: PostgresStockStore.from_url(runtime_settings.database_url.get_secret_value())
+    )
+    sector_source = sector_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -133,6 +141,7 @@ def create_app(  # noqa: PLR0913
             await etf_reader.close()
             await backtest_reader.close()
             await trading_reader.close()
+            await sector_source.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -157,7 +166,12 @@ def create_app(  # noqa: PLR0913
     )
     app.include_router(create_market_data_etf_router(etf_reader, corporate_action_reader))
     app.include_router(
-        create_fundamentals_router(market_data_reader, financial_report_reader, disclosure_reader)
+        create_fundamentals_router(
+            market_data_reader,
+            financial_report_reader,
+            disclosure_reader,
+            sector_source,
+        )
     )
     app.include_router(create_backtests_router(backtest_reader))
     app.include_router(

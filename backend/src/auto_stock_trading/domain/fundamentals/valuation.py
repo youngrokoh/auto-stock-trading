@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from auto_stock_trading.domain.market_data.models import Quote
 
 _EPS_ACCOUNT_ID = "ifrs-full_BasicEarningsLossPerShare"
+# 총 기본주당이익 대신 계속·중단영업으로 나눠 표시하는 회사가 있다(실측 14종목).
+_EPS_CONTINUING_ACCOUNT_ID = "ifrs-full_BasicEarningsLossPerShareFromContinuingOperations"
+_EPS_DISCONTINUED_ACCOUNT_ID = "ifrs-full_BasicEarningsLossPerShareFromDiscontinuedOperations"
 _RATIO_QUANTUM = Decimal("0.01")
 
 
@@ -82,21 +85,63 @@ def basic_eps(lines: tuple[FinancialStatementLine, ...]) -> Decimal | None:
 
 
 def _resolve_eps(lines: tuple[FinancialStatementLine, ...]) -> _EpsFact:
+    """총 기본주당이익. 없으면 계속영업 + 중단영업으로 복원한다(지표 계약 §가치지표).
+
+    복원은 같은 주당이익 체계 안의 합이라 순이익 ÷ 주식수 같은 파생이 아니다. 중단영업 행이
+    원문에 아예 없으면 중단영업이 없다는 뜻이라 계속영업이 총액이고, 행은 있는데 금액이 비어
+    있으면 0으로 가정하지 않고 fail-closed다(둘 다 실측 사례가 있다).
+    """
+    total = _single_amount(lines, _EPS_ACCOUNT_ID)
+    if total.present:
+        return _EpsFact(value=total.amount, reason=total.reason)
+    continuing = _single_amount(lines, _EPS_CONTINUING_ACCOUNT_ID)
+    if not continuing.present:
+        return _EpsFact(value=None, reason=IndicatorUnavailableReason.MISSING_ACCOUNT)
+    if continuing.amount is None:
+        return _EpsFact(value=None, reason=continuing.reason)
+    discontinued = _single_amount(lines, _EPS_DISCONTINUED_ACCOUNT_ID)
+    if not discontinued.present:
+        return _EpsFact(value=continuing.amount, reason=None)
+    if discontinued.amount is None:
+        return _EpsFact(value=None, reason=discontinued.reason)
+    return _EpsFact(value=continuing.amount + discontinued.amount, reason=None)
+
+
+@dataclass(frozen=True, slots=True)
+class _AccountAmount:
+    present: bool
+    amount: Decimal | None
+    reason: IndicatorUnavailableReason | None
+
+
+def _single_amount(
+    lines: tuple[FinancialStatementLine, ...],
+    account_id: str,
+) -> _AccountAmount:
+    """구분 우선순위(IS -> CIS)로 계정 한 행을 찾는다. 원문에 없으면 `present=False`다."""
     matches: list[FinancialStatementLine] = []
     for division in _EPS_DIVISIONS:
         matches = [
-            line for line in lines if line.sj_div is division and line.account_id == _EPS_ACCOUNT_ID
+            line for line in lines if line.sj_div is division and line.account_id == account_id
         ]
         if matches:
             break
-    if len(matches) > 1:
-        return _EpsFact(value=None, reason=IndicatorUnavailableReason.AMBIGUOUS_ACCOUNT)
     if not matches:
-        return _EpsFact(value=None, reason=IndicatorUnavailableReason.MISSING_ACCOUNT)
+        return _AccountAmount(present=False, amount=None, reason=None)
+    if len(matches) > 1:
+        return _AccountAmount(
+            present=True,
+            amount=None,
+            reason=IndicatorUnavailableReason.AMBIGUOUS_ACCOUNT,
+        )
     amount = matches[0].thstrm_amount
     if amount is None:
-        return _EpsFact(value=None, reason=IndicatorUnavailableReason.MISSING_AMOUNT)
-    return _EpsFact(value=amount, reason=None)
+        return _AccountAmount(
+            present=True,
+            amount=None,
+            reason=IndicatorUnavailableReason.MISSING_AMOUNT,
+        )
+    return _AccountAmount(present=True, amount=amount, reason=None)
 
 
 def _per_item(quote: Quote | None, eps: _EpsFact) -> ValuationItem:

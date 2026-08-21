@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
@@ -27,6 +27,8 @@ class IndicatorUnavailableReason(StrEnum):
     ZERO_DENOMINATOR = "ZERO_DENOMINATOR"
     MISSING_QUOTE = "MISSING_QUOTE"
     MISSING_SHARE_COUNT = "MISSING_SHARE_COUNT"
+    # 발행사가 업종 특성상 매출액·영업이익 표준계정을 쓰지 않는다(계정 누락과 구별한다).
+    SECTOR_ACCOUNT_BASIS = "SECTOR_ACCOUNT_BASIS"
 
 
 class AmountPeriod(StrEnum):
@@ -346,3 +348,26 @@ def compute_annual_indicators(
         figures=figures,
         indicators=indicators,
     )
+
+
+_OPERATING_ACCOUNT_IDS: Final = frozenset({_REVENUE.account_id, _OPERATING_INCOME.account_id})
+
+
+def relabel_operating_account_basis(annual: AnnualIndicators) -> AnnualIndicators:
+    """매출액·영업이익 계정이 없어 실패한 지표의 사유를 업종 기준으로 다시 표기한다.
+
+    값은 만들지 않는다. 계정이 없는 사실은 그대로이고, 그 원인이 발행사의 업종 회계라는 것만
+    분명히 한다. 금액 결측·모호 같은 다른 실패는 업종 문제가 아니므로 건드리지 않는다.
+    """
+    return replace(
+        annual,
+        indicators=tuple(_relabelled(item) for item in annual.indicators),
+    )
+
+
+def _relabelled(item: IndicatorValue) -> IndicatorValue:
+    if item.unavailable_reason is not IndicatorUnavailableReason.MISSING_ACCOUNT:
+        return item
+    if not any(spec.account_id in _OPERATING_ACCOUNT_IDS for spec in item.inputs):
+        return item
+    return replace(item, unavailable_reason=IndicatorUnavailableReason.SECTOR_ACCOUNT_BASIS)

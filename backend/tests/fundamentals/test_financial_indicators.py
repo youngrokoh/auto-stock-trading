@@ -12,6 +12,7 @@ from auto_stock_trading.domain.fundamentals.financial_statements import (
 from auto_stock_trading.domain.fundamentals.indicators import (
     IndicatorUnavailableReason,
     compute_annual_indicators,
+    relabel_operating_account_basis,
 )
 
 _NOW = datetime(2026, 8, 17, 9, 0, tzinfo=UTC)
@@ -343,3 +344,62 @@ def test_neither_division_carrying_the_account_reports_the_declared_division() -
 
     assert growth.unavailable_reason is IndicatorUnavailableReason.MISSING_ACCOUNT
     assert {item.sj_div for item in growth.inputs} == {StatementDivision.INCOME_STATEMENT}
+
+
+def _financial_issuer_lines() -> tuple[FinancialStatementLine, ...]:
+    """금융업 실측 구조: 매출액·영업이익 표준계정이 없고 순이익·자본 계정은 있다."""
+    return tuple(
+        line
+        for line in _cis_only_lines()
+        if line.account_id not in ("ifrs-full_Revenue", "dart_OperatingIncomeLoss")
+    )
+
+
+def test_operating_account_indicators_are_relabelled_for_financial_issuers() -> None:
+    annual = compute_annual_indicators(_report(), _financial_issuer_lines())
+
+    relabelled = relabel_operating_account_basis(annual)
+    reasons = {item.key: item.unavailable_reason for item in relabelled.indicators}
+
+    # 매출액·영업이익을 입력으로 쓰는 지표만 업종 기준 사유로 바뀐다.
+    assert reasons["revenue_growth"] is IndicatorUnavailableReason.SECTOR_ACCOUNT_BASIS
+    assert reasons["operating_income_growth"] is IndicatorUnavailableReason.SECTOR_ACCOUNT_BASIS
+    assert reasons["operating_margin"] is IndicatorUnavailableReason.SECTOR_ACCOUNT_BASIS
+    assert reasons["net_margin"] is IndicatorUnavailableReason.SECTOR_ACCOUNT_BASIS
+    # 당기순이익·자본 기반 지표는 금융업에서도 계산되므로 건드리지 않는다.
+    assert reasons["net_income_growth"] is None
+    assert reasons["roe"] is None
+    assert reasons["debt_ratio"] is None
+
+
+def test_relabelling_never_invents_a_value() -> None:
+    annual = compute_annual_indicators(_report(), _financial_issuer_lines())
+
+    relabelled = relabel_operating_account_basis(annual)
+
+    values = {item.key: item.value for item in relabelled.indicators}
+    assert values["revenue_growth"] is None
+    assert values["operating_margin"] is None
+
+
+def test_relabelling_leaves_other_failure_reasons_alone() -> None:
+    """금액이 비어 있거나 모호한 계정은 업종 문제가 아니므로 사유를 바꾸지 않는다."""
+    lines = tuple(
+        _line(line.line_seq, line.sj_div, line.account_id, line.account_nm, amounts=(None, None))
+        if line.account_id == "ifrs-full_Revenue"
+        else line
+        for line in _full_lines()
+    )
+
+    relabelled = relabel_operating_account_basis(compute_annual_indicators(_report(), lines))
+    reasons = {item.key: item.unavailable_reason for item in relabelled.indicators}
+
+    assert reasons["revenue_growth"] is IndicatorUnavailableReason.MISSING_AMOUNT
+
+
+def test_relabelling_keeps_computed_indicators_untouched() -> None:
+    annual = compute_annual_indicators(_report(), _full_lines())
+
+    relabelled = relabel_operating_account_basis(annual)
+
+    assert relabelled == annual

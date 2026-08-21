@@ -23,7 +23,7 @@ OpenDART에서 수집한 재무제표 사실 버전, 그 사실에서 파생한 
 
 - 연간 사업보고서(`11011`)의 현재 버전에서만 조회 시점에 계산하며 저장하지 않는다.
 - 연도 항목은 `bsns_year`, `reprt_code`, `fs_div`, 근거 `rcept_no`, `currency`, `version`을 포함한다.
-- 지표 항목은 키·이름·분류(`growth`·`profitability`·`stability`), 단위(`percent`), 수식 문자열, 입력 계정(이름·`sj_div`·`account_id`·기간·금액), 값 또는 실패 사유 코드(`MISSING_ACCOUNT`·`AMBIGUOUS_ACCOUNT`·`MISSING_AMOUNT`·`ZERO_DENOMINATOR`)를 포함한다.
+- 지표 항목은 키·이름·분류(`growth`·`profitability`·`stability`), 단위(`percent`), 수식 문자열, 입력 계정(이름·`sj_div`·`account_id`·기간·금액), 값 또는 실패 사유 코드(`MISSING_ACCOUNT`·`AMBIGUOUS_ACCOUNT`·`MISSING_AMOUNT`·`ZERO_DENOMINATOR`·`SECTOR_ACCOUNT_BASIS`)를 포함한다. `SECTOR_ACCOUNT_BASIS`는 발행사가 업종 회계상 그 계정을 쓰지 않는다는 뜻이며(금융업의 매출액·영업이익) 데이터 결손과 구별한다. 같은 응답의 당기순이익·자본 기반 지표와 가치지표는 금융업에서도 값을 갖는다.
 - 실적 원문 값(`figures`)은 매출액·영업이익·당기순이익·지배주주순이익·자산·부채·자본 금액을 계정 출처와 함께 원문 그대로 제공한다.
 - 개별(`OFS`) 조회에서 지배주주 계정이 없는 ROE는 계약대로 값 없이 `MISSING_ACCOUNT`를 반환한다.
 - `valuation` 블록이 가치지표(기본주당이익 원문 `eps`, `per`, `market_cap`)를 제공한다. 기준이

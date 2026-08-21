@@ -22,6 +22,7 @@ from auto_stock_trading.api.fundamentals_models import (
     ValuationShareCountBasisResponse,
 )
 from auto_stock_trading.application.financial_indicators import (
+    SectorSource,
     annual_indicator_history,
     valuation_snapshot,
 )
@@ -49,6 +50,7 @@ def create_fundamentals_router(
     instruments: MarketDataReader,
     reports: FinancialReportReader,
     disclosures: DisclosureReader,
+    sectors: SectorSource,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/fundamentals", tags=["fundamentals"])
 
@@ -106,7 +108,7 @@ def create_fundamentals_router(
         symbol: str,
         fs_div: FsDivision = FsDivision.CONSOLIDATED,
     ) -> FinancialIndicatorsResponse:
-        years = await annual_indicator_history(reports, symbol, fs_div)
+        years = await annual_indicator_history(reports, symbol, fs_div, sectors)
         if not years and await instruments.instrument(symbol) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
         valuation = await valuation_snapshot(reports, instruments, symbol, fs_div)

@@ -63,7 +63,13 @@ const indicatorSchema = z.strictObject({
   key: z.string().min(1),
   name: z.string().min(1),
   unavailable_reason: z
-    .enum(["MISSING_ACCOUNT", "AMBIGUOUS_ACCOUNT", "MISSING_AMOUNT", "ZERO_DENOMINATOR"])
+    .enum([
+      "MISSING_ACCOUNT",
+      "AMBIGUOUS_ACCOUNT",
+      "MISSING_AMOUNT",
+      "ZERO_DENOMINATOR",
+      "SECTOR_ACCOUNT_BASIS",
+    ])
     .nullable(),
   unit: z.literal("percent"),
   value: nullableDecimal,
@@ -95,6 +101,7 @@ const unavailableReason = z.enum([
   "ZERO_DENOMINATOR",
   "MISSING_QUOTE",
   "MISSING_SHARE_COUNT",
+  "SECTOR_ACCOUNT_BASIS",
 ]);
 
 const valuationItemSchema = z.strictObject({

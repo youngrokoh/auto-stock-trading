@@ -322,7 +322,7 @@ Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심
 `application/backtests/portfolio_strategies.py`가 전략 신원·canonical 파라미터·회차 생성기를
 묶어 주입한다. 재무 입력은 `adapters/database/strategy_fundamentals_reader.py`가 재무 지표 도메인
 함수를 그대로 호출해 만들며, 전략이 지표를 다시 정의하지 않는다. 실행 기록에는
-`input_report_version_hash`(리비전 `20260821_0024`)가 추가됐다.
+`input_report_version_hash`(리비전 `20260821_0024`)가 추가됐다. 같은 날 지표 읽기 경로에 업종 원천을 주입했다 — `create_app`이 `PostgresStockStore`를 `SectorSource`로 넘기고, 응용 계층이 금융업(KOSPI200 업종 코드 `6`)의 매출액·영업이익 기반 실패를 `SECTOR_ACCOUNT_BASIS`로 다시 표기한다. 도메인 순수 함수는 업종을 모르고 값도 만들지 않는다.
 
 ## 6. 머신러닝과 생성형 AI
 

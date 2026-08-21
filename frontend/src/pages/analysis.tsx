@@ -66,6 +66,8 @@ const UNAVAILABLE_LABEL: Readonly<Record<string, string>> = {
   MISSING_AMOUNT: "금액 없음",
   MISSING_QUOTE: "시세 없음",
   MISSING_SHARE_COUNT: "주식수 없음",
+  // 금융업은 매출액·영업이익 표준계정을 쓰지 않는다. '계정 없음'과 원인이 다르다.
+  SECTOR_ACCOUNT_BASIS: "업종 회계기준 미해당",
   ZERO_DENOMINATOR: "분모 0",
 };
 
@@ -93,6 +95,17 @@ const indicatorOf = (
 
 const percentText = (indicator: FinancialIndicator | undefined): string =>
   indicator?.value == null ? "—" : `${formatDecimal(indicator.value)}%`;
+
+/** 값이 없으면 수식 대신 사유를 보여준다. 줄표만 두면 수집 실패로 읽힌다. */
+const indicatorSub = (indicator: FinancialIndicator | undefined): string | undefined => {
+  if (indicator === undefined) {
+    return undefined;
+  }
+  if (indicator.unavailable_reason === null) {
+    return indicator.formula;
+  }
+  return UNAVAILABLE_LABEL[indicator.unavailable_reason] ?? indicator.unavailable_reason;
+};
 
 const signTone = (indicator: FinancialIndicator | undefined): "up" | "down" | "neutral" => {
   if (indicator?.value == null) {
@@ -251,6 +264,12 @@ export const Analysis = () => {
   const selectedReport =
     annualReports.find((report) => report.report_id === reportId) ?? annualReports.at(-1);
 
+  // 업종 회계상 해당하지 않는 지표는 표에서 줄표가 되므로 수집 실패로 오해하기 쉽다.
+  // 어떤 지표가 왜 비었는지 카드 주석에 이름으로 밝힌다(표 폭은 건드리지 않는다).
+  const sectorBasisIndicators = (latest?.indicators ?? [])
+    .filter((indicator) => indicator.unavailable_reason === "SECTOR_ACCOUNT_BASIS")
+    .map((indicator) => indicator.name);
+
   const revenueGrowth = indicatorOf(latest, "revenue_growth");
   const operatingMargin = indicatorOf(latest, "operating_margin");
   const roe = indicatorOf(latest, "roe");
@@ -340,7 +359,7 @@ export const Analysis = () => {
           <CoordinateCell
             coord="A4"
             label="영업이익률"
-            sub={operatingMargin?.formula}
+            sub={indicatorSub(operatingMargin)}
             value={percentText(operatingMargin)}
           />
           <CoordinateCell
@@ -353,6 +372,7 @@ export const Analysis = () => {
           <CoordinateCell
             coord="A7"
             label="매출액증가율"
+            sub={indicatorSub(revenueGrowth)}
             tone={signTone(revenueGrowth)}
             value={percentText(revenueGrowth)}
           />
@@ -501,6 +521,13 @@ export const Analysis = () => {
               </div>
               <div className="card__note">
                 단위 % · 수식은 각 셀 도움말에 표시 · 값이 없는 지표는 사유와 함께 비웁니다
+                {sectorBasisIndicators.length > 0 && (
+                  <>
+                    {" · "}
+                    {sectorBasisIndicators.join(" · ")}은 이 발행사의 업종 회계기준에 해당하지
+                    않습니다(매출액·영업이익 표준계정 미사용)
+                  </>
+                )}
               </div>
             </section>
           </div>

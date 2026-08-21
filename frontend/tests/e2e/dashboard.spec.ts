@@ -112,6 +112,13 @@ test("기업 분석 화면이 수식·출처와 함께 재무 지표를 제공�
 
     await page.getByRole("button", { name: "개별" }).click();
     await expect(page.getByText("지배주주 계정 없음")).toBeVisible();
+
+    // 금융업은 매출액·영업이익 표준계정을 쓰지 않는다. 계정 누락과 구별해 보여야 한다.
+    await page.getByRole("button", { name: "연결" }).click();
+    await page.getByLabel("종목 선택").selectOption("000810");
+    await expect(page.getByText("업종 회계기준 미해당").first()).toBeVisible();
+    await expect(page.getByText("업종 회계기준에 해당하지")).toBeVisible();
+    await expect(page.getByText("A5 · ROE (지배주주)")).toBeVisible();
   } else {
     await expect(page.getByText("연간 보고서 확인 전")).toBeVisible();
     await expect(page.getByText("수집된 연간 사업보고서가 없습니다.")).toBeVisible();
