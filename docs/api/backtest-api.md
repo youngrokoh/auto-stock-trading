@@ -31,8 +31,14 @@
 - 성과 지표는 총수익률·비용 전 수익률·벤치마크 수익률·초과수익·MDD(음수 퍼센트)·샤프지수
   (표준편차 0이면 `null`)·연환산 회전율과 수수료·슬리피지·세금 합계, 체결 건수다. 금액과
   비율은 문자열 십진수로 직렬화된다.
-- 체결 기록은 신호일·체결일·매수매도·사유(`golden_cross`·`dead_cross`·`rsi_overbought`)·수량·
-  체결가(시가 원문)·수수료·슬리피지·세금을 포함하고, 체결하지 못한 신호는 `execution_date`가
-  `null`이며 `skip_reason`(`window_end`·`already_positioned`·`no_position`·`insufficient_cash`)이
-  남는다.
+- **다종목 실행은 대표 종목이 없다.** 그런 실행의 `symbol`은 `null`이고 `universe_size`(유니버스
+  종목 수)와 `traded_symbols`(실제 체결된 종목)로 식별한다. 단일 종목 실행은 `symbol`이 있고
+  `universe_size=0`·`traded_symbols=[]`다. 조회는 두 종류를 한 목록에 함께 돌려준다 — 대표
+  종목으로 종목 테이블을 inner join하면 다종목 실행이 목록에서 통째로 사라진다(2026-08-21 실측).
+- 체결 기록은 신호일·종목(`symbol`, 다종목 실행만)·체결일·매수매도·사유·수량·체결가(시가 원문)·
+  수수료·슬리피지·세금을 포함하고, 체결하지 못한 신호는 `execution_date`가 `null`이며
+  `skip_reason`이 남는다. **`action`·`reason`·`skip_reason`은 저장된 감사 문자열 그대로**
+  돌려준다(전략마다 어휘가 다르다: 이동평균·RSI는 `golden_cross`·`dead_cross`·`rsi_overbought`,
+  횡단면 모멘텀은 `rebalance`). 읽기 경로가 한 전략의 enum으로 되검증하면 다른 전략의 체결
+  조회가 500이 된다(2026-08-21 실측).
 - 없는 `run_id`는 `404`, UUID가 아닌 `run_id`와 범위를 벗어난 `limit`은 `422`다.

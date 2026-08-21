@@ -196,13 +196,16 @@ test("모의매매 콘솔이 자동매매 상태와 정책 한도를 표시한�
   await expect(page.getByRole("heading", { name: "D 위험 한도 소진율" })).toBeVisible();
   await expect(page.getByText("총 투자 비중")).toBeVisible();
   await expect(page.getByText("분류되지 않은 종목 합계")).toBeVisible();
-  await expect(page.getByText("MISSING_SECTOR_DATA")).toBeVisible();
+  await expect(page.getByText("업종별 비중")).toBeVisible();
   await expect(page.getByText("주문 허용시간", { exact: true })).toBeVisible();
   await expect(page.getByText("09:05~15:15 KST").first()).toBeVisible();
   if (expectData) {
     await expect(page.getByText("자동매매 비활성")).toBeVisible();
     await expect(page.getByRole("heading", { name: "E 주문·위험 이벤트" })).toBeVisible();
     await expect(page.getByText("상태 전이").first()).toBeVisible();
+  } else {
+    // 빈 DB에는 업종 사실이 없어 업종 한도가 사유 코드로 남는다.
+    await expect(page.getByText("MISSING_SECTOR_DATA")).toBeVisible();
   }
 
   await expectNoSecretsAndNoOverflow(page);

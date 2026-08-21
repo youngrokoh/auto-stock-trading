@@ -1025,6 +1025,17 @@ select:focus-visible {
   padding: 0 var(--space-2);
   color: var(--color-text-strong);
   font-size: var(--font-size-body);
+  /* select의 고유 폭은 가장 긴 옵션을 따라간다. 실행 라벨이 길어지면 좁은 화면에서
+     문서 폭을 밀어내므로 컨테이너를 넘지 않도록 묶는다. */
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* 실행 라벨은 길다(전략·유니버스·기간·상태). select의 고유 폭이 조상까지 밀어올리므로
+   컨테이너 폭에 맞춘다. 시장 화면의 종목 선택기는 라벨이 짧아 그대로 둔다. */
+.run-select {
+  width: 100%;
 }
 
 .retry-button {

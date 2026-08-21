@@ -29,7 +29,10 @@ class BacktestRunResponse(BacktestResponse):
     strategy_name: str
     strategy_version: str
     parameters_json: str
-    symbol: str
+    # 다종목 실행은 대표 종목이 없다. 유니버스·매매 종목으로 식별한다.
+    symbol: str | None
+    universe_size: int
+    traded_symbols: tuple[str, ...]
     benchmark_symbol: str
     range_start: date
     range_end: date
@@ -53,6 +56,8 @@ class BacktestRunsResponse(BacktestResponse):
 
 class BacktestTradeResponse(BacktestResponse):
     sequence: int
+    # 다종목 실행의 체결은 종목을 갖는다. 단일 종목 실행은 실행의 종목과 같아 비어 있다.
+    symbol: str | None
     signal_date: date
     execution_date: date | None
     action: str

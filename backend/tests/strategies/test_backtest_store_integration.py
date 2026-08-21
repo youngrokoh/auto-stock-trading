@@ -150,7 +150,19 @@ def test_completed_run_round_trips_with_trades_and_equity() -> None:
         assert record in runs
         loaded = await reader.run(record.run_id)
         assert loaded == record
-        assert await reader.trades(record.run_id) == _trades()
+        # 조회는 저장된 감사 문자열을 그대로 돌려준다(전략별 enum으로 되검증하지 않는다).
+        stored_trades = await reader.trades(record.run_id)
+        assert [
+            (item.sequence, item.action, item.reason, item.skip_reason) for item in stored_trades
+        ] == [
+            (
+                trade.sequence,
+                trade.action.value,
+                trade.reason.value,
+                None if trade.skip_reason is None else trade.skip_reason.value,
+            )
+            for trade in _trades()
+        ]
         assert await reader.equity(record.run_id) == _equity()
 
     anyio.run(_run_scenario, scenario)

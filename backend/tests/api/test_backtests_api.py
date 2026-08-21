@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
 from auto_stock_trading.domain.strategies.backtest import (
-    BacktestTrade,
     TradeSkipReason,
 )
 from auto_stock_trading.domain.strategies.backtest_metrics import (
@@ -15,7 +14,7 @@ from auto_stock_trading.domain.strategies.backtest_metrics import (
     EquityPoint,
 )
 from auto_stock_trading.domain.strategies.ma_rsi import SignalAction, SignalReason
-from auto_stock_trading.domain.strategies.records import BacktestRunRecord
+from auto_stock_trading.domain.strategies.records import BacktestRunRecord, BacktestTradeRecord
 from auto_stock_trading.settings.runtime import Environment, Settings
 
 _NOW = datetime(2026, 8, 18, 2, 0, tzinfo=UTC)
@@ -110,16 +109,17 @@ class StubBacktestReader:
             return _failed_record()
         return None
 
-    async def trades(self, run_id: UUID) -> tuple[BacktestTrade, ...]:
+    async def trades(self, run_id: UUID) -> tuple[BacktestTradeRecord, ...]:
         if run_id != _RUN_ID:
             return ()
         return (
-            BacktestTrade(
+            BacktestTradeRecord(
                 sequence=1,
                 signal_date=date(2026, 8, 7),
                 execution_date=date(2026, 8, 10),
-                action=SignalAction.BUY,
-                reason=SignalReason.GOLDEN_CROSS,
+                symbol=None,
+                action=SignalAction.BUY.value,
+                reason=SignalReason.GOLDEN_CROSS.value,
                 quantity=78,
                 price=Decimal(12800),
                 gross_amount=Decimal(998_400),
@@ -128,19 +128,20 @@ class StubBacktestReader:
                 tax=Decimal(0),
                 skip_reason=None,
             ),
-            BacktestTrade(
+            BacktestTradeRecord(
                 sequence=2,
                 signal_date=date(2026, 8, 12),
                 execution_date=None,
-                action=SignalAction.SELL,
-                reason=SignalReason.DEAD_CROSS,
+                symbol=None,
+                action=SignalAction.SELL.value,
+                reason=SignalReason.DEAD_CROSS.value,
                 quantity=0,
                 price=None,
                 gross_amount=Decimal(0),
                 fee=Decimal(0),
                 slippage=Decimal(0),
                 tax=Decimal(0),
-                skip_reason=TradeSkipReason.WINDOW_END,
+                skip_reason=TradeSkipReason.WINDOW_END.value,
             ),
         )
 
@@ -176,6 +177,8 @@ _COMPLETED_RUN_JSON: dict[str, object] = {
     "strategy_version": "1",
     "parameters_json": ('{"long_period":3,"rsi_overbought":"90","rsi_period":2,"short_period":2}'),
     "symbol": "005930",
+    "universe_size": 0,
+    "traded_symbols": [],
     "benchmark_symbol": "069500",
     "range_start": "2026-08-03",
     "range_end": "2026-08-12",
@@ -210,6 +213,8 @@ _FAILED_RUN_JSON: dict[str, object] = {
     "strategy_version": "1",
     "parameters_json": ('{"long_period":3,"rsi_overbought":"90","rsi_period":2,"short_period":2}'),
     "symbol": "005930",
+    "universe_size": 0,
+    "traded_symbols": [],
     "benchmark_symbol": "069500",
     "range_start": "2026-08-03",
     "range_end": "2026-08-12",
@@ -251,6 +256,7 @@ def test_backtest_trades_include_skipped_signals() -> None:
         "trades": [
             {
                 "sequence": 1,
+                "symbol": None,
                 "signal_date": "2026-08-07",
                 "execution_date": "2026-08-10",
                 "action": "buy",
@@ -265,6 +271,7 @@ def test_backtest_trades_include_skipped_signals() -> None:
             },
             {
                 "sequence": 2,
+                "symbol": None,
                 "signal_date": "2026-08-12",
                 "execution_date": None,
                 "action": "sell",

@@ -24,9 +24,14 @@ import {
 } from "../lib/format";
 
 const TRADE_ROWS = 12;
+// 매매 종목은 개수와 앞부분만 보여준다. 유니버스 전수는 화면에 쓸모가 없다.
+const TRADED_PREVIEW = 6;
+
+const runSubject = (run: BacktestRun): string =>
+  run.symbol ?? `유니버스 ${String(run.universe_size)}종목`;
 
 const runLabel = (run: BacktestRun): string =>
-  `${run.strategy_name} v${run.strategy_version} · ${run.symbol} · ${run.range_start}~${run.range_end} · ${run.status === "completed" ? "완료" : "실패"}`;
+  `${run.strategy_name} v${run.strategy_version} · ${runSubject(run)} · ${run.range_start}~${run.range_end} · ${run.status === "completed" ? "완료" : "실패"}`;
 
 const signedTone = (value: string): "down" | "neutral" | "up" => {
   const numeric = decimalToNumber(value);
@@ -58,6 +63,7 @@ const isSiblingRun = (run: BacktestRun, reference: BacktestRun): boolean =>
   run.strategy_version === reference.strategy_version &&
   run.parameters_json === reference.parameters_json &&
   run.symbol === reference.symbol &&
+  run.universe_size === reference.universe_size &&
   run.signal_method === reference.signal_method;
 
 export const Strategy = () => {
@@ -121,6 +127,8 @@ export const Strategy = () => {
   const executedCount = trades.filter((trade) => trade.skip_reason === null).length;
   const recentTrades = [...trades].sort((left, right) => right.sequence - left.sequence);
   const visibleTrades = recentTrades.slice(0, TRADE_ROWS);
+  // 다종목 실행은 어느 종목의 체결인지 보여야 표가 읽힌다.
+  const isPortfolioRun = run !== undefined && run.symbol === null;
   const siblingRuns =
     run === undefined
       ? []
@@ -214,7 +222,7 @@ export const Strategy = () => {
                     <span className="cell__coord">실행 </span>
                     <select
                       aria-label="실행 선택"
-                      className="symbol-select"
+                      className="symbol-select run-select"
                       onChange={(event) => {
                         setRunId(event.target.value);
                       }}
@@ -280,6 +288,7 @@ export const Strategy = () => {
                     <thead>
                       <tr>
                         <th scope="col">신호일</th>
+                        {isPortfolioRun && <th scope="col">종목</th>}
                         <th scope="col">체결일</th>
                         <th scope="col">구분</th>
                         <th scope="col">수량</th>
@@ -291,6 +300,7 @@ export const Strategy = () => {
                       {visibleTrades.map((trade) => (
                         <tr key={trade.sequence}>
                           <td className="is-name">{trade.signal_date}</td>
+                          {isPortfolioRun && <td data-label="종목">{trade.symbol ?? "—"}</td>}
                           <td data-label="체결일">
                             {trade.execution_date ??
                               `미체결 · ${tradeSkipLabel(trade.skip_reason ?? "")}`}
@@ -455,6 +465,26 @@ export const Strategy = () => {
                         {run.strategy_name} v{run.strategy_version}
                       </dd>
                     </div>
+                    {run.symbol === null && (
+                      <>
+                        <div>
+                          <dt>유니버스</dt>
+                          <dd>{run.universe_size}종목</dd>
+                        </div>
+                        <div>
+                          <dt>매매 종목</dt>
+                          <dd>
+                            {run.traded_symbols.length === 0
+                              ? "체결 없음"
+                              : `${String(run.traded_symbols.length)}종목 · ${run.traded_symbols
+                                  .slice(0, TRADED_PREVIEW)
+                                  .join(", ")}${
+                                  run.traded_symbols.length > TRADED_PREVIEW ? " …" : ""
+                                }`}
+                          </dd>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <dt>파라미터</dt>
                       <dd>

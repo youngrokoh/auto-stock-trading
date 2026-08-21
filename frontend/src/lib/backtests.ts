@@ -38,7 +38,10 @@ const runSchema = z.strictObject({
   status: z.enum(["completed", "failed"]),
   strategy_name: z.string().min(1),
   strategy_version: z.string().min(1),
-  symbol: z.string().min(1),
+  // 다종목 실행은 대표 종목이 없다(유니버스·매매 종목으로 식별한다).
+  symbol: z.string().min(1).nullable(),
+  universe_size: z.number().int().nonnegative(),
+  traded_symbols: z.array(z.string()).readonly(),
 });
 
 const runsSchema = z.strictObject({
@@ -56,6 +59,8 @@ const tradeSchema = z.strictObject({
   sequence: z.number().int(),
   signal_date: isoDate,
   skip_reason: z.string().nullable(),
+  // 다종목 실행의 체결만 종목을 갖는다.
+  symbol: z.string().nullable(),
   slippage: decimal,
   tax: decimal,
 });

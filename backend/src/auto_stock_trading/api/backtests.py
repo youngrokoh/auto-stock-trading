@@ -15,12 +15,11 @@ from auto_stock_trading.api.backtests_models import (
 
 if TYPE_CHECKING:
     from auto_stock_trading.application.backtests.reader import BacktestReader
-    from auto_stock_trading.domain.strategies.backtest import BacktestTrade
     from auto_stock_trading.domain.strategies.backtest_metrics import (
         BacktestMetrics,
         EquityPoint,
     )
-    from auto_stock_trading.domain.strategies.records import BacktestRunRecord
+    from auto_stock_trading.domain.strategies.records import BacktestRunRecord, BacktestTradeRecord
 
 
 def _metrics_response(metrics: BacktestMetrics | None) -> BacktestMetricsResponse | None:
@@ -48,6 +47,8 @@ def _run_response(record: BacktestRunRecord) -> BacktestRunResponse:
         strategy_version=record.strategy_version,
         parameters_json=record.parameters_json,
         symbol=record.symbol,
+        universe_size=len(record.universe),
+        traded_symbols=record.traded_symbols,
         benchmark_symbol=record.benchmark_symbol,
         range_start=record.range_start,
         range_end=record.range_end,
@@ -66,20 +67,21 @@ def _run_response(record: BacktestRunRecord) -> BacktestRunResponse:
     )
 
 
-def _trade_response(trade: BacktestTrade) -> BacktestTradeResponse:
+def _trade_response(trade: BacktestTradeRecord) -> BacktestTradeResponse:
     return BacktestTradeResponse(
         sequence=trade.sequence,
+        symbol=trade.symbol,
         signal_date=trade.signal_date,
         execution_date=trade.execution_date,
-        action=trade.action.value,
-        reason=trade.reason.value,
+        action=trade.action,
+        reason=trade.reason,
         quantity=trade.quantity,
         price=trade.price,
         gross_amount=trade.gross_amount,
         fee=trade.fee,
         slippage=trade.slippage,
         tax=trade.tax,
-        skip_reason=trade.skip_reason.value if trade.skip_reason else None,
+        skip_reason=trade.skip_reason,
     )
 
 

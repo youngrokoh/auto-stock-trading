@@ -12,19 +12,15 @@ from sqlalchemy.ext.asyncio import (
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
 from auto_stock_trading.adapters.database.strategy_backtest_rows import (
     BacktestEquityRow,
+    BacktestRunInstrumentRow,
     BacktestRunRow,
     BacktestTradeRow,
-)
-from auto_stock_trading.domain.strategies.backtest import (
-    BacktestTrade,
-    TradeSkipReason,
 )
 from auto_stock_trading.domain.strategies.backtest_metrics import (
     BacktestMetrics,
     EquityPoint,
 )
-from auto_stock_trading.domain.strategies.ma_rsi import SignalAction, SignalReason
-from auto_stock_trading.domain.strategies.records import BacktestRunRecord
+from auto_stock_trading.domain.strategies.records import BacktestRunRecord, BacktestTradeRecord
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -61,7 +57,12 @@ def _metrics_from(row: BacktestRunRow) -> BacktestMetrics | None:
     )
 
 
-def _record_from(row: BacktestRunRow, symbol: str) -> BacktestRunRecord:
+def _record_from(
+    row: BacktestRunRow,
+    symbol: str | None,
+    universe: tuple[str, ...] = (),
+    traded: tuple[str, ...] = (),
+) -> BacktestRunRecord:
     return BacktestRunRecord(
         run_id=row.id,
         strategy_name=row.strategy_name,
@@ -83,23 +84,26 @@ def _record_from(row: BacktestRunRow, symbol: str) -> BacktestRunRecord:
         failure_code=row.failure_code,
         metrics=_metrics_from(row),
         created_at=row.created_at,
+        universe=universe,
+        traded_symbols=traded,
     )
 
 
-def _trade_from(row: BacktestTradeRow) -> BacktestTrade:
-    return BacktestTrade(
+def _trade_from(row: BacktestTradeRow) -> BacktestTradeRecord:
+    return BacktestTradeRecord(
         sequence=row.sequence,
+        symbol=row.symbol,
         signal_date=row.signal_date,
         execution_date=row.execution_date,
-        action=SignalAction(row.action),
-        reason=SignalReason(row.reason),
+        action=row.action,
+        reason=row.reason,
         quantity=row.quantity,
         price=row.price,
         gross_amount=row.gross_amount,
         fee=row.fee,
         slippage=row.slippage,
         tax=row.tax,
-        skip_reason=TradeSkipReason(row.skip_reason) if row.skip_reason else None,
+        skip_reason=row.skip_reason,
     )
 
 
@@ -128,27 +132,45 @@ class PostgresBacktestReader:
         return cls(None, sessions)
 
     async def runs(self, limit: int) -> tuple[BacktestRunRecord, ...]:
+        # 다종목 실행은 대표 종목이 없다. outer join이어야 목록에서 빠지지 않는다.
         statement = (
             select(BacktestRunRow, InstrumentRow.symbol)
-            .join(InstrumentRow, BacktestRunRow.instrument_id == InstrumentRow.id)
+            .outerjoin(InstrumentRow, BacktestRunRow.instrument_id == InstrumentRow.id)
             .order_by(BacktestRunRow.created_at.desc(), BacktestRunRow.id)
             .limit(limit)
         )
         async with self._sessions() as session:
             rows = (await session.execute(statement)).tuples().all()
-        return tuple(_record_from(row[0], row[1]) for row in rows)
+            return tuple(
+                [
+                    _record_from(
+                        row[0],
+                        row[1],
+                        await _universe(session, row[0].id),
+                        await _traded_symbols(session, row[0].id),
+                    )
+                    for row in rows
+                ]
+            )
 
     async def run(self, run_id: UUID) -> BacktestRunRecord | None:
         statement = (
             select(BacktestRunRow, InstrumentRow.symbol)
-            .join(InstrumentRow, BacktestRunRow.instrument_id == InstrumentRow.id)
+            .outerjoin(InstrumentRow, BacktestRunRow.instrument_id == InstrumentRow.id)
             .where(BacktestRunRow.id == run_id)
         )
         async with self._sessions() as session:
             row = (await session.execute(statement)).tuples().one_or_none()
-        return _record_from(row[0], row[1]) if row is not None else None
+            if row is None:
+                return None
+            return _record_from(
+                row[0],
+                row[1],
+                await _universe(session, run_id),
+                await _traded_symbols(session, run_id),
+            )
 
-    async def trades(self, run_id: UUID) -> tuple[BacktestTrade, ...]:
+    async def trades(self, run_id: UUID) -> tuple[BacktestTradeRecord, ...]:
         statement = (
             select(BacktestTradeRow)
             .where(BacktestTradeRow.run_id == run_id)
@@ -179,3 +201,27 @@ class PostgresBacktestReader:
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
+
+
+async def _universe(session: AsyncSession, run_id: UUID) -> tuple[str, ...]:
+    rows = await session.scalars(
+        select(BacktestRunInstrumentRow.symbol)
+        .where(BacktestRunInstrumentRow.run_id == run_id)
+        .order_by(BacktestRunInstrumentRow.symbol)
+    )
+    return tuple(rows.all())
+
+
+async def _traded_symbols(session: AsyncSession, run_id: UUID) -> tuple[str, ...]:
+    """실제로 체결된 종목. 유니버스 200개를 다 보여주는 것보다 결과 이해에 쓸모가 있다."""
+    rows = await session.scalars(
+        select(BacktestTradeRow.symbol)
+        .where(
+            BacktestTradeRow.run_id == run_id,
+            BacktestTradeRow.symbol.is_not(None),
+            BacktestTradeRow.skip_reason.is_(None),
+        )
+        .distinct()
+        .order_by(BacktestTradeRow.symbol)
+    )
+    return tuple(symbol for symbol in rows.all() if symbol is not None)

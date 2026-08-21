@@ -43,6 +43,8 @@ const runPayload = {
   strategy_name: "ma-rsi",
   strategy_version: "1",
   symbol: "005930",
+  traded_symbols: [],
+  universe_size: 0,
 };
 
 describe("backtest schemas", () => {
@@ -85,6 +87,7 @@ describe("backtest schemas", () => {
           sequence: 2,
           signal_date: "2026-08-13",
           skip_reason: "window_end",
+          symbol: null,
           slippage: "0",
           tax: "0",
         },
@@ -131,5 +134,22 @@ describe("display derivations", () => {
     expect(drawdown[1]).toBe(0);
     expect(drawdown[2]).toBeCloseTo(-10, 10);
     expect(drawdown[3]).toBeCloseTo(-5, 10);
+  });
+
+  it("다종목 실행은 대표 종목 없이 유니버스로 식별된다", () => {
+    // 실측 결함: 읽기 API가 대표 종목 없는 실행을 목록에서 빼버려 화면에 보이지 않았다.
+    const portfolio = {
+      ...runPayload,
+      strategy_name: "cross-momentum",
+      symbol: null,
+      traded_symbols: ["000660", "278470"],
+      universe_size: 200,
+    };
+
+    const parsed = parseBacktestRuns({ runs: [portfolio] });
+
+    expect(parsed.runs[0]?.symbol).toBeNull();
+    expect(parsed.runs[0]?.universe_size).toBe(200);
+    expect(parsed.runs[0]?.traded_symbols).toEqual(["000660", "278470"]);
   });
 });
