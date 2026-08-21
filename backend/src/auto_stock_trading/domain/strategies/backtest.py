@@ -46,6 +46,8 @@ class BacktestFailure(StrEnum):
     INVALID_INPUT = "invalid_input"
     # 창 전체에 후보가 하나도 없다. 0% 수익률로 완주하면 실패를 성과로 오해한다(계약 v3).
     NO_SIGNAL_CANDIDATE = "no_signal_candidate"
+    # 백테스트 창이 모델 학습 창(엠바고 포함)과 겹친다. 표본 밖 성과가 아니다(ADR-0012).
+    TRAIN_WINDOW_OVERLAP = "train_window_overlap"
 
 
 class TradeSkipReason(StrEnum):
