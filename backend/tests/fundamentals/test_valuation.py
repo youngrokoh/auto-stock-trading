@@ -34,10 +34,13 @@ def _report() -> VersionedFinancialReport:
     )
 
 
-def _eps_line(thstrm: str | None) -> FinancialStatementLine:
+def _eps_line(
+    thstrm: str | None,
+    sj_div: StatementDivision = StatementDivision.INCOME_STATEMENT,
+) -> FinancialStatementLine:
     return FinancialStatementLine(
         line_seq=1,
-        sj_div=StatementDivision.INCOME_STATEMENT,
+        sj_div=sj_div,
         account_id="ifrs-full_BasicEarningsLossPerShare",
         account_nm="기본주당이익",
         account_detail=None,
@@ -154,3 +157,17 @@ def test_empty_eps_amount_fails_with_missing_amount() -> None:
     reasons = {item.key: item.unavailable_reason for item in valuation.items}
     assert reasons["eps"] is IndicatorUnavailableReason.MISSING_AMOUNT
     assert reasons["per"] is IndicatorUnavailableReason.MISSING_AMOUNT
+
+
+def test_eps_falls_back_to_the_comprehensive_income_statement() -> None:
+    """실측 147/198 회사는 기본주당이익을 포괄손익계산서에만 싣는다."""
+    valuation = compute_valuation(
+        _report(),
+        (_eps_line("11", StatementDivision.COMPREHENSIVE_INCOME),),
+        _quote(),
+        _shares(),
+    )
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value == Decimal(11)
+    assert items["per"].unavailable_reason is None

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from auto_stock_trading.domain.fundamentals.financial_statements import StatementDivision
 from auto_stock_trading.domain.fundamentals.indicators import IndicatorUnavailableReason
@@ -69,12 +69,21 @@ class _EpsFact:
     reason: IndicatorUnavailableReason | None
 
 
+# 손익 계정은 회사의 제출 형식에 따라 IS 또는 CIS에 실린다(지표 계약 §입력 계정).
+_EPS_DIVISIONS: Final = (
+    StatementDivision.INCOME_STATEMENT,
+    StatementDivision.COMPREHENSIVE_INCOME,
+)
+
+
 def _resolve_eps(lines: tuple[FinancialStatementLine, ...]) -> _EpsFact:
-    matches = [
-        line
-        for line in lines
-        if line.sj_div is StatementDivision.INCOME_STATEMENT and line.account_id == _EPS_ACCOUNT_ID
-    ]
+    matches: list[FinancialStatementLine] = []
+    for division in _EPS_DIVISIONS:
+        matches = [
+            line for line in lines if line.sj_div is division and line.account_id == _EPS_ACCOUNT_ID
+        ]
+        if matches:
+            break
     if len(matches) > 1:
         return _EpsFact(value=None, reason=IndicatorUnavailableReason.AMBIGUOUS_ACCOUNT)
     if not matches:

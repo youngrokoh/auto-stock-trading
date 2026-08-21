@@ -3,6 +3,7 @@
 - 상태: 구현 기준
 - 작성일: 2026-08-17
 - 승인: 사용자가 2026-08-17에 재무 기반 지표(성장성·수익성·안정성) 우선, ROE 지배주주 기준과 이 계약을 구현 기준으로 승인. 같은 날 상장주식수 버전 사실 저장과 가치지표(EPS 원문·PER·시가총액, BPS·PBR은 우선주 반영 설계 확정 시 후속)를 추가 승인
+- 개정 승인: 사용자가 2026-08-21에 손익 계정의 `IS` → `CIS` 우선순위 조회를 승인(유니버스 실수집에서 198종목 중 147종목이 포괄손익계산서만 제출함을 확인)
 - 관련 계약: [재무제표 데이터 계약](financial-statement-data-contract.md)
 - 관련 로드맵: [구현 로드맵](../plan/implementation-roadmap.md) 4단계
 
@@ -31,12 +32,22 @@
 보고서 안에서 재무제표 구분(`sj_div`)과 표준 계정 ID(`account_id`)로 식별한다. 같은 구분에
 같은 계정 ID가 두 번 이상 나타나면 모호하므로 사용하지 않는다(fail-closed).
 
+손익 계정은 회사가 고른 제출 형식에 따라 손익계산서(`IS`) 또는 포괄손익계산서(`CIS`)에 실린다.
+따라서 `IS`를 먼저 찾고 없으면 `CIS`에서 찾는다(2026-08-21 사용자 승인). 규칙 세 가지:
+
+1. 순서는 고정이다. `IS`에 계정이 있으면 `CIS`를 보지 않는다. 두 구분에 모두 있는 회사(당기순이익 등)에서 값이 흔들리지 않게 하기 위한 것이다.
+2. 모호성 판정은 실제로 사용한 구분 안에서만 한다. `IS`에 1행, `CIS`에 여러 행이면 `IS` 값을 쓴다.
+3. 응답의 입력 계정은 **실제로 사용한 `sj_div`**를 담는다. 어느 재무제표에서 읽었는지 감출 수 없다. 두 구분 모두 없으면 `MISSING_ACCOUNT`이며 이때 표기는 선언 순서의 첫 구분(`IS`)이다.
+
+자본변동표(`SCE`)와 현금흐름표(`CF`)에도 당기순이익이 나타나지만 사용하지 않는다. `SCE`는 같은
+계정 ID를 자본 구성요소별 여러 행이 공유해 집계가 틀릴 수 있음을 실측했다.
+
 | 입력 | `sj_div` | `account_id` |
 |---|---|---|
-| 매출액 | `IS` | `ifrs-full_Revenue` |
-| 영업이익 | `IS` | `dart_OperatingIncomeLoss` |
-| 당기순이익 | `IS` | `ifrs-full_ProfitLoss` |
-| 지배주주순이익 | `IS` | `ifrs-full_ProfitLossAttributableToOwnersOfParent` |
+| 매출액 | `IS` → `CIS` | `ifrs-full_Revenue` |
+| 영업이익 | `IS` → `CIS` | `dart_OperatingIncomeLoss` |
+| 당기순이익 | `IS` → `CIS` | `ifrs-full_ProfitLoss` |
+| 지배주주순이익 | `IS` → `CIS` | `ifrs-full_ProfitLossAttributableToOwnersOfParent` |
 | 자산총계 | `BS` | `ifrs-full_Assets` |
 | 부채총계 | `BS` | `ifrs-full_Liabilities` |
 | 자본총계 | `BS` | `ifrs-full_Equity` |
@@ -82,7 +93,7 @@
 
 | 키 | 이름 | 단위 | 수식 |
 |---|---|---|---|
-| `eps` | 기본주당이익 | 원 | 최근 연간 보고서의 `기본주당이익`(`IS`, `ifrs-full_BasicEarningsLossPerShare`) 원문 값. 파생하지 않는다 |
+| `eps` | 기본주당이익 | 원 | 최근 연간 보고서의 `기본주당이익`(`IS` → `CIS`, `ifrs-full_BasicEarningsLossPerShare`) 원문 값. 파생하지 않는다 |
 | `per` | PER | 배 | 현재가 ÷ 최근 연간 기본주당이익 |
 | `market_cap` | 시가총액(보통주) | 원 | 현재가 × 보통주 상장주식수 |
 

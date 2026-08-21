@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from auto_stock_trading.domain.fundamentals.financial_statements import StatementDivision
 
@@ -78,32 +78,36 @@ class AnnualIndicators:
 @dataclass(frozen=True, slots=True)
 class _Account:
     name: str
-    sj_div: StatementDivision
+    # 우선순위 순서다. 앞 구분에서 계정을 찾으면 뒤 구분은 보지 않는다(지표 계약 §입력 계정).
+    divisions: tuple[StatementDivision, ...]
     account_id: str
 
 
-_REVENUE = _Account("매출액", StatementDivision.INCOME_STATEMENT, "ifrs-full_Revenue")
-_OPERATING_INCOME = _Account(
-    "영업이익", StatementDivision.INCOME_STATEMENT, "dart_OperatingIncomeLoss"
+# 손익 계정은 회사의 제출 형식에 따라 IS 또는 CIS에 실린다(실측 51 대 147).
+_PROFIT_DIVISIONS: Final = (
+    StatementDivision.INCOME_STATEMENT,
+    StatementDivision.COMPREHENSIVE_INCOME,
 )
-_NET_INCOME = _Account("당기순이익", StatementDivision.INCOME_STATEMENT, "ifrs-full_ProfitLoss")
+_BALANCE_DIVISIONS: Final = (StatementDivision.BALANCE_SHEET,)
+
+_REVENUE = _Account("매출액", _PROFIT_DIVISIONS, "ifrs-full_Revenue")
+_OPERATING_INCOME = _Account("영업이익", _PROFIT_DIVISIONS, "dart_OperatingIncomeLoss")
+_NET_INCOME = _Account("당기순이익", _PROFIT_DIVISIONS, "ifrs-full_ProfitLoss")
 _NET_INCOME_OWNERS = _Account(
     "지배주주순이익",
-    StatementDivision.INCOME_STATEMENT,
+    _PROFIT_DIVISIONS,
     "ifrs-full_ProfitLossAttributableToOwnersOfParent",
 )
-_ASSETS = _Account("자산총계", StatementDivision.BALANCE_SHEET, "ifrs-full_Assets")
-_LIABILITIES = _Account("부채총계", StatementDivision.BALANCE_SHEET, "ifrs-full_Liabilities")
-_EQUITY = _Account("자본총계", StatementDivision.BALANCE_SHEET, "ifrs-full_Equity")
+_ASSETS = _Account("자산총계", _BALANCE_DIVISIONS, "ifrs-full_Assets")
+_LIABILITIES = _Account("부채총계", _BALANCE_DIVISIONS, "ifrs-full_Liabilities")
+_EQUITY = _Account("자본총계", _BALANCE_DIVISIONS, "ifrs-full_Equity")
 _EQUITY_OWNERS = _Account(
     "지배기업 소유주지분",
-    StatementDivision.BALANCE_SHEET,
+    _BALANCE_DIVISIONS,
     "ifrs-full_EquityAttributableToOwnersOfParent",
 )
-_CURRENT_ASSETS = _Account("유동자산", StatementDivision.BALANCE_SHEET, "ifrs-full_CurrentAssets")
-_CURRENT_LIABILITIES = _Account(
-    "유동부채", StatementDivision.BALANCE_SHEET, "ifrs-full_CurrentLiabilities"
-)
+_CURRENT_ASSETS = _Account("유동자산", _BALANCE_DIVISIONS, "ifrs-full_CurrentAssets")
+_CURRENT_LIABILITIES = _Account("유동부채", _BALANCE_DIVISIONS, "ifrs-full_CurrentLiabilities")
 
 _FIGURES: tuple[tuple[str, _Account], ...] = (
     ("revenue", _REVENUE),
@@ -131,11 +135,7 @@ def _resolve(
     account: _Account,
     period: AmountPeriod,
 ) -> _ResolvedInput:
-    matches = [
-        line
-        for line in lines
-        if line.sj_div is account.sj_div and line.account_id == account.account_id
-    ]
+    division, matches = _matching_lines(lines, account)
     amount: Decimal | None = None
     reason: IndicatorUnavailableReason | None = None
     if len(matches) > 1:
@@ -149,12 +149,28 @@ def _resolve(
             reason = IndicatorUnavailableReason.MISSING_AMOUNT
     spec = IndicatorInput(
         name=account.name,
-        sj_div=account.sj_div,
+        sj_div=division,
         account_id=account.account_id,
         period=period,
         amount=amount,
     )
     return _ResolvedInput(spec=spec, reason=reason)
+
+
+def _matching_lines(
+    lines: tuple[FinancialStatementLine, ...],
+    account: _Account,
+) -> tuple[StatementDivision, list[FinancialStatementLine]]:
+    """실제로 사용한 구분과 그 안의 후보 행을 돌려준다. 모호성은 사용한 구분 안에서만 본다."""
+    for division in account.divisions:
+        matches = [
+            line
+            for line in lines
+            if line.sj_div is division and line.account_id == account.account_id
+        ]
+        if matches:
+            return division, matches
+    return account.divisions[0], []
 
 
 def _percent(value: Decimal) -> Decimal:
@@ -274,7 +290,7 @@ def _figure(
     return FinancialFigure(
         key=key,
         name=account.name,
-        sj_div=account.sj_div,
+        sj_div=resolved.spec.sj_div,
         account_id=account.account_id,
         amount=resolved.spec.amount,
     )

@@ -248,3 +248,98 @@ def test_matching_requires_the_statement_division_not_just_the_account_id() -> N
     reasons = _indicator_reasons(lines)
 
     assert reasons["revenue_growth"] is IndicatorUnavailableReason.MISSING_ACCOUNT
+
+
+def _cis_only_lines() -> tuple[FinancialStatementLine, ...]:
+    """손익계산서를 따로 내지 않고 포괄손익계산서만 제출한 회사(실측 147/198)."""
+    return tuple(
+        _line(
+            line.line_seq,
+            StatementDivision.COMPREHENSIVE_INCOME,
+            line.account_id,
+            line.account_nm,
+            amounts=(
+                None if line.thstrm_amount is None else str(line.thstrm_amount),
+                None if line.frmtrm_amount is None else str(line.frmtrm_amount),
+            ),
+        )
+        if line.sj_div is StatementDivision.INCOME_STATEMENT
+        else line
+        for line in _full_lines()
+    )
+
+
+def test_profit_accounts_fall_back_to_the_comprehensive_income_statement() -> None:
+    values = _indicator_values(_cis_only_lines())
+
+    assert values["revenue_growth"] == Decimal("20.00")
+    assert values["operating_margin"] == Decimal("12.50")
+    assert values["roe"] == Decimal("10.00")
+
+
+def test_the_used_division_is_reported_not_the_declared_one() -> None:
+    annual = compute_annual_indicators(_report(), _cis_only_lines())
+
+    revenue_figure = next(item for item in annual.figures if item.key == "revenue")
+    growth = next(item for item in annual.indicators if item.key == "revenue_growth")
+
+    assert revenue_figure.sj_div is StatementDivision.COMPREHENSIVE_INCOME
+    assert {item.sj_div for item in growth.inputs} == {StatementDivision.COMPREHENSIVE_INCOME}
+    assert (
+        next(item for item in annual.figures if item.key == "assets").sj_div
+        is StatementDivision.BALANCE_SHEET
+    )
+
+
+def test_the_income_statement_wins_when_both_divisions_carry_the_account() -> None:
+    """두 구분에 모두 있는 회사에서 값이 흔들리면 기존 검증값이 무효가 된다."""
+    lines = (
+        *_full_lines(),
+        _line(
+            11,
+            StatementDivision.COMPREHENSIVE_INCOME,
+            "ifrs-full_Revenue",
+            "매출액",
+            amounts=("9999", "9999"),
+        ),
+    )
+
+    annual = compute_annual_indicators(_report(), lines)
+    growth = next(item for item in annual.indicators if item.key == "revenue_growth")
+
+    assert growth.value == Decimal("20.00")
+    assert {item.sj_div for item in growth.inputs} == {StatementDivision.INCOME_STATEMENT}
+
+
+def test_ambiguity_is_judged_inside_the_division_actually_used() -> None:
+    lines = (
+        *_full_lines(),
+        _line(
+            11,
+            StatementDivision.COMPREHENSIVE_INCOME,
+            "ifrs-full_Revenue",
+            "매출액",
+            amounts=("111", "111"),
+        ),
+        _line(
+            12,
+            StatementDivision.COMPREHENSIVE_INCOME,
+            "ifrs-full_Revenue",
+            "매출액",
+            amounts=("222", "222"),
+        ),
+    )
+
+    reasons = _indicator_reasons(lines)
+
+    assert reasons["revenue_growth"] is None
+
+
+def test_neither_division_carrying_the_account_reports_the_declared_division() -> None:
+    lines = tuple(line for line in _full_lines() if line.account_id != "ifrs-full_Revenue")
+
+    annual = compute_annual_indicators(_report(), lines)
+    growth = next(item for item in annual.indicators if item.key == "revenue_growth")
+
+    assert growth.unavailable_reason is IndicatorUnavailableReason.MISSING_ACCOUNT
+    assert {item.sj_div for item in growth.inputs} == {StatementDivision.INCOME_STATEMENT}
