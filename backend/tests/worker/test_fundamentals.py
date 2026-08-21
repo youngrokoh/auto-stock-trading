@@ -5,6 +5,9 @@ import anyio
 import pytest
 
 from auto_stock_trading.adapters.disclosures.opendart_http import DartConfigurationError
+from auto_stock_trading.application.financial_statements_universe import (
+    UniverseStatementResult,
+)
 from auto_stock_trading.settings.runtime import Environment, Settings
 from auto_stock_trading.worker import fundamentals
 
@@ -34,3 +37,28 @@ def test_cli_routes_financial_statement_collection() -> None:
         fundamentals.main()
 
     collect.assert_awaited_once_with("005930", "00126380")
+
+
+def test_cli_routes_universe_collection_with_the_resume_flag() -> None:
+    """`--only-missing`이 전달되지 않으면 이어받기가 조용히 전량 재조회가 된다."""
+    collect = AsyncMock(
+        return_value=UniverseStatementResult(
+            symbols=200,
+            saved=2646,
+            skipped=554,
+            existing=0,
+            failed_symbols=(),
+            missing_corp_codes=(),
+            remaining_symbols=(),
+            quota_exhausted=False,
+        )
+    )
+    argv = ["fundamentals", "--universe-statements", "--only-missing"]
+
+    with (
+        patch.object(fundamentals, "collect_universe_financial_statements", new=collect),
+        patch.object(sys, "argv", argv),
+    ):
+        fundamentals.main()
+
+    collect.assert_awaited_once_with(only_missing=True)

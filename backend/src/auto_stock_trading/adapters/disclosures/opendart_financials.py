@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, final
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from auto_stock_trading.adapters.disclosures.dart_cash_dividend import DartContractError
+from auto_stock_trading.application.financial_statements import SourceQuotaExceededError
 from auto_stock_trading.domain.fundamentals.financial_statements import (
     FinancialRawResponse,
     FinancialReport,
@@ -23,6 +24,8 @@ if TYPE_CHECKING:
 DART_FINANCIALS_ENDPOINT = "/api/fnlttSinglAcntAll.json"
 _STATUS_OK: Final = "000"
 _STATUS_NO_DATA: Final = "013"
+# 일 요청 한도 초과. 대기로 회복되지 않으므로 스윕을 중단해야 한다(재무제표 계약 §유니버스 6).
+_STATUS_QUOTA: Final = "020"
 _UNMAPPED_ACCOUNT: Final = "-표준계정코드 미사용-"
 _EMPTY_VALUES: Final = ("", "-")
 
@@ -100,6 +103,8 @@ class DartFinancialStatementAdapter:
         response = _parse_response(payload)
         if response.status == _STATUS_NO_DATA:
             return FinancialReportObservation(raw=raw, report=None)
+        if response.status == _STATUS_QUOTA:
+            raise SourceQuotaExceededError(_STATUS_QUOTA)
         if response.status != _STATUS_OK or not response.list:
             message = f"DART financial statement status was not acceptable: {response.status}"
             raise DartContractError(message)

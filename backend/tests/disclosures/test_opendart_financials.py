@@ -14,6 +14,7 @@ from auto_stock_trading.adapters.disclosures.opendart_financials import (
     FinancialStatementTarget,
 )
 from auto_stock_trading.adapters.disclosures.opendart_http import DartHttpClient
+from auto_stock_trading.application.financial_statements import SourceQuotaExceededError
 from auto_stock_trading.domain.fundamentals.financial_statements import (
     FsDivision,
     ReportCode,
@@ -131,5 +132,19 @@ def test_contract_violations_fail_closed() -> None:
                 _ = await mixed.fetch_report(2025, ReportCode.ANNUAL, FsDivision.CONSOLIDATED)
         finally:
             await mixed.close()
+
+    anyio.run(run)
+
+
+def test_request_quota_exhaustion_is_distinct_from_a_contract_violation() -> None:
+    """일 요청 한도 초과(020)는 종목 실패가 아니라 스윕 중단 사유다(계약 §유니버스 6)."""
+
+    async def run() -> None:
+        adapter, _ = _adapter("fnltt_quota_exceeded.json")
+        try:
+            with pytest.raises(SourceQuotaExceededError):
+                _ = await adapter.fetch_report(2025, ReportCode.ANNUAL, FsDivision.CONSOLIDATED)
+        finally:
+            await adapter.close()
 
     anyio.run(run)

@@ -45,6 +45,8 @@ if TYPE_CHECKING:
 
 _SOURCE: Final = "DART"
 _OPERATION: Final = "financial_statements"
+# 스윕 진행 상태는 종목 상태와 구분해 남긴다(재무제표 계약 §유니버스 7).
+_SWEEP_OPERATION: Final = "universe_financial_statements"
 
 
 @final
@@ -130,6 +132,35 @@ class PostgresFinancialReportStore:
             _ = await session.execute(
                 sync_failed(
                     SyncTarget(_SOURCE, _OPERATION, target.symbol),
+                    failed_at,
+                    error_code,
+                    error_message,
+                )
+            )
+
+    async def mark_sweep_started(self, key: str, started_at: datetime) -> None:
+        async with self._sessions.begin() as session:
+            _ = await session.execute(
+                sync_started(SyncTarget(_SOURCE, _SWEEP_OPERATION, key), started_at)
+            )
+
+    async def mark_sweep_succeeded(self, key: str, completed_at: datetime) -> None:
+        async with self._sessions.begin() as session:
+            _ = await session.execute(
+                sync_succeeded(SyncTarget(_SOURCE, _SWEEP_OPERATION, key), completed_at)
+            )
+
+    async def mark_sweep_failed(
+        self,
+        key: str,
+        failed_at: datetime,
+        error_code: str,
+        error_message: str,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            _ = await session.execute(
+                sync_failed(
+                    SyncTarget(_SOURCE, _SWEEP_OPERATION, key),
                     failed_at,
                     error_code,
                     error_message,
