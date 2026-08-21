@@ -20,6 +20,7 @@
 | [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md) | `docs/data/investor-flow-disclosure-contract.md` | 구현 기준 |
 | [국내 시장 달력 데이터 계약](../data/market-calendar-data-contract.md) | `docs/data/market-calendar-data-contract.md` | 구현 기준 |
 | [국내 분봉 데이터 계약](../data/minute-bar-data-contract.md) | `docs/data/minute-bar-data-contract.md` | 구현 기준 |
+| [ML 신호 데이터·모델 계약](../data/ml-signal-contract.md) | `docs/data/ml-signal-contract.md` | 구현 기준 |
 | [주문 계획·위험검사 데이터 계약](../data/order-planning-risk-contract.md) | `docs/data/order-planning-risk-contract.md` | 구현 기준 |
 | [주문 제출·체결 동기화 계약](../data/order-submission-contract.md) | `docs/data/order-submission-contract.md` | 구현 기준 |
 | [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md) | `docs/data/realtime-fill-notification-contract.md` | 구현 기준 |
@@ -35,6 +36,7 @@
 | [ADR-0009: 실시간 체결통보 수신 경계](../decisions/0009-realtime-fill-notification.md) | `docs/decisions/0009-realtime-fill-notification.md` | 승인 |
 | [ADR-0010: 사람이 확인한 주문 대조 종결](../decisions/0010-human-attested-order-reconciliation.md) | `docs/decisions/0010-human-attested-order-reconciliation.md` | 승인 |
 | [ADR-0011: 모의투자 주문 정정 경계](../decisions/0011-paper-order-revision.md) | `docs/decisions/0011-paper-order-revision.md` | 승인 |
+| [ADR-0012: ML 신호의 전략 경계](../decisions/0012-ml-signal-boundary.md) | `docs/decisions/0012-ml-signal-boundary.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |

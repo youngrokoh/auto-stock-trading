@@ -379,6 +379,11 @@ PLANNED -> SUBMITTED -> PARTIALLY_FILLED -> FILLED
 
 이 항목은 대화에서 논의한 "OHLCV와 보조지표를 숫자 시계열로 변환해 학습"하는 범위다.
 
+2026-08-21에 설계 결정을 확정했다: 8단계는 8-2부터 시작하고, 일봉 이력을 2020-01-02까지 소급해
+여러 시장 국면을 확보하며, 목표는 20거래일 초과수익의 횡단면 순위이고, ML 신호는 별도 전략
+(`ml-rank`)으로만 실행한다. 세부는 [ML 신호 데이터·모델 계약](../data/ml-signal-contract.md)과
+[ADR-0012](../decisions/0012-ml-signal-boundary.md)에 있다.
+
 선행 의존성:
 
 ```text

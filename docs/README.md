@@ -132,6 +132,7 @@ Taskiq worker ── Valkey
 - [주문 계획·위험검사 데이터 계약](data/order-planning-risk-contract.md)
 - [주문 제출·체결 동기화 계약](data/order-submission-contract.md)
 - [실시간 체결통보 계약](data/realtime-fill-notification-contract.md)
+- [ML 신호 데이터·모델 계약](data/ml-signal-contract.md)
 
 #### Operations
 
@@ -163,6 +164,7 @@ Taskiq worker ── Valkey
 - [ADR-0009: 실시간 체결통보 수신 경계](decisions/0009-realtime-fill-notification.md)
 - [ADR-0010: 사람이 확인한 주문 대조 종결](decisions/0010-human-attested-order-reconciliation.md)
 - [ADR-0011: 모의투자 주문 정정 경계](decisions/0011-paper-order-revision.md)
+- [ADR-0012: ML 신호의 전략 경계](decisions/0012-ml-signal-boundary.md)
 
 #### Governance
 
