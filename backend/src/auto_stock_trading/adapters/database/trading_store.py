@@ -18,6 +18,7 @@ from auto_stock_trading.adapters.database.market_data_rows import (
 )
 from auto_stock_trading.adapters.database.trading_order_writes import (
     OrderTransition,
+    lock_order,
     next_event_sequence,
     tracked_order,
     tracked_orders_query,
@@ -403,10 +404,7 @@ class PostgresTradingStore:
     ) -> None:
         """상태를 바꾸지 않는 주문 이벤트(취소 요청·실패)를 append-only로 남긴다."""
         async with self._sessions.begin() as session:
-            current = await session.scalar(select(OrderRow).where(OrderRow.id == order_id))
-            if current is None:
-                message = f"unknown order {order_id}"
-                raise LookupError(message)
+            current = await lock_order(session, order_id)
             session.add(
                 OrderEventRow(
                     id=uuid4(),

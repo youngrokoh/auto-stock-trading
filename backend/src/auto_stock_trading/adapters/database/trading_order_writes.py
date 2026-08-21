@@ -78,6 +78,23 @@ def tracked_order(row: OrderRow, symbol: str, plan_id: UUID) -> TrackedOrder:
     )
 
 
+async def lock_order(session: AsyncSession, order_id: UUID) -> OrderRow:
+    """주문 행을 잠그고 돌려준다. 이벤트 시퀀스를 계산하기 전에 반드시 잠근다.
+
+    상태를 바꾸지 않는 이벤트 기록은 UPDATE가 없어 행이 잠기지 않는다. 그러면 체결통보
+    반영과 동시에 같은 `max(sequence)+1`을 잡아 유일 제약을 위반한다(2026-08-21 실측:
+    비상정지가 취소를 전달한 뒤 이벤트 기록에서 예외로 끝났다). 비상정지는 사람의 마지막
+    통제 수단이므로 부분 실패를 남기면 안 된다.
+    """
+    current = await session.scalar(
+        select(OrderRow).where(OrderRow.id == order_id).with_for_update()
+    )
+    if current is None:
+        message = f"unknown order {order_id}"
+        raise LookupError(message)
+    return current
+
+
 async def next_event_sequence(session: AsyncSession, order_id: UUID) -> int:
     highest = await session.scalar(
         select(func.max(OrderEventRow.sequence)).where(OrderEventRow.order_id == order_id)
@@ -98,10 +115,7 @@ class OrderTransition:
 async def transition_order(session: AsyncSession, transition: OrderTransition) -> None:
     """상태 그래프를 검증한 뒤 현재 상태 1행과 이벤트 로그를 함께 갱신한다."""
     order_id = transition.order_id
-    current = await session.scalar(select(OrderRow).where(OrderRow.id == order_id))
-    if current is None:
-        message = f"unknown order {order_id}"
-        raise LookupError(message)
+    current = await lock_order(session, order_id)
     previous = OrderState(current.state)
     requested = next_order_state(previous, transition.state)
     _ = await session.execute(

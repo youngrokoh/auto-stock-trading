@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
 from auto_stock_trading.adapters.database.market_data_rows import RawApiResponseRow
 from auto_stock_trading.adapters.database.trading_order_writes import (
     broker_order_query,
+    lock_order,
     next_event_sequence,
     tracked_order,
 )
@@ -178,7 +179,8 @@ class PostgresRevisionStore:
         reason_code: str,
         previous_broker_order_id: str | None,
     ) -> None:
-        state = await session.scalar(select(OrderRow.state).where(OrderRow.id == record.order_id))
+        locked = await lock_order(session, record.order_id)
+        state = locked.state
         session.add(
             OrderEventRow(
                 id=uuid4(),
