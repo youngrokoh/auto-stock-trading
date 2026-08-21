@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         VersionedCorporateAction,
     )
     from auto_stock_trading.domain.market_data.models import VersionedDailyBar
+    from auto_stock_trading.domain.strategies.composite_rank import UsedReport
 
 
 def bar_version_hash(bars: tuple[VersionedDailyBar, ...]) -> str:
@@ -35,6 +36,18 @@ def action_version_hash(actions: tuple[tuple[date, VersionedCorporateAction], ..
         for ex_date, item in sorted(
             actions,
             key=lambda entry: (entry[0], str(entry[1].action_key)),
+        )
+    )
+    return hashlib.sha256(lines.encode("utf-8")).hexdigest()
+
+
+def report_version_hash(reports: tuple[UsedReport, ...]) -> str:
+    """종합 순위가 실제로 쓴 사업보고서 계보. 접수번호가 버전을 유일하게 가리킨다."""
+    lines = "\n".join(
+        f"{item.symbol}:{item.bsns_year}:{item.reprt_code}:{item.fs_div}:{item.rcept_no}"
+        for item in sorted(
+            reports,
+            key=lambda item: (item.symbol, item.bsns_year, item.reprt_code, item.fs_div),
         )
     )
     return hashlib.sha256(lines.encode("utf-8")).hexdigest()

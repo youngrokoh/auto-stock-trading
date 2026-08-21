@@ -28,6 +28,7 @@ const runSchema = z.strictObject({
   failure_code: z.string().nullable(),
   initial_cash: decimal,
   input_bar_version_hash: z.string(),
+  input_report_version_hash: z.string().nullable(),
   metrics: metricsSchema.nullable(),
   parameters_json: z.string().min(1),
   range_end: isoDate,

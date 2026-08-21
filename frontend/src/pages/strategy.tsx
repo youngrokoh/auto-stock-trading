@@ -510,6 +510,14 @@ export const Strategy = () => {
                       <dd>{shortHash(run.action_version_hash)}</dd>
                     </div>
                     <div>
+                      <dt>재무 보고서 해시</dt>
+                      <dd>
+                        {run.input_report_version_hash === null
+                          ? "재무 요인 미사용"
+                          : shortHash(run.input_report_version_hash)}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>신호 데이터셋</dt>
                       <dd>{run.signal_dataset_id === null ? "—" : run.signal_dataset_id}</dd>
                     </div>

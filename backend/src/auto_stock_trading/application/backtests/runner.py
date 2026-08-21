@@ -181,6 +181,7 @@ class BacktestRunner:
             cost_rule_versions="[]",
             input_bar_version_hash="",
             action_version_hash="",
+            input_report_version_hash=None,
             signal_dataset_id=None,
             benchmark_dataset_id=None,
             status="failed",

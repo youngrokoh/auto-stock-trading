@@ -76,6 +76,11 @@ _EPS_DIVISIONS: Final = (
 )
 
 
+def basic_eps(lines: tuple[FinancialStatementLine, ...]) -> Decimal | None:
+    """공시 기본주당이익 원문. 가치지표와 종합 순위 전략이 같은 정의를 쓰게 한다."""
+    return _resolve_eps(lines).value
+
+
 def _resolve_eps(lines: tuple[FinancialStatementLine, ...]) -> _EpsFact:
     matches: list[FinancialStatementLine] = []
     for division in _EPS_DIVISIONS:

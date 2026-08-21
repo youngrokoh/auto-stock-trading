@@ -7,12 +7,12 @@ import pytest
 from auto_stock_trading.domain.market_data.models import ProductType
 from auto_stock_trading.domain.strategies.backtest import ExecutionBar
 from auto_stock_trading.domain.strategies.costs import KrxMarket
-from auto_stock_trading.domain.strategies.momentum import RankedSymbol, Rebalance
 from auto_stock_trading.domain.strategies.portfolio_backtest import (
     PortfolioInputs,
     PortfolioSkipReason,
     run_portfolio_backtest,
 )
+from auto_stock_trading.domain.strategies.ranking import RankedSymbol, Rebalance
 
 _DATES: Final = (
     date(2025, 1, 2),
@@ -54,7 +54,7 @@ def _inputs(
 def _rebalance(day: date, *symbols: str) -> Rebalance:
     return Rebalance(
         signal_date=day,
-        selected=tuple(RankedSymbol(symbol=symbol, momentum=Decimal("0.10")) for symbol in symbols),
+        selected=tuple(RankedSymbol(symbol=symbol, score=Decimal("0.10")) for symbol in symbols),
     )
 
 

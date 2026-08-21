@@ -24,9 +24,12 @@
   초기 현금, 신호 가격 방식(`signal_method`), 엔진 알고리즘 버전, 비용 규칙 버전 목록과 입력
   데이터 계보(입력 일봉 버전 해시 `trading_date:version` sha256, 기업행사 버전 해시
   `ex_date:action_key:version` sha256, 신호·벤치마크 수정주가 데이터셋 ID)를 항상 포함한다.
+- 재무 요인을 쓰는 실행은 `input_report_version_hash`(사용한 사업보고서
+  `종목:사업연도:보고서유형:연결구분:접수번호` sha256)를 함께 포함한다. 재무 요인을 쓰지 않는
+  전략은 `null`이다.
 - 실패한 실행도 `status="failed"`와 계약의 사유 코드(`missing_confirmed_bar`,
   `missing_adjusted_dataset`, `missing_calendar_coverage`, `uncovered_cost_date`,
-  `lookahead_input`, `invalid_input`)로 조회된다. 실패 실행의 `metrics`는 `null`이고 체결·NAV는
+  `lookahead_input`, `invalid_input`, `no_signal_candidate`)로 조회된다. 실패 실행의 `metrics`는 `null`이고 체결·NAV는
   빈 목록이다.
 - 성과 지표는 총수익률·비용 전 수익률·벤치마크 수익률·초과수익·MDD(음수 퍼센트)·샤프지수
   (표준편차 0이면 `null`)·연환산 회전율과 수수료·슬리피지·세금 합계, 체결 건수다. 금액과

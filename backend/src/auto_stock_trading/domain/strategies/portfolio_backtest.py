@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from auto_stock_trading.domain.strategies.backtest import ExecutionBar
     from auto_stock_trading.domain.strategies.backtest_metrics import BacktestMetrics
     from auto_stock_trading.domain.strategies.costs import KrxMarket
-    from auto_stock_trading.domain.strategies.momentum import Rebalance
+    from auto_stock_trading.domain.strategies.ranking import Rebalance
 
 PORTFOLIO_ENGINE_VERSION: Final = "portfolio-1"
 

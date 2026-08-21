@@ -44,6 +44,8 @@ class BacktestFailure(StrEnum):
     UNCOVERED_COST_DATE = "uncovered_cost_date"
     LOOKAHEAD_INPUT = "lookahead_input"
     INVALID_INPUT = "invalid_input"
+    # 창 전체에 후보가 하나도 없다. 0% 수익률로 완주하면 실패를 성과로 오해한다(계약 v3).
+    NO_SIGNAL_CANDIDATE = "no_signal_candidate"
 
 
 class TradeSkipReason(StrEnum):

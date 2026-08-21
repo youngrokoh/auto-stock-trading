@@ -7,8 +7,10 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from auto_stock_trading.domain.strategies.ranking import RankedSymbol, Rebalance, SymbolSeries
+
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
     from datetime import date
     from decimal import Decimal
 
@@ -26,36 +28,6 @@ class MomentumParameters:
             message = "momentum holdings must be at least 1"
             raise ValueError(message)
         return self
-
-
-@dataclass(frozen=True, slots=True)
-class SymbolSeries:
-    """종목 하나의 확정 종가. 없는 날짜는 확정 일봉이 없다는 뜻이다."""
-
-    symbol: str
-    closes: Mapping[date, Decimal]
-
-
-@dataclass(frozen=True, slots=True)
-class RankedSymbol:
-    symbol: str
-    momentum: Decimal
-
-
-@dataclass(frozen=True, slots=True)
-class Rebalance:
-    signal_date: date
-    selected: tuple[RankedSymbol, ...]
-
-
-def rebalance_dates(trading_dates: Sequence[date]) -> tuple[date, ...]:
-    """각 달의 마지막 거래일. 창의 마지막 거래일도 회차로 본다."""
-    dates = tuple(trading_dates)
-    return tuple(
-        current
-        for index, current in enumerate(dates)
-        if index + 1 == len(dates) or dates[index + 1].month != current.month
-    )
 
 
 def _momentum(series: SymbolSeries, signal_date: date, basis_date: date) -> Decimal | None:
@@ -107,9 +79,9 @@ def _ranked(
     basis_date: date,
 ) -> list[RankedSymbol]:
     candidates = [
-        RankedSymbol(symbol=series.symbol, momentum=value)
+        RankedSymbol(symbol=series.symbol, score=value)
         for series in universe
         if (value := _momentum(series, signal_date, basis_date)) is not None
     ]
-    candidates.sort(key=lambda item: (-item.momentum, item.symbol))
+    candidates.sort(key=lambda item: (-item.score, item.symbol))
     return candidates

@@ -42,20 +42,16 @@ from auto_stock_trading.domain.strategies.costs import (
     UncoveredCostDateError,
     cost_rule_versions_for_window,
 )
-from auto_stock_trading.domain.strategies.momentum import (
-    MomentumParameters,
-    SymbolSeries,
-    momentum_rebalances,
-    rebalance_dates,
-)
 from auto_stock_trading.domain.strategies.portfolio_backtest import (
     PORTFOLIO_ENGINE_VERSION,
     PortfolioInputs,
     run_portfolio_backtest,
 )
+from auto_stock_trading.domain.strategies.ranking import SymbolSeries, rebalance_dates
 from auto_stock_trading.domain.strategies.records import PortfolioRunRecord
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date, datetime
     from uuid import UUID
 
@@ -75,10 +71,7 @@ if TYPE_CHECKING:
         PortfolioResult,
         PortfolioTrade,
     )
-
-STRATEGY_NAME: Final = "cross-momentum"
-STRATEGY_VERSION: Final = "1"
-SIGNAL_METHOD: Final = "cross_sectional_momentum"
+    from auto_stock_trading.domain.strategies.ranking import Rebalance
 
 _COUNTRY: Final = "KR"
 _EXCHANGE: Final = "XKRX"
@@ -89,6 +82,37 @@ _CASH_ACTION_TYPES: Final = (
 
 
 @dataclass(frozen=True, slots=True)
+class SignalPlan:
+    """전략이 만든 회차와 그 전략만의 계보. 재무 요인이 없으면 해시는 비어 있다."""
+
+    rebalances: tuple[Rebalance, ...]
+    report_hash: str | None = None
+
+
+class PortfolioSignalSource(Protocol):
+    """전략의 회차 생성기. 순위 규칙 자체는 도메인 순수 함수가 갖는다."""
+
+    def plan(
+        self,
+        signal_dates: Sequence[date],
+        series: Sequence[SymbolSeries],
+        trading_dates: Sequence[date],
+    ) -> SignalPlan: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StrategySpec:
+    """실행 기록에 남는 전략 신원과 회차 생성기."""
+
+    name: str
+    version: str
+    signal_method: str
+    holdings: int
+    parameters_json: str
+    source: PortfolioSignalSource
+
+
+@dataclass(frozen=True, slots=True)
 class PortfolioRequest:
     universe: tuple[str, ...]
     benchmark_symbol: str
@@ -96,15 +120,7 @@ class PortfolioRequest:
     range_end: date
     initial_cash: Decimal
     benchmark_method: AdjustmentMethod
-    parameters: MomentumParameters
-
-
-def canonical_parameters_json(parameters: MomentumParameters) -> str:
-    return json.dumps(
-        {"holdings": parameters.holdings, "lookback_days": parameters.lookback_days},
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    strategy: StrategySpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,22 +151,23 @@ class PortfolioRunner:
     store: PortfolioStore
 
     async def run(self, request: PortfolioRequest, now: datetime) -> PortfolioRunRecord:
-        parameters = request.parameters.validated()
+        strategy = request.strategy
         base = PortfolioRunRecord(
             run_id=uuid4(),
-            strategy_name=STRATEGY_NAME,
-            strategy_version=STRATEGY_VERSION,
-            parameters_json=canonical_parameters_json(parameters),
+            strategy_name=strategy.name,
+            strategy_version=strategy.version,
+            parameters_json=strategy.parameters_json,
             universe=request.universe,
             benchmark_symbol=request.benchmark_symbol,
             range_start=request.range_start,
             range_end=request.range_end,
             initial_cash=request.initial_cash,
-            signal_method=SIGNAL_METHOD,
+            signal_method=strategy.signal_method,
             engine_version=PORTFOLIO_ENGINE_VERSION,
             cost_rule_versions="[]",
             input_bar_version_hash="",
             action_version_hash="",
+            input_report_version_hash=None,
             benchmark_dataset_id=None,
             status="failed",
             failure_code=None,
@@ -164,26 +181,24 @@ class PortfolioRunner:
             )
         except UncoveredCostDateError as error:
             return await self._save_failed(base, BacktestFailure.UNCOVERED_COST_DATE.value, error)
+        record = replace(base, cost_rule_versions=cost_rule_versions)
         try:
-            loaded = await self._load(request, parameters)
+            loaded = await self._load(request)
+            plan = strategy.source.plan(
+                rebalance_dates(loaded.trading_dates),
+                loaded.series,
+                loaded.trading_dates,
+            )
         except BacktestError as error:
-            record = replace(base, cost_rule_versions=cost_rule_versions)
             return await self._save_failed(record, error.failure.value, error)
         record = replace(
-            base,
-            cost_rule_versions=cost_rule_versions,
+            record,
             input_bar_version_hash=loaded.bar_hash,
             action_version_hash=loaded.action_hash,
+            input_report_version_hash=plan.report_hash,
             benchmark_dataset_id=loaded.benchmark_dataset_id,
         )
-        signals = rebalance_dates(loaded.trading_dates)
-        rebalances = momentum_rebalances(
-            signals,
-            loaded.series,
-            parameters,
-            loaded.trading_dates,
-        )
-        result = run_portfolio_backtest(loaded.inputs, rebalances)
+        result = run_portfolio_backtest(loaded.inputs, plan.rebalances)
         return await self._save_completed(record, result)
 
     async def _save_failed(
@@ -310,12 +325,7 @@ class PortfolioRunner:
             closes.append(close_price)
         return dataset.dataset_id, tuple(closes)
 
-    async def _load(
-        self,
-        request: PortfolioRequest,
-        parameters: MomentumParameters,
-    ) -> _Loaded:
-        _ = parameters
+    async def _load(self, request: PortfolioRequest) -> _Loaded:
         trading_dates = await self._trading_dates(request)
         benchmark_dataset_id, benchmark_closes = await self._benchmark_closes(
             request,
@@ -368,7 +378,7 @@ class PortfolioRunner:
             product_types=product_types,
             market=KrxMarket.KOSPI,
             initial_cash=request.initial_cash,
-            holdings=parameters.holdings,
+            holdings=request.strategy.holdings,
         )
         return _Loaded(
             inputs=inputs,

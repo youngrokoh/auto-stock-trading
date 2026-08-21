@@ -316,6 +316,14 @@ Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심
 `backtest_trade`·`backtest_equity`(리비전 `20260818_0013`)에 저장하고
 `/api/backtests`로 조회한다. 실행은 `worker/backtests.py` CLI로 수행한다.
 
+2026-08-21에 다종목 전략을 둘로 늘렸다. 횡단면 순위의 공용 타입·평균 순위 계산은
+`domain/strategies/ranking.py`, 요인은 `momentum.py`(모멘텀)와 `composite_rank.py`(가치·수익성·
+모멘텀 종합, 시점 정합 선택 포함)에 있다. 러너는 전략을 모르고
+`application/backtests/portfolio_strategies.py`가 전략 신원·canonical 파라미터·회차 생성기를
+묶어 주입한다. 재무 입력은 `adapters/database/strategy_fundamentals_reader.py`가 재무 지표 도메인
+함수를 그대로 호출해 만들며, 전략이 지표를 다시 정의하지 않는다. 실행 기록에는
+`input_report_version_hash`(리비전 `20260821_0024`)가 추가됐다.
+
 ## 6. 머신러닝과 생성형 AI
 
 ### 6.1 머신러닝

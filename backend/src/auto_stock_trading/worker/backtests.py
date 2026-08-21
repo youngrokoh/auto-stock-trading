@@ -20,12 +20,20 @@ from auto_stock_trading.adapters.database.market_data_stock_store import Postgre
 from auto_stock_trading.adapters.database.strategy_backtest_store import (
     PostgresBacktestStore,
 )
+from auto_stock_trading.adapters.database.strategy_fundamentals_reader import (
+    PostgresStrategyFundamentalsReader,
+)
 from auto_stock_trading.application.backtests.portfolio_runner import (
     PortfolioRequest,
     PortfolioRunner,
 )
+from auto_stock_trading.application.backtests.portfolio_strategies import (
+    composite_strategy,
+    momentum_strategy,
+)
 from auto_stock_trading.application.backtests.runner import BacktestRequest, BacktestRunner
 from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
+from auto_stock_trading.domain.strategies.composite_rank import CompositeParameters
 from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 from auto_stock_trading.domain.strategies.momentum import MomentumParameters
 from auto_stock_trading.settings.runtime import Settings
@@ -43,6 +51,7 @@ class Arguments(argparse.Namespace):
     rsi_period: int = 14
     rsi_overbought: str = "70"
     cross_momentum: bool = False
+    composite_rank: bool = False
     lookback_days: int = 126
     holdings: int = 10
 
@@ -73,9 +82,11 @@ async def run_cross_momentum_backtest(arguments: Arguments) -> str:
             range_end=date.fromisoformat(arguments.end_date),
             initial_cash=Decimal(arguments.initial_cash),
             benchmark_method=AdjustmentMethod(arguments.signal_method),
-            parameters=MomentumParameters(
-                lookback_days=arguments.lookback_days,
-                holdings=arguments.holdings,
+            strategy=momentum_strategy(
+                MomentumParameters(
+                    lookback_days=arguments.lookback_days,
+                    holdings=arguments.holdings,
+                )
             ),
         )
         record = await runner.run(request, datetime.now(UTC))
@@ -91,6 +102,62 @@ async def run_cross_momentum_backtest(arguments: Arguments) -> str:
         return f"failed run_id={record.run_id} failure_code={record.failure_code}"
     return (
         f"completed run_id={record.run_id} universe={len(record.universe)} "
+        f"total_return={metrics.total_return_pct} benchmark={metrics.benchmark_return_pct} "
+        f"mdd={metrics.mdd_pct} trades={metrics.trade_count} turnover={metrics.turnover_pct}"
+    )
+
+
+async def run_composite_rank_backtest(arguments: Arguments) -> str:
+    """저장된 유니버스 전 종목으로 가치·수익성·모멘텀 종합 순위 실행을 만든다(계약 v3)."""
+    settings = Settings()
+    database_url = settings.database_url.get_secret_value()
+    calendar = PostgresMarketCalendarRepository.from_url(database_url)
+    market_data = PostgresMarketDataRepository.from_url(database_url)
+    adjusted = PostgresAdjustedPriceReader.from_url(database_url)
+    corporate_actions = PostgresCorporateActionReader.from_url(database_url)
+    universe_store = PostgresStockStore.from_url(database_url)
+    fundamentals = PostgresStrategyFundamentalsReader.from_url(database_url)
+    store = PostgresBacktestStore.from_url(database_url)
+    runner = PortfolioRunner(
+        calendar=calendar,
+        market_data=market_data,
+        adjusted_prices=adjusted,
+        corporate_actions=corporate_actions,
+        store=store,
+    )
+    try:
+        universe = await universe_store.universe_symbols()
+        facts = await fundamentals.read_annual_facts(universe)
+        request = PortfolioRequest(
+            universe=universe,
+            benchmark_symbol=arguments.benchmark,
+            range_start=date.fromisoformat(arguments.start_date),
+            range_end=date.fromisoformat(arguments.end_date),
+            initial_cash=Decimal(arguments.initial_cash),
+            benchmark_method=AdjustmentMethod(arguments.signal_method),
+            strategy=composite_strategy(
+                CompositeParameters(
+                    lookback_days=arguments.lookback_days,
+                    holdings=arguments.holdings,
+                ),
+                facts,
+            ),
+        )
+        record = await runner.run(request, datetime.now(UTC))
+    finally:
+        await store.close()
+        await fundamentals.close()
+        await universe_store.close()
+        await corporate_actions.close()
+        await adjusted.close()
+        await market_data.close()
+        await calendar.close()
+    metrics = record.metrics
+    if metrics is None:
+        return f"failed run_id={record.run_id} failure_code={record.failure_code}"
+    return (
+        f"completed run_id={record.run_id} universe={len(record.universe)} "
+        f"report_hash={record.input_report_version_hash} "
         f"total_return={metrics.total_return_pct} benchmark={metrics.benchmark_return_pct} "
         f"mdd={metrics.mdd_pct} trades={metrics.trade_count} turnover={metrics.turnover_pct}"
     )
@@ -163,10 +230,13 @@ def main() -> None:
     _ = parser.add_argument("--rsi-period", type=int, default=Arguments.rsi_period)
     _ = parser.add_argument("--rsi-overbought", default=Arguments.rsi_overbought)
     _ = parser.add_argument("--cross-momentum", action="store_true")
+    _ = parser.add_argument("--composite-rank", action="store_true")
     _ = parser.add_argument("--lookback-days", type=int, default=Arguments.lookback_days)
     _ = parser.add_argument("--holdings", type=int, default=Arguments.holdings)
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.cross_momentum:
+    if arguments.composite_rank:
+        print(anyio.run(run_composite_rank_backtest, arguments))  # noqa: T201
+    elif arguments.cross_momentum:
         print(anyio.run(run_cross_momentum_backtest, arguments))  # noqa: T201
     else:
         print(anyio.run(run_ma_rsi_backtest, arguments))  # noqa: T201

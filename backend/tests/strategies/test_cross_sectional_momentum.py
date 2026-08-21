@@ -6,10 +6,9 @@ import pytest
 
 from auto_stock_trading.domain.strategies.momentum import (
     MomentumParameters,
-    SymbolSeries,
     momentum_rebalances,
-    rebalance_dates,
 )
+from auto_stock_trading.domain.strategies.ranking import SymbolSeries, rebalance_dates
 
 _PARAMS: Final = MomentumParameters(lookback_days=2, holdings=2)
 _START: Final = date(2025, 1, 2)
@@ -49,7 +48,7 @@ def test_top_holdings_are_ranked_by_lookback_return() -> None:
 
     ranked = momentum_rebalances(dates[-1:], series, _PARAMS, dates)
 
-    assert [(item.symbol, item.momentum) for item in ranked[0].selected] == [
+    assert [(item.symbol, item.score) for item in ranked[0].selected] == [
         ("000001", Decimal("0.30")),
         ("000002", Decimal("0.20")),
     ]
@@ -152,4 +151,4 @@ def test_the_trading_calendar_is_required_to_locate_the_lookback_basis() -> None
 
     ranked = momentum_rebalances((dates[3],), series, MomentumParameters(2, 1), dates)
 
-    assert ranked[0].selected[0].momentum == Decimal("0.30")
+    assert ranked[0].selected[0].score == Decimal("0.30")

@@ -26,6 +26,7 @@ class BacktestRunRecord:
     cost_rule_versions: str
     input_bar_version_hash: str
     action_version_hash: str
+    input_report_version_hash: str | None
     signal_dataset_id: UUID | None
     benchmark_dataset_id: UUID | None
     status: str
@@ -55,6 +56,8 @@ class PortfolioRunRecord:
     cost_rule_versions: str
     input_bar_version_hash: str
     action_version_hash: str
+    # 재무 요인을 쓰는 전략만 채운다(계약 v3 계보).
+    input_report_version_hash: str | None
     benchmark_dataset_id: UUID | None
     status: str
     failure_code: str | None

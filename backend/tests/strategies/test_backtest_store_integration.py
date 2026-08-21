@@ -76,6 +76,7 @@ def _record(run_id: UUID, *, status: str = "completed") -> BacktestRunRecord:
         cost_rule_versions='["research-krx-2026"]',
         input_bar_version_hash="c" * 64,
         action_version_hash="d" * 64,
+        input_report_version_hash=None,
         signal_dataset_id=uuid4(),
         benchmark_dataset_id=uuid4(),
         status=status,
@@ -147,7 +148,12 @@ def test_completed_run_round_trips_with_trades_and_equity() -> None:
         await store.save_run(record, _trades(), _equity())
 
         runs = await reader.runs(10)
-        assert record in runs
+        assert len(runs) <= 10
+        assert runs == tuple(sorted(runs, key=lambda item: item.created_at, reverse=True))
+        # 목록은 최신순이라 고정 과거 시각의 실행은 실행이 쌓이면 앞자리에서 밀린다.
+        # 통합 테스트는 공용 데이터베이스의 기존 실행 수에 의존하지 않아야 한다.
+        recent = await reader.runs(1000)
+        assert record in recent
         loaded = await reader.run(record.run_id)
         assert loaded == record
         # 조회는 저장된 감사 문자열을 그대로 돌려준다(전략별 enum으로 되검증하지 않는다).

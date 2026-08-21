@@ -40,6 +40,8 @@ class BacktestRunRow(Base):
     cost_rule_versions: Mapped[str] = mapped_column(Text)
     input_bar_version_hash: Mapped[str] = mapped_column(String(64))
     action_version_hash: Mapped[str] = mapped_column(String(64))
+    # 종합 순위 실행만 채운다. 재무 요인을 쓰지 않는 전략은 비어 있다(계약 v3).
+    input_report_version_hash: Mapped[str | None] = mapped_column(String(64))
     signal_dataset_id: Mapped[UUID | None] = mapped_column()
     benchmark_dataset_id: Mapped[UUID | None] = mapped_column()
     status: Mapped[str] = mapped_column(String(16))

@@ -42,6 +42,7 @@ class BacktestRunResponse(BacktestResponse):
     cost_rule_versions: str
     input_bar_version_hash: str
     action_version_hash: str
+    input_report_version_hash: str | None
     signal_dataset_id: UUID | None
     benchmark_dataset_id: UUID | None
     status: str

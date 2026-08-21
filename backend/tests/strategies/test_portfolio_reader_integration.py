@@ -62,6 +62,7 @@ def _record(run_id: UUID) -> PortfolioRunRecord:
         cost_rule_versions='["research-krx-2025"]',
         input_bar_version_hash="a" * 64,
         action_version_hash="b" * 64,
+        input_report_version_hash=None,
         benchmark_dataset_id=None,
         status="completed",
         failure_code=None,

@@ -58,6 +58,7 @@ def _run_response(record: BacktestRunRecord) -> BacktestRunResponse:
         cost_rule_versions=record.cost_rule_versions,
         input_bar_version_hash=record.input_bar_version_hash,
         action_version_hash=record.action_version_hash,
+        input_report_version_hash=record.input_report_version_hash,
         signal_dataset_id=record.signal_dataset_id,
         benchmark_dataset_id=record.benchmark_dataset_id,
         status=record.status,

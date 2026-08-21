@@ -167,6 +167,8 @@ test("전략 연구 화면이 저장된 백테스트 실행을 계보와 함께 
     await expect(page.getByText("신호·체결 기록")).toBeVisible();
     await expect(page.getByText("비용 전 수익률")).toBeVisible();
     await expect(page.getByText("일봉 버전 해시")).toBeVisible();
+    // 재무 요인을 쓰는 실행은 보고서 계보를, 쓰지 않는 실행은 그 사실을 표시해야 한다(계약 v3).
+    await expect(page.getByText("재무 보고서 해시")).toBeVisible();
 
     const select = page.getByLabel("실행 선택");
     const options = select.locator("option");

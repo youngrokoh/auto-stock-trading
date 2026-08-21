@@ -20,6 +20,7 @@ const runPayload = {
   failure_code: null,
   initial_cash: "10000000",
   input_bar_version_hash: "c".repeat(64),
+  input_report_version_hash: null,
   metrics: {
     benchmark_return_pct: "254.49",
     excess_return_pct: "-210.14",

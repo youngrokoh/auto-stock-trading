@@ -78,6 +78,7 @@ def _record_from(
         cost_rule_versions=row.cost_rule_versions,
         input_bar_version_hash=row.input_bar_version_hash,
         action_version_hash=row.action_version_hash,
+        input_report_version_hash=row.input_report_version_hash,
         signal_dataset_id=row.signal_dataset_id,
         benchmark_dataset_id=row.benchmark_dataset_id,
         status=row.status,
