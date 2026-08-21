@@ -192,6 +192,11 @@ def _account_state(
     )
 
 
+def _cash_identity_ok(snapshot: AccountSnapshot) -> bool:
+    """판정 현금 + 증권사 평가합계 = 증권사 순자산금액."""
+    return snapshot.orderable_cash + snapshot.broker_position_value == snapshot.broker_net_asset
+
+
 def _reconciled(snapshot: AccountSnapshot, counters: StoredCounters) -> bool:
     """미체결 대조가 끝났고 계좌 항등식이 성립할 때만 조정 완료다.
 
@@ -240,6 +245,9 @@ class PlanContext:
     quotes: tuple[MarketQuote, ...]
     counters: SessionCounters
     pending: tuple[PendingExposure, ...]
+    # 계좌 항등식만 본 결과. `account.reconciled`는 여기에 "미체결 주문 없음"까지 더한 값이라
+    # 정정 경로에서 쓸 수 없다(정정은 미체결 주문에만 한다).
+    cash_identity_ok: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,6 +316,9 @@ class OrderPlanner:
                 api_failures=failures,
             ),
             pending=pending,
+            cash_identity_ok=(
+                stored_snapshot is not None and _cash_identity_ok(stored_snapshot.snapshot)
+            ),
         )
 
     async def pause(self, environment: str, rule: RiskRule, now: datetime) -> AutomationRecord:

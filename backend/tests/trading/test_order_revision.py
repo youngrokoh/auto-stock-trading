@@ -76,6 +76,8 @@ class _Fixture:
     quote_age_seconds: int = 0
     trading_status: str = "active"
     nav: Decimal = _NAV
+    open_orders: int = 0
+    cash_identity_ok: bool = True
 
 
 def _plan_context(fixture: _Fixture | None = None) -> PlanContext:
@@ -111,7 +113,8 @@ def _plan_context(fixture: _Fixture | None = None) -> PlanContext:
                     evaluation_amount=Decimal(0),
                 ),
             ),
-            reconciled=True,
+            # 실제 도출과 같게 만든다: 미체결이 있으면 계획 기준으로는 미조정이다.
+            reconciled=values.open_orders == 0 and values.cash_identity_ok,
         ),
         quotes=(
             MarketQuote(
@@ -127,13 +130,14 @@ def _plan_context(fixture: _Fixture | None = None) -> PlanContext:
             ),
         ),
         counters=SessionCounters(
-            open_orders=0,
+            open_orders=values.open_orders,
             daily_order_attempts=1,
             daily_buy_amount=Decimal(0),
             consecutive_rejects=0,
             api_failures=0,
         ),
         pending=(),
+        cash_identity_ok=values.cash_identity_ok,
     )
 
 
@@ -419,5 +423,39 @@ def test_a_broker_rejection_keeps_the_order_unchanged() -> None:
         assert result.reject_code == "40310000"
         assert store.applied == []
         assert store.rejections == [(_ORDER_ID, "40310000")]
+
+    anyio.run(run)
+
+
+def test_an_open_order_elsewhere_does_not_block_a_revision() -> None:
+    """실측 결함: `미체결 주문 존재`가 계좌 미조정과 한 플래그에 섞여 정정이 항상 막혔다.
+
+    정정은 미체결 주문에만 하는 것이므로 미체결 존재를 이유로 막으면 경로가 성립하지 않는다.
+    계좌 항등식은 그대로 요구한다.
+    """
+
+    async def run() -> None:
+        store = FakeStore()
+        broker = FakeBroker()
+        context = FakeContextSource(prepared=_plan_context(_Fixture(open_orders=2)))
+
+        result = await _reviser(store, broker, context).revise(_request(), _NOW)
+
+        assert result.applied
+        assert broker.requests
+
+    anyio.run(run)
+
+
+def test_a_broken_cash_identity_still_blocks_a_revision() -> None:
+    async def run() -> None:
+        broker = FakeBroker()
+        context = FakeContextSource(prepared=_plan_context(_Fixture(cash_identity_ok=False)))
+
+        result = await _reviser(FakeStore(), broker, context).revise(_request(), _NOW)
+
+        assert not result.applied
+        assert result.reject_code == "ACCOUNT_NOT_RECONCILED"
+        assert broker.requests == []
 
     anyio.run(run)

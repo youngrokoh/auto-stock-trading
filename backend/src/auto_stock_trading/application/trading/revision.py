@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final, Protocol
 
@@ -197,7 +197,10 @@ class OrderReviser:
             return BlockCode.AUTOMATION_NOT_RUNNING.value
         if not plan_context.trading_day:
             return BlockCode.MARKET_CLOSED.value
-        if not plan_context.account.reconciled:
+        # `account.reconciled`는 "미체결 주문 없음"까지 포함하므로 정정에 쓸 수 없다. 정정은
+        # 미체결 주문에만 하는 동작이라 그 조건을 요구하면 경로가 성립하지 않는다(실측 확인).
+        # 계좌 항등식은 그대로 요구한다.
+        if not plan_context.cash_identity_ok:
             return BlockCode.ACCOUNT_NOT_RECONCILED.value
         _ = now
         return None
@@ -216,10 +219,13 @@ class OrderReviser:
             return _refused(BlockCode.DATA_STALE.value)
         limit_price = offset_limit_price(quote.price, quote.product_type, request.price_offset)
         remaining = order.quantity - order.filled_quantity
+        # 정정 판정에서 "조정 완료"는 계좌 항등식 성립을 뜻한다. 미체결 주문 존재를 미조정으로
+        # 보면 정정 대상 자신 때문에 항상 막힌다(실측 확인).
+        account = replace(plan_context.account, reconciled=plan_context.cash_identity_ok)
         evaluation = evaluate_plan(
             PlanRequest(
                 candidates=(SignalCandidate(order.symbol, order.side),),
-                account=plan_context.account,
+                account=account,
                 quotes=plan_context.quotes,
                 counters=plan_context.counters,
                 automation_state=plan_context.automation.state,
