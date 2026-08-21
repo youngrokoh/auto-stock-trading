@@ -159,6 +159,14 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT uq_backtest_run_instrument UNIQUE",
         "CREATE INDEX ix_backtest_run_instrument_symbol",
         "ALTER TABLE strategy.backtest_trade ADD COLUMN symbol VARCHAR(9)",
+        "ALTER TABLE strategy.backtest_run ADD COLUMN input_report_version_hash VARCHAR(64)",
+        "CREATE SCHEMA IF NOT EXISTS ml",
+        "CREATE TABLE ml.model",
+        "CONSTRAINT ck_model_embargo_covers_horizon",
+        "CONSTRAINT uq_model_name_version UNIQUE",
+        "CREATE TABLE ml.model_evaluation",
+        "CONSTRAINT uq_model_evaluation_metric UNIQUE",
+        "CREATE TABLE ml.feature_importance",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

@@ -330,7 +330,7 @@ Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심
 
 | 단계 | 기술 |
 |---|---|
-| 기준 모델 | scikit-learn의 Logistic Regression, Ridge |
+| 기준 모델 | Ridge(정규방정식 닫힌 해, 표준 라이브러리만) |
 | 주력 표 모델 | LightGBM, XGBoost |
 | 후속 시계열 모델 | PyTorch 기반 1D CNN/TCN, LSTM |
 | 평가 | 시간 순서 기반 워크포워드 검증 |
@@ -349,7 +349,7 @@ Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심
 = 향후 10~20거래일 시장 대비 초과수익 또는 순위
 ```
 
-모델 파일은 임의 코드를 실행할 수 있는 Python pickle 대신 LightGBM 텍스트, XGBoost JSON처럼 해당 모델의 안전한 네이티브 포맷을 사용한다. 모델 메타데이터와 평가 결과는 PostgreSQL에 저장한다.
+모델 파일은 임의 코드를 실행할 수 있는 Python pickle 대신 LightGBM 텍스트, XGBoost JSON처럼 해당 모델의 안전한 네이티브 포맷을 사용한다. 2026-08-22 정정: 기준 모델은 `scikit-learn` 대신 표준 라이브러리 닫힌 해로 구현했다. 특징이 23개라 정규방정식이 23x23이고, `scikit-learn`은 타입 스텁이 없어 `typeCheckingMode = "all"` 게이트를 통과하지 못하며 `numpy`도 부분적으로 `Any`를 노출한다. 새 런타임 의존성 없이 같은 모델을 얻으므로 이 선택을 택했다. 주력 모델(LightGBM)은 자체 API를 쓰며 도입 시 경계 모듈로 격리하고 그 파일에만 타입 예외를 둔다. 모델 메타데이터와 평가 결과는 PostgreSQL에 저장한다.
 
 초기에는 MLflow를 도입하지 않는다. 모델과 실험 수가 증가해 현재 저장 구조로 추적하기 어려워질 때 검토한다.
 
