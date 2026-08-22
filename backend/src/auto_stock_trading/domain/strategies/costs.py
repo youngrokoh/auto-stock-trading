@@ -54,9 +54,58 @@ _RESEARCH_STOCK_SLIPPAGE_RATE: Final = Decimal("0.0010")
 _RESEARCH_ETF_SLIPPAGE_RATE: Final = Decimal("0.0005")
 
 # 거래 안전 정책 §5의 연구 기본 가정(수수료·슬리피지)과 법정 매도세 기준선.
-# 2025년: 코스피 증권거래세 0% + 농어촌특별세 0.15%, 코스닥 0.15%.
-# 2026년: 코스피 증권거래세 0.05% + 농어촌특별세 0.15%, 코스닥 0.20%.
+# 코스피는 증권거래세 + 농어촌특별세 0.15%, 코스닥은 증권거래세만 부과한다.
+#
+# 2020~2024 세트는 **연구 가정**이다(2026-08-22 사용자 승인). 증권거래세 단계 인하 일정으로 알려진
+# 값을 넣었고, 공식 고시로 재확인하기 전까지 백테스트 전용이다. 주문 경로는 이 값을 쓰지 않는다.
+#   2020년: 거래세 0.10% -> 코스피 0.25% / 코스닥 0.25%
+#   2021~2022년: 0.08% -> 0.23% / 0.23%
+#   2023년: 0.05% -> 0.20% / 0.20%
+#   2024년: 0.03% -> 0.18% / 0.18%
+# 2025~2026 세트는 정책 §5의 현행 표에서 왔다.
+#   2025년: 거래세 0% -> 코스피 0.15% / 코스닥 0.15%
+#   2026년: 거래세 0.05% -> 코스피 0.20% / 코스닥 0.20%
 COST_RULE_SETS: Final = (
+    CostRuleSet(
+        version="research-krx-2020",
+        effective_from=date(2020, 1, 1),
+        fee_rate=_RESEARCH_FEE_RATE,
+        stock_slippage_rate=_RESEARCH_STOCK_SLIPPAGE_RATE,
+        etf_slippage_rate=_RESEARCH_ETF_SLIPPAGE_RATE,
+        kospi_stock_sell_tax_rate=Decimal("0.0025"),
+        kosdaq_stock_sell_tax_rate=Decimal("0.0025"),
+        source="연구 가정: 증권거래세 단계 인하 일정(공식 고시 재확인 전, 백테스트 전용)",
+    ),
+    CostRuleSet(
+        version="research-krx-2021",
+        effective_from=date(2021, 1, 1),
+        fee_rate=_RESEARCH_FEE_RATE,
+        stock_slippage_rate=_RESEARCH_STOCK_SLIPPAGE_RATE,
+        etf_slippage_rate=_RESEARCH_ETF_SLIPPAGE_RATE,
+        kospi_stock_sell_tax_rate=Decimal("0.0023"),
+        kosdaq_stock_sell_tax_rate=Decimal("0.0023"),
+        source="연구 가정: 증권거래세 단계 인하 일정(공식 고시 재확인 전, 백테스트 전용)",
+    ),
+    CostRuleSet(
+        version="research-krx-2023",
+        effective_from=date(2023, 1, 1),
+        fee_rate=_RESEARCH_FEE_RATE,
+        stock_slippage_rate=_RESEARCH_STOCK_SLIPPAGE_RATE,
+        etf_slippage_rate=_RESEARCH_ETF_SLIPPAGE_RATE,
+        kospi_stock_sell_tax_rate=Decimal("0.0020"),
+        kosdaq_stock_sell_tax_rate=Decimal("0.0020"),
+        source="연구 가정: 증권거래세 단계 인하 일정(공식 고시 재확인 전, 백테스트 전용)",
+    ),
+    CostRuleSet(
+        version="research-krx-2024",
+        effective_from=date(2024, 1, 1),
+        fee_rate=_RESEARCH_FEE_RATE,
+        stock_slippage_rate=_RESEARCH_STOCK_SLIPPAGE_RATE,
+        etf_slippage_rate=_RESEARCH_ETF_SLIPPAGE_RATE,
+        kospi_stock_sell_tax_rate=Decimal("0.0018"),
+        kosdaq_stock_sell_tax_rate=Decimal("0.0018"),
+        source="연구 가정: 증권거래세 단계 인하 일정(공식 고시 재확인 전, 백테스트 전용)",
+    ),
     CostRuleSet(
         version="research-krx-2025",
         effective_from=date(2025, 1, 1),

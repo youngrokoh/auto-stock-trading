@@ -225,7 +225,8 @@ def test_engine_rejects_lookahead_signal_functions() -> None:
 
 
 def test_engine_rejects_window_before_cost_rules() -> None:
-    dates = tuple(date(2024, 6, 3) + timedelta(days=index) for index in range(len(_CLOSES)))
+    # 비용 규칙은 2020-01-01부터 있다(연구 가정 세트 포함). 그 앞은 여전히 거부한다.
+    dates = tuple(date(2019, 6, 3) + timedelta(days=index) for index in range(len(_CLOSES)))
     inputs = BacktestInputs(
         trading_dates=dates,
         execution_bars={

@@ -45,6 +45,11 @@
   한계가 아니라 우리가 정한 시작점이었음이 드러나 사용자 승인으로 범위를 늘렸다. 6.5년 창은
   코로나 급락·2022 하락장을 포함해 표본 밖 일반화를 판정할 수 있게 한다
   ([ML 신호 계약](ml-signal-contract.md)).
+- **과거 구간 백테스트는 일봉만으로 성립하지 않는다.** 비용 규칙, 검증된 XKRX 달력, 벤치마크
+  `total_return` 데이터셋이 창 전체를 덮어야 하며 각각 `uncovered_cost_date`·
+  `missing_calendar_coverage`·`missing_adjusted_dataset`로 fail-closed다(2026-08-22 실측으로 네
+  전제가 차례로 드러났다). 2020년 달력은 KRX 임시 거래시간 공지 파싱 계약 위반으로 수집하지 못해
+  백테스트 창은 2021년 이후다. 학습은 달력을 요구하지 않으므로 2020년 일봉을 그대로 쓴다.
 - 2025년 현금배당·분배금도 같은 수집기·락일 확정 규칙으로 소급 수집하고 수정주가 데이터셋을
   창 전체로 재발행한다.
 
@@ -85,6 +90,14 @@
 
 | 규칙 버전 | `effective_from` | 매도세 기준선 |
 |---|---|---|
+| `research-krx-2020` | 2020-01-01 | KOSPI·KOSDAQ 0.25% · ETF 면제 — **연구 가정** ([정책 §5 과거 구간 표](../spec/trading-safety-policy.md)) |
+| `research-krx-2021` | 2021-01-01 | KOSPI·KOSDAQ 0.23% · ETF 면제 — **연구 가정**. 2022년도 이 세트가 유효하다 |
+| `research-krx-2023` | 2023-01-01 | KOSPI·KOSDAQ 0.20% · ETF 면제 — **연구 가정** |
+| `research-krx-2024` | 2024-01-01 | KOSPI·KOSDAQ 0.18% · ETF 면제 — **연구 가정** |
+| `research-krx-2020` | 2020-01-01 | KOSPI·KOSDAQ 0.25% · ETF 면제 — **연구 가정** ([정책 §5 과거 구간 표](../spec/trading-safety-policy.md)) |
+| `research-krx-2021` | 2021-01-01 | KOSPI·KOSDAQ 0.23% · ETF 면제 — **연구 가정**. 2022년도 이 세트가 유효하다 |
+| `research-krx-2023` | 2023-01-01 | KOSPI·KOSDAQ 0.20% · ETF 면제 — **연구 가정** |
+| `research-krx-2024` | 2024-01-01 | KOSPI·KOSDAQ 0.18% · ETF 면제 — **연구 가정** |
 | `research-krx-2025` | 2025-01-01 | KOSPI 주식: 증권거래세 0% + 농어촌특별세 0.15% · KOSDAQ 주식: 증권거래세 0.15% · ETF: 면제 (2025년 증권거래세법 시행령 세율) |
 | `research-krx-2026` | 2026-01-01 | [거래 안전 정책](../spec/trading-safety-policy.md) §5의 2026-01-01 법정 기준선 그대로 (KOSPI 0.05%+0.15%, KOSDAQ 0.20%, ETF 면제) |
 
