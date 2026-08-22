@@ -1,8 +1,13 @@
 import argparse
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import anyio
+
+if TYPE_CHECKING:
+    from auto_stock_trading.ml.models import PredictiveModel
+    from auto_stock_trading.ml.records import ModelRecord
 
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
@@ -40,7 +45,8 @@ from auto_stock_trading.domain.strategies.composite_rank import CompositeParamet
 from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 from auto_stock_trading.domain.strategies.momentum import MomentumParameters
 from auto_stock_trading.features.price_features import FEATURE_NAMES
-from auto_stock_trading.ml.ridge import RidgeCoefficients
+from auto_stock_trading.ml.lightgbm_model import LIGHTGBM_ALGORITHM, LightGbmModel
+from auto_stock_trading.ml.ridge import RIDGE_ALGORITHM, RidgeCoefficients
 from auto_stock_trading.settings.runtime import Settings
 
 
@@ -115,6 +121,16 @@ async def run_cross_momentum_backtest(arguments: Arguments) -> str:
     )
 
 
+def _restore_model(record: ModelRecord) -> PredictiveModel:
+    """저장된 산출물을 알고리즘에 맞게 복원한다. 모르는 알고리즘은 추측하지 않는다."""
+    if record.algorithm == RIDGE_ALGORITHM:
+        return RidgeCoefficients.from_json(record.artifact)
+    if record.algorithm == LIGHTGBM_ALGORITHM:
+        return LightGbmModel.from_artifact(record.artifact, FEATURE_NAMES)
+    message = f"unknown model algorithm: {record.algorithm!r}"
+    raise ValueError(message)
+
+
 async def run_ml_rank_backtest(arguments: Arguments) -> str:
     """저장된 모델로 추론만 하는 ML 순위 실행(ADR-0012). 학습은 하지 않는다."""
     settings = Settings()
@@ -138,7 +154,7 @@ async def run_ml_rank_backtest(arguments: Arguments) -> str:
         record = await models.read_model(arguments.model_name, arguments.model_version)
         if record is None:
             return f"failed reason=model_not_found name={arguments.model_name}"
-        model = RidgeCoefficients.from_json(record.artifact)
+        model = _restore_model(record)
         universe = await universe_store.universe_symbols()
         range_start = date.fromisoformat(arguments.start_date)
         range_end = date.fromisoformat(arguments.end_date)

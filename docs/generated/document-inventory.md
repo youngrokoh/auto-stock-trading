@@ -57,7 +57,7 @@
 | [5단계 ETF 탐색 검증](../qa/phase-5-etf-verification.md) | `docs/qa/phase-5-etf-verification.md` | 검증 완료 (마스터·NAV 스냅샷·순위·상세 범위) |
 | [6단계 백테스트 엔진 검증](../qa/phase-6-backtest-verification.md) | `docs/qa/phase-6-backtest-verification.md` | 검증 완료 (엔진·기술 전략 1종·읽기 API·전략 연구 화면 범위) |
 | [7단계 주문 계획·위험검사 검증](../qa/phase-7-order-planning-verification.md) | `docs/qa/phase-7-order-planning-verification.md` | 검증 완료 (계획·제출·체결·취소를 실제 모의계좌에서 확인) · 장중 주문별 체결 조회 한계는 후속 결정 대기 |
-| [8단계 ML 신호 검증](../qa/phase-8-ml-verification.md) | `docs/qa/phase-8-ml-verification.md` | 1차 검증 완료 (기준선은 완료 기준 미달) |
+| [8단계 ML 신호 검증](../qa/phase-8-ml-verification.md) | `docs/qa/phase-8-ml-verification.md` | 1차 검증 완료 (Ridge·LightGBM 모두 완료 기준 미달) |
 | [시장 데이터 및 시점 정책](../spec/market-data-policy.md) | `docs/spec/market-data-policy.md` | 승인 |
 | [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md) | `docs/spec/paper-to-live-gate.md` | 승인 |
 | [제품 범위 및 요구사항](../spec/product-scope.md) | `docs/spec/product-scope.md` | 승인 |

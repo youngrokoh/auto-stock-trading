@@ -73,6 +73,12 @@ uv run uvicorn auto_stock_trading.api.app:app --reload
 
 PostgreSQL이나 Valkey를 실행하지 않은 경우 `/live`는 `200`, `/ready`는 `503`과 `degraded`를 반환한다. 이는 의도된 장애 표시다.
 
+macOS에서는 LightGBM이 OpenMP 런타임을 요구한다. 없으면 `lib_lightgbm.dylib` 로드가 실패해 ML 학습 경로만 죽는다(나머지 경로는 영향 없다).
+
+```bash
+brew install libomp
+```
+
 작업자는 별도 터미널에서 실행한다.
 
 ```bash

@@ -20,11 +20,14 @@ from auto_stock_trading.features.splits import (
     DEFAULT_MIN_TRAIN_DAYS,
     DEFAULT_VALID_DAYS,
 )
+from auto_stock_trading.ml.lightgbm_model import LIGHTGBM_ALGORITHM
+from auto_stock_trading.ml.ridge import RIDGE_ALGORITHM
 from auto_stock_trading.settings.runtime import Settings
 
 
 class Arguments(argparse.Namespace):
     train_ridge: bool = False
+    algorithm: str = RIDGE_ALGORITHM
     name: str = "ridge-baseline"
     model_version: str = "1"
     benchmark: str = "069500"
@@ -57,6 +60,7 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
             ModelTrainingRequest(
                 name=arguments.name,
                 version=arguments.model_version,
+                algorithm=arguments.algorithm,
                 range_start=date.fromisoformat(arguments.start_date),
                 range_end=date.fromisoformat(arguments.end_date),
                 min_train_days=arguments.min_train_days,
@@ -74,6 +78,7 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
         await market_data.close()
     return (
         f"trained model_id={record.model_id} name={record.name} version={record.version} "
+        f"algorithm={record.algorithm} "
         f"train={record.train_start}~{record.train_end} samples={record.train_sample_count} "
         f"universe={record.universe_size} features={record.feature_version}"
     )
@@ -82,6 +87,11 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     _ = parser.add_argument("--train-ridge", action="store_true")
+    _ = parser.add_argument(
+        "--algorithm",
+        default=RIDGE_ALGORITHM,
+        choices=(RIDGE_ALGORITHM, LIGHTGBM_ALGORITHM),
+    )
     _ = parser.add_argument("--name", default="ridge-baseline")
     _ = parser.add_argument("--model-version", default="1")
     _ = parser.add_argument("--benchmark", default="069500")

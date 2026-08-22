@@ -20,7 +20,6 @@ from auto_stock_trading.domain.strategies.ranking import (
     quantized_score,
 )
 from auto_stock_trading.features.price_features import FEATURE_NAMES, FEATURE_VERSION
-from auto_stock_trading.ml.ridge import predict
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
 
     from auto_stock_trading.domain.strategies.composite_rank import CompositeParameters
     from auto_stock_trading.domain.strategies.ranking import SymbolSeries
-    from auto_stock_trading.ml.ridge import RidgeCoefficients
+    from auto_stock_trading.ml.models import PredictiveModel
 
 ML_STRATEGY_NAME: Final = "ml-rank"
 ML_STRATEGY_VERSION: Final = "1"
@@ -55,7 +54,7 @@ class ModelWindow:
 @dataclass(frozen=True, slots=True)
 class _MlSource:
     parameters: CompositeParameters
-    model: RidgeCoefficients
+    model: PredictiveModel
     window: ModelWindow
     features: SymbolFeatures
 
@@ -130,7 +129,10 @@ class _MlSource:
             if any(name not in values for name in FEATURE_NAMES):
                 continue
             scored.append(
-                (item.symbol, predict(self.model, tuple(values[name] for name in FEATURE_NAMES)))
+                (
+                    item.symbol,
+                    self.model.predict(tuple(values[name] for name in FEATURE_NAMES)),
+                )
             )
         scored.sort(key=lambda entry: (-entry[1], entry[0]))
         return tuple(
@@ -147,7 +149,7 @@ def _as_decimal(value: float) -> Decimal:
 def ml_rank_strategy(
     parameters: CompositeParameters,
     *,
-    model: RidgeCoefficients,
+    model: PredictiveModel,
     window: ModelWindow,
     features: SymbolFeatures,
 ) -> StrategySpec:

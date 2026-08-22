@@ -37,6 +37,20 @@ class RidgeCoefficients:
     alpha: float
     seed: int
 
+    def to_artifact(self) -> str:
+        """공통 경계용 이름. 내용은 `to_json`과 같다."""
+        return self.to_json()
+
+    def importances(self) -> dict[str, float]:
+        """선형 모델의 중요도는 계수 절대값이다. 특징이 정규화돼 있어 비교가 성립한다."""
+        return {
+            name: abs(weight)
+            for name, weight in zip(self.feature_names, self.coefficients, strict=True)
+        }
+
+    def predict(self, features: Sequence[float]) -> float:
+        return predict(self, features)
+
     def to_json(self) -> str:
         """계수만 담은 안전한 네이티브 포맷. 키 순서를 고정해 재현 비교가 가능하다."""
         return json.dumps(

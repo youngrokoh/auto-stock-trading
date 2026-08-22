@@ -20,6 +20,12 @@ from auto_stock_trading.features.splits import (
 )
 from auto_stock_trading.features.targets import TARGET_HORIZON_DAYS, cross_sectional_ranks
 from auto_stock_trading.ml.evaluation import fold_metrics
+from auto_stock_trading.ml.lightgbm_model import (
+    LIGHTGBM_ALGORITHM,
+    LightGbmSettings,
+    default_parameters,
+    train_lightgbm,
+)
 from auto_stock_trading.ml.records import (
     FeatureImportanceRecord,
     ModelEvaluationRecord,
@@ -28,8 +34,6 @@ from auto_stock_trading.ml.records import (
 from auto_stock_trading.ml.ridge import (
     DEFAULT_ALPHA,
     RIDGE_ALGORITHM,
-    RidgeCoefficients,
-    predict,
     train_ridge,
 )
 from auto_stock_trading.ml.samples import TrainingSample
@@ -38,6 +42,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
     from auto_stock_trading.features.price_features import FeatureRow
+    from auto_stock_trading.ml.models import PredictiveModel
 
 TARGET_DEFINITION = "cross_sectional_rank_of_20d_excess_return"
 
@@ -73,6 +78,7 @@ class ModelTrainingRequest:
     version: str
     range_start: date
     range_end: date
+    algorithm: str = RIDGE_ALGORITHM
     min_train_days: int = DEFAULT_MIN_TRAIN_DAYS
     valid_days: int = DEFAULT_VALID_DAYS
     embargo_days: int = DEFAULT_EMBARGO_DAYS
@@ -141,19 +147,13 @@ class ModelTrainer:
                 f"need at least {request.min_train_samples} training samples, got {len(training)}"
             )
             raise ValueError(message)
-        model = train_ridge(
-            training,
-            FEATURE_NAMES,
-            alpha=request.alpha,
-            seed=request.seed,
-            min_samples=request.min_train_samples,
-        )
+        model = _fit(training, request)
         evaluations = self._evaluate(folds, samples, request)
         record = ModelRecord(
             model_id=uuid4(),
             name=request.name,
             version=request.version,
-            algorithm=RIDGE_ALGORITHM,
+            algorithm=model.algorithm,
             feature_version=FEATURE_VERSION,
             target_definition=TARGET_DEFINITION,
             train_start=final_fold.train_start,
@@ -169,7 +169,7 @@ class ModelTrainer:
             train_sample_count=len(training),
             hyperparameters_json=_hyperparameters_json(request),
             seed=request.seed,
-            artifact=model.to_json(),
+            artifact=model.to_artifact(),
             input_bar_version_hash=await self.dataset.bar_version_hash(),
             created_at=now,
         )
@@ -193,13 +193,7 @@ class ModelTrainer:
             )
             if len(training) < request.min_train_samples or not validation:
                 continue
-            fitted = train_ridge(
-                training,
-                FEATURE_NAMES,
-                alpha=request.alpha,
-                seed=request.seed,
-                min_samples=request.min_train_samples,
-            )
+            fitted = _fit(training, request)
             outcomes = _daily_outcomes(fitted, validation)
             metrics = fold_metrics(outcomes, top_k=request.top_k)
             sample_count = int(metrics["sample_count"])
@@ -217,14 +211,41 @@ class ModelTrainer:
         return tuple(records)
 
 
+def _fit(
+    training: tuple[TrainingSample, ...],
+    request: ModelTrainingRequest,
+) -> PredictiveModel:
+    """요청한 알고리즘으로 학습한다. 알 수 없는 이름은 추측하지 않고 거부한다."""
+    if request.algorithm == RIDGE_ALGORITHM:
+        return train_ridge(
+            training,
+            FEATURE_NAMES,
+            alpha=request.alpha,
+            seed=request.seed,
+            min_samples=request.min_train_samples,
+        )
+    if request.algorithm == LIGHTGBM_ALGORITHM:
+        return train_lightgbm(
+            training,
+            FEATURE_NAMES,
+            LightGbmSettings(
+                parameters=default_parameters(seed=request.seed),
+                seed=request.seed,
+                min_samples=request.min_train_samples,
+            ),
+        )
+    message = f"unknown training algorithm: {request.algorithm!r}"
+    raise ValueError(message)
+
+
 def _daily_outcomes(
-    model: RidgeCoefficients,
+    model: PredictiveModel,
     validation: tuple[TrainingSample, ...],
 ) -> tuple[tuple[date, dict[str, float], dict[str, Decimal]], ...]:
     grouped: dict[date, tuple[dict[str, float], dict[str, Decimal]]] = {}
     for sample in validation:
         predictions, actual = grouped.setdefault(sample.signal_date, ({}, {}))
-        predictions[sample.symbol] = predict(model, sample.features)
+        predictions[sample.symbol] = model.predict(sample.features)
         # 계약의 상위 K 초과수익·적중률은 순위가 아니라 원 초과수익 기준이다. 순위를 넣으면
         # 값이 항상 양수라 적중률이 늘 100%로 나온다(2026-08-22 실측 결함).
         actual[sample.symbol] = Decimal(repr(sample.excess))
@@ -236,22 +257,19 @@ def _daily_outcomes(
 
 def _importances(
     model_id: UUID,
-    model: RidgeCoefficients,
+    model: PredictiveModel,
 ) -> tuple[FeatureImportanceRecord, ...]:
-    """선형 모델의 중요도는 계수 절대값이다. 특징이 이미 정규화돼 있어 비교가 성립한다."""
+    """중요도 정의는 모델이 갖는다(선형은 계수 절대값, 트리는 분할 이득)."""
     return tuple(
-        FeatureImportanceRecord(
-            model_id=model_id,
-            feature_name=name,
-            importance=abs(weight),
-        )
-        for name, weight in zip(model.feature_names, model.coefficients, strict=True)
+        FeatureImportanceRecord(model_id=model_id, feature_name=name, importance=value)
+        for name, value in sorted(model.importances().items())
     )
 
 
 def _hyperparameters_json(request: ModelTrainingRequest) -> str:
     return json.dumps(
         {
+            "algorithm": request.algorithm,
             "alpha": request.alpha,
             "min_train_days": request.min_train_days,
             "min_train_samples": request.min_train_samples,
