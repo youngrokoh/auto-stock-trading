@@ -34,14 +34,22 @@ def walk_forward_folds(
     min_train_days: int = DEFAULT_MIN_TRAIN_DAYS,
     embargo_days: int = DEFAULT_EMBARGO_DAYS,
     valid_days: int = DEFAULT_VALID_DAYS,
+    horizon_days: int = TARGET_HORIZON_DAYS,
 ) -> tuple[WalkForwardFold, ...]:
-    """확장창 구간 목록. 학습 시작은 고정이고 종료가 검증 길이만큼 전진한다."""
+    """확장창 구간 목록. 학습 시작은 고정이고 종료가 검증 길이만큼 전진한다.
+
+    엠바고 하한은 **요청한 목표 창**을 따라간다. 기본값에 고정하면 목표 창을 늘렸을 때 학습
+    라벨이 검증 구간으로 새어 나간다.
+    """
     if min_train_days < 1 or valid_days < 1:
         message = "min_train_days and valid_days must be positive"
         raise ValueError(message)
-    if embargo_days < TARGET_HORIZON_DAYS:
+    if horizon_days < 1:
+        message = "horizon_days must be positive"
+        raise ValueError(message)
+    if embargo_days < horizon_days:
         message = (
-            f"embargo_days must be at least the target horizon ({TARGET_HORIZON_DAYS}); "
+            f"embargo_days must be at least the target horizon ({horizon_days}); "
             "a shorter embargo leaks training labels into validation"
         )
         raise ValueError(message)

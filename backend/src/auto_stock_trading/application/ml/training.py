@@ -44,7 +44,10 @@ if TYPE_CHECKING:
     from auto_stock_trading.features.price_features import FeatureRow
     from auto_stock_trading.ml.models import PredictiveModel
 
-TARGET_DEFINITION = "cross_sectional_rank_of_20d_excess_return"
+
+def target_definition(horizon_days: int) -> str:
+    """목표 정의를 문자열로 남긴다. 기준이 다른 모델을 나중에 구분할 수 있어야 한다."""
+    return f"cross_sectional_rank_of_{horizon_days}d_excess_return"
 
 
 class TrainingDataset(Protocol):
@@ -54,7 +57,7 @@ class TrainingDataset(Protocol):
 
     async def feature_rows(self, symbol: str) -> tuple[FeatureRow, ...]: ...
 
-    async def targets(self, symbol: str) -> dict[date, Decimal]: ...
+    async def targets(self, symbol: str, horizon_days: int) -> dict[date, Decimal]: ...
 
     async def bar_version_hash(self) -> str: ...
 
@@ -86,6 +89,7 @@ class ModelTrainingRequest:
     seed: int = 0
     min_train_samples: int = 1_000
     top_k: int = 10
+    horizon_days: int = TARGET_HORIZON_DAYS
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +108,7 @@ class ModelTrainer:
             min_train_days=request.min_train_days,
             embargo_days=request.embargo_days,
             valid_days=request.valid_days,
+            horizon_days=request.horizon_days,
         )
         symbols = await self.dataset.universe_symbols()
         features: dict[str, dict[date, tuple[float, ...]]] = {}
@@ -114,7 +119,9 @@ class ModelTrainer:
                 row.trading_date: tuple(float(row.values[name]) for name in FEATURE_NAMES)
                 for row in rows
             }
-            for signal_date, value in (await self.dataset.targets(symbol)).items():
+            for signal_date, value in (
+                await self.dataset.targets(symbol, request.horizon_days)
+            ).items():
                 excess.setdefault(signal_date, {})[symbol] = value
         samples: list[TrainingSample] = []
         for signal_date in sorted(excess):
@@ -155,11 +162,11 @@ class ModelTrainer:
             version=request.version,
             algorithm=model.algorithm,
             feature_version=FEATURE_VERSION,
-            target_definition=TARGET_DEFINITION,
+            target_definition=target_definition(request.horizon_days),
             train_start=final_fold.train_start,
             train_end=final_fold.train_end,
             embargo_days=request.embargo_days,
-            horizon_days=TARGET_HORIZON_DAYS,
+            horizon_days=request.horizon_days,
             out_of_sample_start=_out_of_sample_start(
                 dates,
                 final_fold.train_end,
@@ -271,6 +278,7 @@ def _hyperparameters_json(request: ModelTrainingRequest) -> str:
         {
             "algorithm": request.algorithm,
             "alpha": request.alpha,
+            "horizon_days": request.horizon_days,
             "min_train_days": request.min_train_days,
             "min_train_samples": request.min_train_samples,
             "top_k": request.top_k,

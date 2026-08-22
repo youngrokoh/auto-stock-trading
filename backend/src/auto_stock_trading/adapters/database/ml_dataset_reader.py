@@ -93,13 +93,19 @@ class MarketDataTrainingDataset:
             tuple(self._benchmark[day] for day in shared),
         )
 
-    async def targets(self, symbol: str) -> dict[date, Decimal]:
+    async def targets(self, symbol: str, horizon_days: int) -> dict[date, Decimal]:
         await self._load_benchmark()
         bars = await self._confirmed(symbol)
         closes = {item.bar.trading_date: item.bar.close_price for item in bars}
         results: dict[date, Decimal] = {}
         for day in self._dates:
-            value = excess_return(closes, self._benchmark, self._dates, day)
+            value = excess_return(
+                closes,
+                self._benchmark,
+                self._dates,
+                day,
+                horizon=horizon_days,
+            )
             if value is not None:
                 results[day] = value
         return results

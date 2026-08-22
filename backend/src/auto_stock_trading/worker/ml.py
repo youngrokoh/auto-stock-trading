@@ -20,6 +20,7 @@ from auto_stock_trading.features.splits import (
     DEFAULT_MIN_TRAIN_DAYS,
     DEFAULT_VALID_DAYS,
 )
+from auto_stock_trading.features.targets import TARGET_HORIZON_DAYS
 from auto_stock_trading.ml.lightgbm_model import LIGHTGBM_ALGORITHM
 from auto_stock_trading.ml.ridge import RIDGE_ALGORITHM
 from auto_stock_trading.settings.runtime import Settings
@@ -39,6 +40,7 @@ class Arguments(argparse.Namespace):
     alpha: float = 1.0
     seed: int = 7
     min_train_samples: int = 1000
+    horizon_days: int = TARGET_HORIZON_DAYS
 
 
 async def train_ridge_baseline(arguments: Arguments) -> str:
@@ -69,6 +71,7 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
                 alpha=arguments.alpha,
                 seed=arguments.seed,
                 min_train_samples=arguments.min_train_samples,
+                horizon_days=arguments.horizon_days,
             ),
             datetime.now(UTC),
         )
@@ -80,6 +83,7 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
         f"trained model_id={record.model_id} name={record.name} version={record.version} "
         f"algorithm={record.algorithm} "
         f"train={record.train_start}~{record.train_end} samples={record.train_sample_count} "
+        f"horizon={record.horizon_days} embargo={record.embargo_days} "
         f"universe={record.universe_size} features={record.feature_version}"
     )
 
@@ -103,6 +107,7 @@ def main() -> None:
     _ = parser.add_argument("--alpha", type=float, default=1.0)
     _ = parser.add_argument("--seed", type=int, default=7)
     _ = parser.add_argument("--min-train-samples", type=int, default=1000)
+    _ = parser.add_argument("--horizon-days", type=int, default=TARGET_HORIZON_DAYS)
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.train_ridge:
         print(anyio.run(train_ridge_baseline, arguments))  # noqa: T201

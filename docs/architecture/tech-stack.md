@@ -351,7 +351,7 @@ Backtrader나 VectorBT는 연구 비교에 사용할 수 있지만 운영 핵심
 
 모델 파일은 임의 코드를 실행할 수 있는 Python pickle 대신 LightGBM 텍스트, XGBoost JSON처럼 해당 모델의 안전한 네이티브 포맷을 사용한다. 2026-08-22 정정: 기준 모델은 `scikit-learn` 대신 표준 라이브러리 닫힌 해로 구현했다. 특징이 23개라 정규방정식이 23x23이고, `scikit-learn`은 타입 스텁이 없어 `typeCheckingMode = "all"` 게이트를 통과하지 못하며 `numpy`도 부분적으로 `Any`를 노출한다. 새 런타임 의존성 없이 같은 모델을 얻으므로 이 선택을 택했다. 주력 모델(LightGBM)은 계획대로 경계 모듈 하나로 격리했고 타입 검사 예외를 그 파일에만 뒀다. 경계 밖으로는 `numpy.asarray`로 조밀 배열을 확정한 값만 내보내므로 나머지 코드는 완전한 타입 검사를 유지한다. **macOS는 OpenMP 런타임이 필요하다**(`brew install libomp`) — 없으면 `lib_lightgbm.dylib` 로드가 실패한다. 재현성을 위해 `num_threads=1`·`deterministic=True`를 고정한다. 모델 메타데이터와 평가 결과는 PostgreSQL에 저장한다.
 
-학습 진입점은 `worker/ml.py`이며 예약하지 않는다. `application/ml/training.py`가 로드·구간 분할·구간별 학습·평가·저장을 잇고, `adapters/database/ml_dataset_reader.py`가 확정 일봉만 읽어 특징과 목표를 만든다. 모델·구간 지표·특징 중요도는 `ml` 스키마(리비전 `20260822_0025`)에 한 트랜잭션으로 저장하며, 모델 행에는 학습 시점 달력으로 계산한 표본 밖 시작일도 남긴다(리비전 `20260822_0026`) — 백테스트 창의 달력만으로는 학습 창과의 거래일 간격을 셀 수 없다. `ml-rank` 실행은 저장된 모델을 읽어 추론만 하며 `worker/backtests.py --ml-rank`가 진입점이다.
+학습 진입점은 `worker/ml.py`이며 예약하지 않는다. `application/ml/training.py`가 로드·구간 분할·구간별 학습·평가·저장을 잇고, `adapters/database/ml_dataset_reader.py`가 확정 일봉만 읽어 특징과 목표를 만든다. 모델·구간 지표·특징 중요도는 `ml` 스키마(리비전 `20260822_0025`)에 한 트랜잭션으로 저장하며, 모델 행에는 학습 시점 달력으로 계산한 표본 밖 시작일도 남긴다(리비전 `20260822_0026`) — 백테스트 창의 달력만으로는 학습 창과의 거래일 간격을 셀 수 없다. `ml-rank` 실행은 저장된 모델을 읽어 추론만 하며 `worker/backtests.py --ml-rank`가 진입점이다. 학습 CLI는 `--algorithm`(ridge·lightgbm)과 `--horizon-days`를 받고, 목표 창을 바꾸면 엠바고 하한이 함께 따라간다 — 상수에 고정하면 라벨이 검증 구간으로 새어 나간다.
 
 초기에는 MLflow를 도입하지 않는다. 모델과 실험 수가 증가해 현재 저장 구조로 추적하기 어려워질 때 검토한다.
 

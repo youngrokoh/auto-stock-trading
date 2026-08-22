@@ -55,7 +55,8 @@ class FakeDataset:
     async def universe_symbols(self) -> tuple[str, ...]:
         return self.symbols
 
-    async def targets(self, symbol: str) -> dict[date, Decimal]:
+    async def targets(self, symbol: str, horizon_days: int) -> dict[date, Decimal]:
+        _ = horizon_days
         offset = self.symbols.index(symbol)
         return {day: Decimal(offset) / 10 for day in self.dates}
 
@@ -243,7 +244,8 @@ class LosingDataset:
     async def universe_symbols(self) -> tuple[str, ...]:
         return self.symbols
 
-    async def targets(self, symbol: str) -> dict[date, Decimal]:
+    async def targets(self, symbol: str, horizon_days: int) -> dict[date, Decimal]:
+        _ = horizon_days
         offset = self.symbols.index(symbol)
         return {day: Decimal(-1 - offset) / 10 for day in self.dates}
 

@@ -132,3 +132,41 @@ def test_zero_embargo_is_refused_because_it_leaks_the_training_labels() -> None:
 
     with pytest.raises(ValueError, match="embargo"):
         _ = walk_forward_folds(dates, min_train_days=250, embargo_days=0, valid_days=60)
+
+
+def test_a_longer_horizon_reaches_further_and_needs_more_future() -> None:
+    """목표 창은 파라미터다. 60거래일 목표는 60거래일 미래가 있어야 만들어진다."""
+    dates = _dates(80)
+    closes = _closes({0: "1000", 60: "1200"}, dates)
+    benchmark = _closes({0: "2000", 60: "2200"}, dates)
+
+    value = excess_return(closes, benchmark, dates, dates[0], horizon=60)
+
+    # 종목 +20%, 벤치마크 +10% -> 초과 +10%
+    assert value == Decimal("0.1")
+    # 창 끝에서 60거래일을 확보할 수 없으면 표본을 만들지 않는다.
+    assert excess_return(closes, benchmark, dates, dates[21], horizon=60) is None
+
+
+def test_the_embargo_must_cover_the_requested_horizon_not_the_default() -> None:
+    """엠바고 하한은 실제 목표 창을 따라간다. 기본값 20에 고정되면 60일 목표가 새어 나간다."""
+    dates = _dates(600)
+
+    with pytest.raises(ValueError, match="embargo"):
+        _ = walk_forward_folds(
+            dates,
+            min_train_days=250,
+            embargo_days=20,
+            valid_days=60,
+            horizon_days=60,
+        )
+
+    folds = walk_forward_folds(
+        dates,
+        min_train_days=250,
+        embargo_days=60,
+        valid_days=60,
+        horizon_days=60,
+    )
+    assert folds
+    assert dates.index(folds[0].valid_start) - dates.index(folds[0].train_end) == 61

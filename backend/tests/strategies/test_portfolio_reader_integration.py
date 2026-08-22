@@ -143,7 +143,9 @@ def test_a_portfolio_run_is_listed_and_readable_with_its_universe() -> None:
                     ),
                 )
 
-                listed = await reader.runs(20)
+                # 목록은 최신순이고 저장 시각이 고정 과거이므로, 실행이 쌓이면 상위 20에서
+                # 밀린다. 통합 테스트는 공용 데이터베이스의 기존 실행 수에 의존하지 않는다.
+                listed = await reader.runs(1000)
                 found = [item for item in listed if item.run_id == run_id]
                 assert len(found) == 1
                 assert found[0].symbol is None
