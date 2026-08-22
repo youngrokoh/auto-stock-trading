@@ -149,6 +149,7 @@ Taskiq worker ── Valkey
 - [5단계 ETF 탐색 검증](qa/phase-5-etf-verification.md)
 - [6단계 백테스트 엔진 검증](qa/phase-6-backtest-verification.md)
 - [7단계 주문 계획·위험검사 검증](qa/phase-7-order-planning-verification.md)
+- [8단계 ML 신호 검증](qa/phase-8-ml-verification.md)
 - [디자인 방향 시안 시각 QA](qa/evidence/design-direction-proposals/visual-qa.md)
 
 #### Decisions

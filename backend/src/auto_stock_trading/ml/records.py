@@ -20,6 +20,8 @@ class ModelRecord:
     train_end: date
     embargo_days: int
     horizon_days: int
+    # 엠바고가 끝나는 첫 거래일. 학습 시점 달력으로 계산해 저장한다(ADR-0012 결정 4).
+    out_of_sample_start: date | None
     universe_size: int
     train_sample_count: int
     hyperparameters_json: str

@@ -30,11 +30,16 @@ class ModelRow(Base):
         CheckConstraint,
         CheckConstraint,
         CheckConstraint,
+        CheckConstraint,
         UniqueConstraint,
         Index,
         dict[str, str],
     ] = (
         CheckConstraint("embargo_days >= horizon_days", name="ck_model_embargo_covers_horizon"),
+        CheckConstraint(
+            "out_of_sample_start IS NULL OR out_of_sample_start > train_end",
+            name="ck_model_out_of_sample_after_train",
+        ),
         CheckConstraint("train_sample_count > 0", name="ck_model_train_samples_positive"),
         CheckConstraint("train_end >= train_start", name="ck_model_train_window"),
         UniqueConstraint("name", "version", name="uq_model_name_version"),
@@ -52,6 +57,7 @@ class ModelRow(Base):
     train_end: Mapped[date] = mapped_column(Date)
     embargo_days: Mapped[int] = mapped_column(Integer)
     horizon_days: Mapped[int] = mapped_column(Integer)
+    out_of_sample_start: Mapped[date | None] = mapped_column(Date)
     universe_size: Mapped[int] = mapped_column(Integer)
     train_sample_count: Mapped[int] = mapped_column(Integer)
     hyperparameters_json: Mapped[str] = mapped_column(Text)

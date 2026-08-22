@@ -33,8 +33,17 @@ def _model() -> RidgeCoefficients:
     )
 
 
-def _window(train_start: date, train_end: date) -> ModelWindow:
-    return ModelWindow(train_start=train_start, train_end=train_end, embargo_days=20)
+def _window(
+    train_start: date,
+    train_end: date,
+    out_of_sample_start: date | None = None,
+) -> ModelWindow:
+    return ModelWindow(
+        train_start=train_start,
+        train_end=train_end,
+        embargo_days=20,
+        out_of_sample_start=out_of_sample_start,
+    )
 
 
 def _dates(count: int, start: date = _START) -> tuple[date, ...]:
@@ -165,3 +174,35 @@ def test_a_round_without_any_candidate_produces_no_rebalance() -> None:
         _ = strategy.source.plan((dates[120],), (_series("000100", dates),), dates)
 
     assert error.value.failure is BacktestFailure.NO_SIGNAL_CANDIDATE
+
+
+def test_a_stored_out_of_sample_start_is_the_boundary_even_outside_the_window() -> None:
+    """실측 결함: 학습 종료일이 백테스트 창 밖이면 창 달력으로 엠바고를 셀 수 없다."""
+    dates = _dates(200, start=date(2026, 1, 1))
+    strategy = ml_rank_strategy(
+        CompositeParameters(lookback_days=5, holdings=2),
+        model=_model(),
+        # 학습은 창보다 앞에서 끝났고, 표본 밖 시작일은 창 한가운데다.
+        window=_window(date(2025, 1, 1), date(2025, 12, 1), dates[100]),
+        features={},
+    )
+
+    with pytest.raises(BacktestError) as error:
+        _ = strategy.source.plan((dates[50],), (_series("000100", dates),), dates)
+
+    assert error.value.failure is BacktestFailure.TRAIN_WINDOW_OVERLAP
+
+
+def test_a_model_without_a_recorded_boundary_is_refused_when_it_cannot_be_counted() -> None:
+    dates = _dates(200, start=date(2026, 1, 1))
+    strategy = ml_rank_strategy(
+        CompositeParameters(lookback_days=5, holdings=2),
+        model=_model(),
+        window=_window(date(2025, 1, 1), date(2025, 12, 1)),
+        features={},
+    )
+
+    with pytest.raises(BacktestError) as error:
+        _ = strategy.source.plan((dates[50],), (_series("000100", dates),), dates)
+
+    assert error.value.failure is BacktestFailure.TRAIN_WINDOW_OVERLAP

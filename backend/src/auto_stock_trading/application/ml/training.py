@@ -123,12 +123,14 @@ class ModelTrainer:
                         signal_date=signal_date,
                         features=values,
                         target=float(rank),
+                        excess=float(excess[signal_date][symbol]),
                     )
                 )
         return folds, tuple(samples)
 
     async def run(self, request: ModelTrainingRequest, now: datetime) -> ModelRecord:
         folds, samples = await self.prepare(request)
+        dates = await self.dataset.trading_dates(request.range_start, request.range_end)
         if not folds:
             message = "no walk-forward fold fits the requested window"
             raise ValueError(message)
@@ -158,6 +160,11 @@ class ModelTrainer:
             train_end=final_fold.train_end,
             embargo_days=request.embargo_days,
             horizon_days=TARGET_HORIZON_DAYS,
+            out_of_sample_start=_out_of_sample_start(
+                dates,
+                final_fold.train_end,
+                request.embargo_days,
+            ),
             universe_size=len({sample.symbol for sample in samples}),
             train_sample_count=len(training),
             hyperparameters_json=_hyperparameters_json(request),
@@ -218,7 +225,9 @@ def _daily_outcomes(
     for sample in validation:
         predictions, actual = grouped.setdefault(sample.signal_date, ({}, {}))
         predictions[sample.symbol] = predict(model, sample.features)
-        actual[sample.symbol] = Decimal(repr(sample.target))
+        # 계약의 상위 K 초과수익·적중률은 순위가 아니라 원 초과수익 기준이다. 순위를 넣으면
+        # 값이 항상 양수라 적중률이 늘 100%로 나온다(2026-08-22 실측 결함).
+        actual[sample.symbol] = Decimal(repr(sample.excess))
     return tuple(
         (signal_date, grouped[signal_date][0], grouped[signal_date][1])
         for signal_date in sorted(grouped)
@@ -252,3 +261,23 @@ def _hyperparameters_json(request: ModelTrainingRequest) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def _out_of_sample_start(
+    trading_dates: tuple[date, ...],
+    train_end: date,
+    embargo_days: int,
+) -> date | None:
+    """학습 종료 뒤 엠바고가 끝나는 첫 거래일.
+
+    학습 시점에는 전체 달력이 있으므로 거래일 단위로 정확히 셀 수 있다. 백테스트 창의 달력만으로는
+    학습 창과의 간격을 셀 수 없어 이 값을 저장해 둔다(ADR-0012 결정 4).
+    """
+    try:
+        position = trading_dates.index(train_end)
+    except ValueError:
+        return None
+    target = position + embargo_days + 1
+    if target >= len(trading_dates):
+        return None
+    return trading_dates[target]

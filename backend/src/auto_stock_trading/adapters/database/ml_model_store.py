@@ -72,6 +72,7 @@ class PostgresModelStore:
                     train_end=record.train_end,
                     embargo_days=record.embargo_days,
                     horizon_days=record.horizon_days,
+                    out_of_sample_start=record.out_of_sample_start,
                     universe_size=record.universe_size,
                     train_sample_count=record.train_sample_count,
                     hyperparameters_json=record.hyperparameters_json,
@@ -81,6 +82,9 @@ class PostgresModelStore:
                     created_at=record.created_at,
                 )
             )
+            # 모델 행을 먼저 밀어 넣는다. ORM 관계를 두지 않았으므로 SQLAlchemy가 삽입 순서를
+            # 알 수 없고, 자식 행이 앞서 flush되면 외래키 위반으로 학습 전체가 실패한다(실측).
+            await session.flush()
             for item in evaluations:
                 session.add(
                     ModelEvaluationRow(

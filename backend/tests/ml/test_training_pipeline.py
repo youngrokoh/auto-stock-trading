@@ -71,6 +71,9 @@ class FakeDataset:
 class FakeModelStore:
     saved: list[tuple[str, int, int]] = field(default_factory=list[tuple[str, int, int]])
     metrics: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
+    metric_values: list[tuple[int, str, float]] = field(
+        default_factory=list[tuple[int, str, float]]
+    )
     importances: list[str] = field(default_factory=list[str])
 
     async def save_model(
@@ -82,8 +85,11 @@ class FakeModelStore:
         name = getattr(record, "name", "")
         self.saved.append((str(name), len(evaluations), len(importances)))
         for item in evaluations:
-            self.metrics.append(
-                (int(getattr(item, "fold_index", 0)), str(getattr(item, "metric_name", "")))
+            fold_index = int(getattr(item, "fold_index", 0))
+            metric_name = str(getattr(item, "metric_name", ""))
+            self.metrics.append((fold_index, metric_name))
+            self.metric_values.append(
+                (fold_index, metric_name, float(getattr(item, "metric_value", 0.0)))
             )
         self.importances.extend(str(getattr(item, "feature_name", "")) for item in importances)
         return UUID(int=1)
@@ -196,5 +202,72 @@ def test_a_window_without_a_single_fold_refuses_training() -> None:
 
         with pytest.raises(ValueError, match="fold"):
             _ = await trainer.run(request, _NOW)
+
+    anyio.run(run)
+
+
+def test_samples_keep_the_raw_excess_next_to_the_rank_target() -> None:
+    async def run() -> None:
+        dates = _dates(120)
+        dataset = FakeDataset(dates, ("000100", "000200", "000300"))
+        trainer = ModelTrainer(dataset=dataset, store=FakeModelStore())
+
+        _, samples = await trainer.prepare(_request(dates))
+
+        assert samples
+        assert all(0.0 <= sample.target <= 1.0 for sample in samples)
+        # 원 초과수익은 데이터셋이 준 값 그대로여야 한다(순위로 덮어쓰지 않는다).
+        by_symbol = {sample.symbol: sample.excess for sample in samples}
+        assert by_symbol["000100"] == pytest.approx(0.0)
+        assert by_symbol["000200"] == pytest.approx(0.1)
+        assert by_symbol["000300"] == pytest.approx(0.2)
+
+    anyio.run(run)
+
+
+@final
+@dataclass
+class LosingDataset:
+    """모든 종목이 벤치마크를 밑도는 구간. 적중률이 0이어야 한다."""
+
+    dates: tuple[date, ...]
+    symbols: tuple[str, ...]
+
+    async def trading_dates(self, start: date, end: date) -> tuple[date, ...]:
+        return tuple(day for day in self.dates if start <= day <= end)
+
+    async def feature_rows(self, symbol: str) -> tuple[FeatureRow, ...]:
+        offset = self.symbols.index(symbol) / 10.0
+        return tuple(_row(day, offset + index / 1000.0) for index, day in enumerate(self.dates))
+
+    async def universe_symbols(self) -> tuple[str, ...]:
+        return self.symbols
+
+    async def targets(self, symbol: str) -> dict[date, Decimal]:
+        offset = self.symbols.index(symbol)
+        return {day: Decimal(-1 - offset) / 10 for day in self.dates}
+
+    async def bar_version_hash(self) -> str:
+        return "b" * 64
+
+    async def close(self) -> None:
+        return None
+
+
+def test_hit_rate_uses_the_excess_return_not_the_rank() -> None:
+    """순위를 쓰면 값이 항상 양수라 적중률이 늘 100%가 된다(실측 결함 고정)."""
+
+    async def run() -> None:
+        dates = _dates(120)
+        store = FakeModelStore()
+        dataset = LosingDataset(dates, ("000100", "000200", "000300"))
+
+        _ = await ModelTrainer(dataset=dataset, store=store).run(_request(dates), _NOW)
+
+        hit_rates = [value for _, name, value in store.metric_values if name == "hit_rate"]
+        assert hit_rates
+        assert all(rate == 0.0 for rate in hit_rates)
+        top_k = [value for _, name, value in store.metric_values if name == "top_k_excess"]
+        assert all(value < 0.0 for value in top_k)
 
     anyio.run(run)

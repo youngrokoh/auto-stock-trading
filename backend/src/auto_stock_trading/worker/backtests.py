@@ -17,12 +17,15 @@ from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
 from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
+from auto_stock_trading.adapters.database.ml_dataset_reader import MarketDataTrainingDataset
+from auto_stock_trading.adapters.database.ml_model_reader import PostgresModelReader
 from auto_stock_trading.adapters.database.strategy_backtest_store import (
     PostgresBacktestStore,
 )
 from auto_stock_trading.adapters.database.strategy_fundamentals_reader import (
     PostgresStrategyFundamentalsReader,
 )
+from auto_stock_trading.application.backtests.ml_signals import ModelWindow, ml_rank_strategy
 from auto_stock_trading.application.backtests.portfolio_runner import (
     PortfolioRequest,
     PortfolioRunner,
@@ -36,6 +39,8 @@ from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
 from auto_stock_trading.domain.strategies.composite_rank import CompositeParameters
 from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 from auto_stock_trading.domain.strategies.momentum import MomentumParameters
+from auto_stock_trading.features.price_features import FEATURE_NAMES
+from auto_stock_trading.ml.ridge import RidgeCoefficients
 from auto_stock_trading.settings.runtime import Settings
 
 
@@ -52,6 +57,9 @@ class Arguments(argparse.Namespace):
     rsi_overbought: str = "70"
     cross_momentum: bool = False
     composite_rank: bool = False
+    ml_rank: bool = False
+    model_name: str = "ridge-baseline"
+    model_version: str = "1"
     lookback_days: int = 126
     holdings: int = 10
 
@@ -102,6 +110,91 @@ async def run_cross_momentum_backtest(arguments: Arguments) -> str:
         return f"failed run_id={record.run_id} failure_code={record.failure_code}"
     return (
         f"completed run_id={record.run_id} universe={len(record.universe)} "
+        f"total_return={metrics.total_return_pct} benchmark={metrics.benchmark_return_pct} "
+        f"mdd={metrics.mdd_pct} trades={metrics.trade_count} turnover={metrics.turnover_pct}"
+    )
+
+
+async def run_ml_rank_backtest(arguments: Arguments) -> str:
+    """저장된 모델로 추론만 하는 ML 순위 실행(ADR-0012). 학습은 하지 않는다."""
+    settings = Settings()
+    database_url = settings.database_url.get_secret_value()
+    calendar = PostgresMarketCalendarRepository.from_url(database_url)
+    market_data = PostgresMarketDataRepository.from_url(database_url)
+    adjusted = PostgresAdjustedPriceReader.from_url(database_url)
+    corporate_actions = PostgresCorporateActionReader.from_url(database_url)
+    universe_store = PostgresStockStore.from_url(database_url)
+    models = PostgresModelReader.from_url(database_url)
+    features_market_data = PostgresMarketDataRepository.from_url(database_url)
+    store = PostgresBacktestStore.from_url(database_url)
+    runner = PortfolioRunner(
+        calendar=calendar,
+        market_data=market_data,
+        adjusted_prices=adjusted,
+        corporate_actions=corporate_actions,
+        store=store,
+    )
+    try:
+        record = await models.read_model(arguments.model_name, arguments.model_version)
+        if record is None:
+            return f"failed reason=model_not_found name={arguments.model_name}"
+        model = RidgeCoefficients.from_json(record.artifact)
+        universe = await universe_store.universe_symbols()
+        range_start = date.fromisoformat(arguments.start_date)
+        range_end = date.fromisoformat(arguments.end_date)
+        # 특징은 모델 학습과 같은 계산기로 만든다. 창은 시그널일 계산에 필요한 만큼 앞으로 넓힌다.
+        dataset = MarketDataTrainingDataset(
+            features_market_data,
+            universe,
+            arguments.benchmark,
+            record.train_start,
+            range_end,
+        )
+        features: dict[str, dict[date, dict[str, float]]] = {}
+        for symbol in universe:
+            rows = await dataset.feature_rows(symbol)
+            if rows:
+                features[symbol] = {
+                    row.trading_date: {name: float(row.values[name]) for name in FEATURE_NAMES}
+                    for row in rows
+                }
+        request = PortfolioRequest(
+            universe=universe,
+            benchmark_symbol=arguments.benchmark,
+            range_start=range_start,
+            range_end=range_end,
+            initial_cash=Decimal(arguments.initial_cash),
+            benchmark_method=AdjustmentMethod(arguments.signal_method),
+            strategy=ml_rank_strategy(
+                CompositeParameters(
+                    lookback_days=arguments.lookback_days,
+                    holdings=arguments.holdings,
+                ),
+                model=model,
+                window=ModelWindow(
+                    train_start=record.train_start,
+                    train_end=record.train_end,
+                    embargo_days=record.embargo_days,
+                    out_of_sample_start=record.out_of_sample_start,
+                ),
+                features=features,
+            ),
+        )
+        run_record = await runner.run(request, datetime.now(UTC))
+    finally:
+        await store.close()
+        await features_market_data.close()
+        await models.close()
+        await universe_store.close()
+        await corporate_actions.close()
+        await adjusted.close()
+        await market_data.close()
+        await calendar.close()
+    metrics = run_record.metrics
+    if metrics is None:
+        return f"failed run_id={run_record.run_id} failure_code={run_record.failure_code}"
+    return (
+        f"completed run_id={run_record.run_id} model={arguments.model_name} "
         f"total_return={metrics.total_return_pct} benchmark={metrics.benchmark_return_pct} "
         f"mdd={metrics.mdd_pct} trades={metrics.trade_count} turnover={metrics.turnover_pct}"
     )
@@ -231,10 +324,15 @@ def main() -> None:
     _ = parser.add_argument("--rsi-overbought", default=Arguments.rsi_overbought)
     _ = parser.add_argument("--cross-momentum", action="store_true")
     _ = parser.add_argument("--composite-rank", action="store_true")
+    _ = parser.add_argument("--ml-rank", action="store_true")
+    _ = parser.add_argument("--model-name", default="ridge-baseline")
+    _ = parser.add_argument("--model-version", default="1")
     _ = parser.add_argument("--lookback-days", type=int, default=Arguments.lookback_days)
     _ = parser.add_argument("--holdings", type=int, default=Arguments.holdings)
     arguments = parser.parse_args(namespace=Arguments())
-    if arguments.composite_rank:
+    if arguments.ml_rank:
+        print(anyio.run(run_ml_rank_backtest, arguments))  # noqa: T201
+    elif arguments.composite_rank:
         print(anyio.run(run_composite_rank_backtest, arguments))  # noqa: T201
     elif arguments.cross_momentum:
         print(anyio.run(run_cross_momentum_backtest, arguments))  # noqa: T201

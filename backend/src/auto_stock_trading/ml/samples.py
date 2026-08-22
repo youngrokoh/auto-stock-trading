@@ -16,4 +16,7 @@ class TrainingSample:
     symbol: str
     signal_date: date
     features: tuple[float, ...]
+    # 학습 목표: 같은 날 후보들 사이의 백분위 순위(0~1).
     target: float
+    # 평가용 원 초과수익. 계약의 상위 K 초과수익·적중률은 순위가 아니라 이 값으로 계산한다.
+    excess: float = 0.0

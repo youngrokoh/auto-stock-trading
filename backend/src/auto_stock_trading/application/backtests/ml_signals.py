@@ -39,11 +39,16 @@ type SymbolFeatures = Mapping[str, Mapping[date, Mapping[str, float]]]
 
 @dataclass(frozen=True, slots=True)
 class ModelWindow:
-    """모델이 학습에 사용한 창과 엠바고. 표본 밖 판정의 근거다."""
+    """모델이 학습에 사용한 창과 표본 밖 시작일. 표본 밖 판정의 근거다.
+
+    `out_of_sample_start`는 학습 시점 달력으로 계산해 저장한 값이다. 백테스트 창의 달력만으로는
+    학습 창과의 거래일 간격을 셀 수 없으므로, 창이 학습 창 밖에 있을 때 이 값이 유일한 근거다.
+    """
 
     train_start: date
     train_end: date
     embargo_days: int
+    out_of_sample_start: date | None = None
 
 
 @final
@@ -84,29 +89,32 @@ class _MlSource:
         """엠바고가 끝나기 전의 시그널일이 하나라도 있으면 실행 자체를 거부한다."""
         if not signal_dates:
             return
-        dates = tuple(calendar)
-        try:
-            train_end_index = dates.index(self.window.train_end)
-        except ValueError:
-            # 학습 종료일이 창 안에 없다면 창이 학습 이후이거나 이전이다. 날짜로 비교한다.
-            if min(signal_dates) > self.window.train_end:
-                return
+        boundary = self._boundary(calendar)
+        if boundary is None:
             raise BacktestError(
                 BacktestFailure.TRAIN_WINDOW_OVERLAP,
-                f"signal dates reach into the training window ending {self.window.train_end}",
-            ) from None
-        first_out_of_sample = train_end_index + self.window.embargo_days + 1
-        if first_out_of_sample >= len(dates):
-            raise BacktestError(
-                BacktestFailure.TRAIN_WINDOW_OVERLAP,
-                "the window ends before the embargo after training completes",
+                "the model has no recorded out-of-sample start and the window cannot prove one",
             )
-        boundary = dates[first_out_of_sample]
         if min(signal_dates) < boundary:
             raise BacktestError(
                 BacktestFailure.TRAIN_WINDOW_OVERLAP,
                 f"signal dates start at {min(signal_dates)} before the embargo ends {boundary}",
             )
+
+    def _boundary(self, calendar: Sequence[date]) -> date | None:
+        """표본 밖 시작일. 저장값이 있으면 그것을 쓰고, 없으면 창 달력에서 센다."""
+        if self.window.out_of_sample_start is not None:
+            return self.window.out_of_sample_start
+        dates = tuple(calendar)
+        try:
+            train_end_index = dates.index(self.window.train_end)
+        except ValueError:
+            # 학습 종료일이 창 안에 없으면 사이 거래일을 셀 수 없다. 추측하지 않는다.
+            return None
+        target = train_end_index + self.window.embargo_days + 1
+        if target >= len(dates):
+            return None
+        return dates[target]
 
     def _selected(
         self,

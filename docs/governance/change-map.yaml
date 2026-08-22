@@ -19,7 +19,7 @@
     {
       "name": "strategy-features-and-ml",
       "code": ["backend/src/auto_stock_trading/domain/strategies/**", "backend/src/auto_stock_trading/application/backtests/**", "backend/src/auto_stock_trading/adapters/database/strategy_backtest_*", "backend/src/auto_stock_trading/api/backtests*", "backend/src/auto_stock_trading/worker/backtests.py", "backend/src/auto_stock_trading/features/**", "backend/src/auto_stock_trading/ml/**", "backend/migrations/versions/*strategy*", "backend/migrations/versions/*ml_*", "backend/tests/strategies/**", "backend/tests/api/test_backtests_api.py", "backend/tests/features/**", "backend/tests/ml/**"],
-      "docs": ["docs/plan/implementation-roadmap.md", "docs/spec/product-scope.md", "docs/spec/paper-to-live-gate.md", "docs/decisions/0004-ai-execution-separation.md", "docs/data/backtest-strategy-contract.md", "docs/data/ml-signal-contract.md", "docs/decisions/0012-ml-signal-boundary.md", "docs/api/backtest-api.md", "docs/qa/phase-6-backtest-verification.md", "docs/plan/current-status.md"]
+      "docs": ["docs/plan/implementation-roadmap.md", "docs/spec/product-scope.md", "docs/spec/paper-to-live-gate.md", "docs/decisions/0004-ai-execution-separation.md", "docs/data/backtest-strategy-contract.md", "docs/data/ml-signal-contract.md", "docs/decisions/0012-ml-signal-boundary.md", "docs/api/backtest-api.md", "docs/qa/phase-6-backtest-verification.md", "docs/qa/phase-8-ml-verification.md", "docs/plan/current-status.md"]
     },
     {
       "name": "frontend-design-and-qa",
