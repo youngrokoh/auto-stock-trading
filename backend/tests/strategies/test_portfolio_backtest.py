@@ -143,3 +143,41 @@ def test_a_rebalance_signal_outside_the_window_is_refused() -> None:
             _inputs(bars, holdings=1),
             (_rebalance(date(2024, 12, 31), "000001"),),
         )
+
+
+def test_a_retained_symbol_is_not_sold_when_it_leaves_the_selection() -> None:
+    """교체 임계(ML 신호 계약 §예측 안정화). 보유 중이고 유지 허용이면 팔지 않는다."""
+    first = Rebalance(
+        signal_date=_DATES[0],
+        selected=(RankedSymbol(symbol="000100", score=Decimal(1)),),
+    )
+    # 두 번째 회차에서 000100이 선정에서 빠지지만 유지 허용 목록에 있다.
+    second = Rebalance(
+        signal_date=_DATES[2],
+        selected=(RankedSymbol(symbol="000200", score=Decimal(1)),),
+        retained=("000100",),
+    )
+
+    bars = _bars({"000100": ("100",) * 4, "000200": ("200",) * 4})
+    result = run_portfolio_backtest(_inputs(bars, holdings=2), (first, second))
+
+    sells = [trade for trade in result.trades if trade.action == "sell"]
+    assert all(trade.symbol != "000100" for trade in sells)
+    # 유지 허용은 보유만 이어간다. 목표 금액까지 추가로 사지 않는다.
+    buys = [trade for trade in result.trades if trade.action == "buy" and trade.quantity > 0]
+    assert {trade.symbol for trade in buys} == {"000100", "000200"}
+    assert sum(1 for trade in buys if trade.symbol == "000100") == 1
+
+
+def test_a_symbol_not_held_is_not_bought_just_because_it_is_retained() -> None:
+    rebalance = Rebalance(
+        signal_date=_DATES[0],
+        selected=(RankedSymbol(symbol="000100", score=Decimal(1)),),
+        retained=("000200",),
+    )
+
+    bars = _bars({"000100": ("100",) * 4, "000200": ("200",) * 4})
+    result = run_portfolio_backtest(_inputs(bars, holdings=2), (rebalance,))
+
+    executed = {trade.symbol for trade in result.trades if trade.quantity > 0}
+    assert executed == {"000100"}

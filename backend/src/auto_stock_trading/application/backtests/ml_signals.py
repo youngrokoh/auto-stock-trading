@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 ML_STRATEGY_NAME: Final = "ml-rank"
 ML_STRATEGY_VERSION: Final = "1"
 ML_SIGNAL_METHOD: Final = "ml_rank"
+# 교체 임계: 보유 중이면 상위 2K까지 유지한다. 폭은 사전에 고정하고 탐색하지 않는다
+# (ML 신호 계약 §예측 안정화, 2026-08-22 사용자 승인).
+RETAINED_BAND_MULTIPLE: Final = 2
 
 type SymbolFeatures = Mapping[str, Mapping[date, Mapping[str, float]]]
 
@@ -73,10 +76,19 @@ class _MlSource:
             position = index_of.get(signal_date)
             if position is None or position - settings.lookback_days < 0:
                 continue
-            selected = self._selected(signal_date, series, settings.holdings)
-            if not selected:
+            ranked = self._ranked(signal_date, series)
+            if not ranked:
                 continue
-            rebalances.append(Rebalance(signal_date=signal_date, selected=selected))
+            selected = tuple(ranked[: settings.holdings])
+            band = settings.holdings * RETAINED_BAND_MULTIPLE
+            retained = tuple(item.symbol for item in ranked[settings.holdings : band])
+            rebalances.append(
+                Rebalance(
+                    signal_date=signal_date,
+                    selected=selected,
+                    retained=retained,
+                )
+            )
         if not rebalances:
             raise BacktestError(
                 BacktestFailure.NO_SIGNAL_CANDIDATE,
@@ -115,12 +127,12 @@ class _MlSource:
             return None
         return dates[target]
 
-    def _selected(
+    def _ranked(
         self,
         signal_date: date,
         series: Sequence[SymbolSeries],
-        holdings: int,
     ) -> tuple[RankedSymbol, ...]:
+        """예측이 높은 순으로 정렬한 후보 전체. 동점은 종목코드 오름차순이다."""
         scored: list[tuple[str, float]] = []
         for item in series:
             values = self.features.get(item.symbol, {}).get(signal_date)
@@ -137,7 +149,7 @@ class _MlSource:
         scored.sort(key=lambda entry: (-entry[1], entry[0]))
         return tuple(
             RankedSymbol(symbol=symbol, score=quantized_score(_as_decimal(score)))
-            for symbol, score in scored[:holdings]
+            for symbol, score in scored
         )
 
 

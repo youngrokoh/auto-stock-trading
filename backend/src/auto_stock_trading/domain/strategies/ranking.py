@@ -36,6 +36,9 @@ class RankedSymbol:
 class Rebalance:
     signal_date: date
     selected: tuple[RankedSymbol, ...]
+    # 보유 중이면 팔지 않고 유지할 종목(교체 임계). 비어 있으면 기존 동작과 같다 —
+    # 선정에서 빠진 보유는 전량 매도된다.
+    retained: tuple[str, ...] = ()
 
 
 def rebalance_dates(trading_dates: Sequence[date]) -> tuple[date, ...]:

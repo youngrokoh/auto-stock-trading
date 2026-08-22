@@ -206,3 +206,57 @@ def test_a_model_without_a_recorded_boundary_is_refused_when_it_cannot_be_counte
         _ = strategy.source.plan((dates[50],), (_series("000100", dates),), dates)
 
     assert error.value.failure is BacktestFailure.TRAIN_WINDOW_OVERLAP
+
+
+def test_the_retained_band_is_twice_the_holdings() -> None:
+    """교체 임계는 상위 2K로 사전 고정한다(ML 신호 계약 §예측 안정화)."""
+    dates = _dates(200, start=date(2026, 1, 1))
+    symbols = tuple(f"{index:06d}" for index in range(1, 9))
+
+    def features(value: float) -> dict[str, float]:
+        return {name: (value if name == FEATURE_NAMES[0] else 0.0) for name in FEATURE_NAMES}
+
+    model = RidgeCoefficients(
+        algorithm="ridge",
+        feature_names=FEATURE_NAMES,
+        coefficients=tuple(1.0 if name == FEATURE_NAMES[0] else 0.0 for name in FEATURE_NAMES),
+        intercept=0.0,
+        alpha=1.0,
+        seed=7,
+    )
+    strategy = ml_rank_strategy(
+        CompositeParameters(lookback_days=5, holdings=2),
+        model=model,
+        window=_window(date(2025, 1, 1), date(2025, 12, 1), dates[10]),
+        # 예측값이 종목코드 역순이 되게 만든다.
+        features={
+            symbol: {dates[120]: features(1.0 - index / 10.0)}
+            for index, symbol in enumerate(symbols)
+        },
+    )
+
+    plan = strategy.source.plan(
+        (dates[120],),
+        tuple(_series(symbol, dates) for symbol in symbols),
+        dates,
+    )
+    rebalance = plan.rebalances[0]
+
+    assert [item.symbol for item in rebalance.selected] == ["000001", "000002"]
+    # 상위 2K = 4종목. 선정된 2종목을 뺀 3~4위가 유지 허용이다.
+    assert rebalance.retained == ("000003", "000004")
+
+
+def test_the_retained_band_never_includes_a_symbol_outside_the_candidates() -> None:
+    dates = _dates(200, start=date(2026, 1, 1))
+    strategy = ml_rank_strategy(
+        CompositeParameters(lookback_days=5, holdings=5),
+        model=_model(),
+        window=_window(date(2025, 1, 1), date(2025, 12, 1), dates[10]),
+        features={"000100": {dates[120]: dict.fromkeys(FEATURE_NAMES, 0.0)}},
+    )
+
+    plan = strategy.source.plan((dates[120],), (_series("000100", dates),), dates)
+
+    assert [item.symbol for item in plan.rebalances[0].selected] == ["000100"]
+    assert plan.rebalances[0].retained == ()

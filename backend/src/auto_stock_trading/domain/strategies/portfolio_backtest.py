@@ -264,7 +264,9 @@ def _rebalance_trades(
     selected = tuple(item.symbol for item in rebalance.selected)
     target_cash, target_positions = _nav(inputs, book, execution_date)
     target_value = (target_cash + target_positions) / inputs.holdings
-    for symbol in sorted(set(book.positions) - set(selected)):
+    # 유지 허용은 매도만 막는다. 목표 금액까지 추가로 사지는 않는다(회전율을 줄이는 것이 목적이다).
+    kept = set(selected) | set(rebalance.retained)
+    for symbol in sorted(set(book.positions) - kept):
         bar = inputs.bars.get(symbol, {}).get(execution_date)
         if bar is None:
             trades.append(
