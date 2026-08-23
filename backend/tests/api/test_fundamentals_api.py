@@ -331,7 +331,7 @@ def _indicator_report(
 def _statement_line(
     line_seq: int,
     sj_div: StatementDivision,
-    account_id: str,
+    account_id: str | None,
     account_nm: str,
     *,
     amounts: tuple[str, str],
@@ -537,12 +537,14 @@ def _input_json(
     period: str,
     amount: str | None,
 ) -> dict[str, object]:
+    # 이 fixture의 모든 입력은 표준 계정에서 직접 읽는다. 복원 경로는 별도 테스트가 덮는다.
     return {
         "name": name,
         "sj_div": sj_div,
         "account_id": account_id,
         "period": period,
         "amount": amount,
+        "resolution": "standard_account",
     }
 
 
@@ -568,7 +570,11 @@ def _indicator_json(
 
 
 def _figure_json(
-    key: str, name: str, sj_div: str, account_id: str, amount: str | None
+    key: str,
+    name: str,
+    sj_div: str,
+    account_id: str,
+    amount: str | None,
 ) -> dict[str, object]:
     return {
         "key": key,
@@ -576,6 +582,7 @@ def _figure_json(
         "sj_div": sj_div,
         "account_id": account_id,
         "amount": amount,
+        "resolution": "standard_account",
     }
 
 
@@ -952,3 +959,85 @@ def test_non_financial_issuer_keeps_the_missing_account_reason() -> None:
 
     assert "SECTOR_ACCOUNT_BASIS" not in set(reasons.values())
     assert reasons["revenue_growth"] == "MISSING_ACCOUNT"
+
+
+@final
+class StubRestoredReportReader:
+    """표준계정 없이 계정명만 있는 과거 보고서(지표 계약 §복원 규칙)."""
+
+    async def read_current_reports(self, symbol: str) -> tuple[VersionedFinancialReport, ...]:
+        if symbol != _SYMBOL:
+            return ()
+        return (
+            _indicator_report(
+                _ANNUAL_2025_ID, 2025, ReportCode.ANNUAL, FsDivision.CONSOLIDATED, "20260310000002"
+            ),
+        )
+
+    async def read_report(self, report_id: UUID) -> VersionedFinancialReport | None:
+        _ = report_id
+        return None
+
+    async def read_report_lines(self, report_id: UUID) -> tuple[FinancialStatementLine, ...]:
+        if report_id != _ANNUAL_2025_ID:
+            return ()
+        is_ = StatementDivision.INCOME_STATEMENT
+        bs = StatementDivision.BALANCE_SHEET
+        kept = tuple(
+            line
+            for line in _indicator_lines()
+            if line.account_id
+            not in (
+                "ifrs-full_ProfitLossAttributableToOwnersOfParent",
+                "ifrs-full_EquityAttributableToOwnersOfParent",
+            )
+        )
+        return (
+            *kept,
+            _statement_line(20, is_, None, "지배기업 소유주지분", amounts=("100", "80")),
+            _statement_line(21, is_, None, "비지배지분", amounts=("10", "8")),
+            _statement_line(
+                22, bs, "ifrs-full_NoncontrollingInterests", "비지배지분", amounts=("550", "0")
+            ),
+        )
+
+    async def read_report_history(
+        self,
+        symbol: str,
+        bsns_year: int,
+        reprt_code: ReportCode,
+        fs_div: FsDivision,
+    ) -> tuple[VersionedFinancialReport, ...]:
+        _ = (symbol, bsns_year, reprt_code, fs_div)
+        return ()
+
+    async def close(self) -> None:
+        return None
+
+
+def test_restored_indicator_inputs_expose_how_the_amount_was_obtained() -> None:
+    """복원한 값이 표준 태깅된 값처럼 보이면 안 된다(계약 §복원 규칙 마지막 문단)."""
+    app = create_app(
+        settings=Settings(environment=Environment.TEST),
+        database_probe_factory=StubProbe,
+        cache_probe_factory=StubProbe,
+        market_data_reader_factory=StubValuationMarketDataReader,
+        financial_report_reader_factory=StubRestoredReportReader,
+        disclosure_reader_factory=StubDisclosureReader,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/fundamentals/instruments/{_SYMBOL}/indicators")
+
+    assert response.status_code == 200
+    payload = FinancialIndicatorsResponse.model_validate(response.json())
+    year = payload.years[0]
+    roe = next(item for item in year.indicators if item.key == "roe")
+    assert roe.value == Decimal("10.00")
+    assert {item.name: item.resolution for item in roe.inputs} == {
+        "지배주주순이익": "identity_verified",
+        "지배기업 소유주지분": "standard_difference",
+    }
+    figures = {item.key: item.resolution for item in year.figures}
+    assert figures["net_income_owners"] == "identity_verified"
+    assert figures["revenue"] == "standard_account"

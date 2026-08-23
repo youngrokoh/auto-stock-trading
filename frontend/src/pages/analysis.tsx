@@ -88,6 +88,26 @@ const valuationItemText = (item: ValuationItem): string => {
 const figureAmount = (year: AnnualIndicators | undefined, key: string): string | null =>
   year?.figures.find((figure) => figure.key === key)?.amount ?? null;
 
+const RESOLUTION_LABEL: Readonly<Record<string, string>> = {
+  identity_verified: "분해 항등식으로 확정",
+  standard_difference: "표준계정 차감으로 복원",
+};
+
+/**
+ * 표준 계정에서 직접 읽지 않은 입력의 설명. 과거 보고서는 같은 계정을 표준 ID 없이 이름만으로
+ * 적는 경우가 많아 산술로 복원한다. 복원한 값을 표준 태깅된 값처럼 보여주면 안 된다.
+ */
+const restoredNote = (indicator: FinancialIndicator | undefined): string | undefined => {
+  const restored = indicator?.inputs.filter((input) => input.resolution !== "standard_account");
+  if (restored === undefined || restored.length === 0) {
+    return undefined;
+  }
+  const parts = restored.map(
+    (input) => `${input.name}: ${RESOLUTION_LABEL[input.resolution] ?? input.resolution}`,
+  );
+  return [...new Set(parts)].join(" · ");
+};
+
 const indicatorOf = (
   year: AnnualIndicators | undefined,
   key: string,
@@ -498,19 +518,28 @@ export const Analysis = () => {
                                 )}
                                 {sample?.name ?? key}
                               </td>
-                              {rows.map((indicator, yearIndex) => (
-                                <td
-                                  data-label={String(years[yearIndex]?.bsns_year ?? "")}
-                                  key={years[yearIndex]?.bsns_year}
-                                  title={
-                                    indicator?.unavailable_reason == null
-                                      ? indicator?.formula
-                                      : UNAVAILABLE_LABEL[indicator.unavailable_reason]
-                                  }
-                                >
-                                  {percentText(indicator)}
-                                </td>
-                              ))}
+                              {rows.map((indicator, yearIndex) => {
+                                const restored = restoredNote(indicator);
+                                const reason = indicator?.unavailable_reason;
+                                const base =
+                                  reason == null ? indicator?.formula : UNAVAILABLE_LABEL[reason];
+                                return (
+                                  <td
+                                    data-label={String(years[yearIndex]?.bsns_year ?? "")}
+                                    key={years[yearIndex]?.bsns_year}
+                                    title={
+                                      restored === undefined ? base : `${base ?? ""} — ${restored}`
+                                    }
+                                  >
+                                    {percentText(indicator)}
+                                    {restored !== undefined && indicator?.value != null && (
+                                      <span className="cell__coord" title={restored}>
+                                        {" †"}
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              })}
                             </tr>
                           );
                         }),
@@ -520,7 +549,9 @@ export const Analysis = () => {
                 )}
               </div>
               <div className="card__note">
-                단위 % · 수식은 각 셀 도움말에 표시 · 값이 없는 지표는 사유와 함께 비웁니다
+                단위 % · 수식은 각 셀 도움말에 표시 · 값이 없는 지표는 사유와 함께 비웁니다 ·{" †"}
+                는 표준 계정이 없어 산술로 복원한 입력이 있다는 표시입니다(계정명으로 값을 고르지
+                않습니다)
                 {sectorBasisIndicators.length > 0 && (
                   <>
                     {" · "}

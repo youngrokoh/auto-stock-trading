@@ -16,6 +16,7 @@ const indicatorPayload = {
       amount: "333605938000000.0000",
       name: "매출액",
       period: "thstrm",
+      resolution: "standard_account",
       sj_div: "IS",
     },
     {
@@ -23,6 +24,7 @@ const indicatorPayload = {
       amount: "300870903000000.0000",
       name: "매출액",
       period: "frmtrm",
+      resolution: "standard_account",
       sj_div: "IS",
     },
   ],
@@ -42,6 +44,7 @@ const yearPayload = {
       amount: "333605938000000.0000",
       key: "revenue",
       name: "매출액",
+      resolution: "standard_account",
       sj_div: "IS",
     },
   ],
@@ -230,6 +233,40 @@ describe("disclosures schema", () => {
   it("계약 밖 필드는 거부한다", () => {
     expect(() =>
       parseDisclosures({ symbol: "005930", source: "DART", disclosures: [], x: 1 }),
+    ).toThrow();
+  });
+});
+
+describe("복원한 입력", () => {
+  it("복원 방식이 응답에서 구별된다", () => {
+    const restored = {
+      ...indicatorPayload,
+      inputs: [
+        { ...indicatorPayload.inputs[0], resolution: "identity_verified" },
+        { ...indicatorPayload.inputs[1], resolution: "standard_difference" },
+      ],
+    };
+
+    const parsed = parseFinancialIndicators({
+      ...indicatorsPayload,
+      years: [{ ...yearPayload, indicators: [restored] }],
+    });
+
+    expect(parsed.years[0]?.indicators[0]?.inputs[0]?.resolution).toBe("identity_verified");
+    expect(parsed.years[0]?.indicators[0]?.inputs[1]?.resolution).toBe("standard_difference");
+  });
+
+  it("모르는 복원 방식은 파싱을 거부한다", () => {
+    const bad = {
+      ...indicatorPayload,
+      inputs: [{ ...indicatorPayload.inputs[0], resolution: "guessed_by_name" }],
+    };
+
+    expect(() =>
+      parseFinancialIndicators({
+        ...indicatorsPayload,
+        years: [{ ...yearPayload, indicators: [bad] }],
+      }),
     ).toThrow();
   });
 });

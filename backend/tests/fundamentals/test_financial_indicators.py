@@ -10,6 +10,8 @@ from auto_stock_trading.domain.fundamentals.financial_statements import (
     VersionedFinancialReport,
 )
 from auto_stock_trading.domain.fundamentals.indicators import (
+    AccountResolution,
+    AmountPeriod,
     IndicatorUnavailableReason,
     compute_annual_indicators,
     relabel_operating_account_basis,
@@ -438,3 +440,150 @@ def test_a_dart_prefixed_account_is_unchanged_by_the_normalisation() -> None:
 
     # 영업이익은 `dart_` 접두이며 정규화 대상이 아니다.
     assert values["operating_margin"] == Decimal("12.50")
+
+
+def _without(
+    lines: tuple[FinancialStatementLine, ...],
+    account_id: str,
+) -> tuple[FinancialStatementLine, ...]:
+    return tuple(line for line in lines if line.account_id != account_id)
+
+
+def _named(
+    line_seq: int,
+    sj_div: StatementDivision,
+    account_nm: str,
+    *,
+    amounts: tuple[str | None, str | None],
+) -> FinancialStatementLine:
+    """표준 계정 ID 없이 계정명만 있는 행. 과거 보고서의 실제 표기다."""
+    return _line(line_seq, sj_div, None, account_nm, amounts=amounts)
+
+
+def test_the_owners_share_of_profit_is_resolved_by_the_decomposition_identity() -> None:
+    """계정명이 같은 두 후보 중 항등식을 만족하는 하나만 채택한다(2026-08-23 승인).
+
+    실측: 지배주주순이익 표준계정 결측 111건 중 33건이 같은 이름 두 행이었고, 하나는 당기순이익
+    지배주주분, 하나는 총포괄손익 지배주주분이다. 이름으로는 구분할 수 없다.
+    """
+    is_ = StatementDivision.INCOME_STATEMENT
+    lines = (
+        *_without(_full_lines(), "ifrs-full_ProfitLossAttributableToOwnersOfParent"),
+        # 당기순이익 110 = 지배주주 100 + 비지배 10 (항등식 성립)
+        _named(20, is_, "지배기업 소유주지분", amounts=("100", "80")),
+        _named(21, is_, "비지배지분", amounts=("10", "8")),
+        # 총포괄손익 분해. 같은 이름이지만 합이 당기순이익과 맞지 않는다.
+        _named(22, is_, "지배기업 소유주지분", amounts=("130", "90")),
+        _named(23, is_, "비지배지분", amounts=("12", "9")),
+    )
+
+    annual = compute_annual_indicators(_report(), lines)
+    values = {item.key: item.value for item in annual.indicators}
+    roe = next(item for item in annual.indicators if item.key == "roe")
+
+    assert values["roe"] == Decimal("10.00")
+    numerator = next(item for item in roe.inputs if item.name == "지배주주순이익")
+    assert numerator.amount == Decimal(100)
+    assert numerator.resolution is AccountResolution.IDENTITY_VERIFIED
+
+
+def test_an_identity_satisfied_by_two_candidate_amounts_is_refused() -> None:
+    is_ = StatementDivision.INCOME_STATEMENT
+    lines = (
+        *_without(_full_lines(), "ifrs-full_ProfitLossAttributableToOwnersOfParent"),
+        _named(20, is_, "지배기업 소유주지분", amounts=("100", "80")),
+        _named(21, is_, "비지배지분", amounts=("10", "8")),
+        # 다른 금액인데 짝을 바꾸면 역시 110이 된다. 무엇이 지배주주분인지 결정할 수 없다.
+        _named(22, is_, "지배기업 소유주지분", amounts=("60", "40")),
+        _named(23, is_, "비지배지분", amounts=("50", "48")),
+    )
+
+    reasons = _indicator_reasons(lines)
+
+    assert reasons["roe"] is IndicatorUnavailableReason.MISSING_ACCOUNT
+
+
+def test_a_candidate_that_no_identity_supports_is_refused() -> None:
+    is_ = StatementDivision.INCOME_STATEMENT
+    lines = (
+        *_without(_full_lines(), "ifrs-full_ProfitLossAttributableToOwnersOfParent"),
+        _named(20, is_, "지배기업 소유주지분", amounts=("130", "90")),
+        _named(21, is_, "비지배지분", amounts=("12", "9")),
+    )
+
+    reasons = _indicator_reasons(lines)
+
+    assert reasons["roe"] is IndicatorUnavailableReason.MISSING_ACCOUNT
+
+
+def test_a_standard_tagged_row_is_never_a_name_candidate() -> None:
+    """다른 의미의 표준계정을 이름으로 끌어오지 않는다(계약 §복원 규칙 2)."""
+    is_ = StatementDivision.INCOME_STATEMENT
+    lines = (
+        *_without(_full_lines(), "ifrs-full_ProfitLossAttributableToOwnersOfParent"),
+        # 총포괄손익 지배주주분은 표준 ID를 달고 있다. 우연히 항등식을 만족해도 후보가 아니다.
+        _line(
+            20,
+            is_,
+            "ifrs-full_ComprehensiveIncomeAttributableToOwnersOfParent",
+            "지배기업 소유주지분",
+            amounts=("100", "80"),
+        ),
+        _named(21, is_, "비지배지분", amounts=("10", "8")),
+    )
+
+    reasons = _indicator_reasons(lines)
+
+    assert reasons["roe"] is IndicatorUnavailableReason.MISSING_ACCOUNT
+
+
+def test_a_blank_amount_on_the_standard_row_is_not_restored() -> None:
+    """원문이 그 계정에 대해 말을 했고 값이 없다. 다른 경로로 값을 만들지 않는다."""
+    is_ = StatementDivision.INCOME_STATEMENT
+    lines = (
+        *tuple(
+            _line(
+                line.line_seq, line.sj_div, line.account_id, line.account_nm, amounts=(None, None)
+            )
+            if line.account_id == "ifrs-full_ProfitLossAttributableToOwnersOfParent"
+            else line
+            for line in _full_lines()
+        ),
+        _named(20, is_, "지배기업 소유주지분", amounts=("100", "80")),
+        _named(21, is_, "비지배지분", amounts=("10", "8")),
+    )
+
+    reasons = _indicator_reasons(lines)
+
+    assert reasons["roe"] is IndicatorUnavailableReason.MISSING_AMOUNT
+
+
+def test_the_owners_equity_is_restored_by_subtracting_standard_accounts() -> None:
+    bs = StatementDivision.BALANCE_SHEET
+    lines = (
+        *_without(_full_lines(), "ifrs-full_EquityAttributableToOwnersOfParent"),
+        # 자본총계 1600 - 비지배지분 550 = 1050 (당기), 950 - 0 = 950 (전기)
+        _line(20, bs, "ifrs-full_NoncontrollingInterests", "비지배지분", amounts=("550", "0")),
+    )
+
+    annual = compute_annual_indicators(_report(), lines)
+    values = {item.key: item.value for item in annual.indicators}
+    roe = next(item for item in annual.indicators if item.key == "roe")
+
+    assert values["roe"] == Decimal("10.00")
+    closing = next(
+        item
+        for item in roe.inputs
+        if item.name == "지배기업 소유주지분" and item.period is AmountPeriod.CURRENT
+    )
+    assert closing.amount == Decimal(1050)
+    assert closing.resolution is AccountResolution.STANDARD_DIFFERENCE
+
+
+def test_a_directly_matched_account_reports_the_standard_resolution() -> None:
+    annual = compute_annual_indicators(_report(), _full_lines())
+
+    roe = next(item for item in annual.indicators if item.key == "roe")
+    assert all(item.resolution is AccountResolution.STANDARD_ACCOUNT for item in roe.inputs)
+    figures = {figure.key: figure.resolution for figure in annual.figures}
+    assert figures["net_income_owners"] is AccountResolution.STANDARD_ACCOUNT

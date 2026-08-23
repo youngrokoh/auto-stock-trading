@@ -58,6 +58,8 @@ class IndicatorInputResponse(FundamentalsResponse):
     account_id: str
     period: str
     amount: Decimal | None
+    # 금액을 표준계정에서 직접 읽었는지, 산술로 복원했는지(지표 계약 §복원 규칙).
+    resolution: str
 
 
 class IndicatorResponse(FundamentalsResponse):
@@ -77,6 +79,7 @@ class FinancialFigureResponse(FundamentalsResponse):
     sj_div: str
     account_id: str
     amount: Decimal | None
+    resolution: str
 
 
 class AnnualIndicatorsResponse(FundamentalsResponse):

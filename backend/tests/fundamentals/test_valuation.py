@@ -261,3 +261,31 @@ def test_eps_accepts_the_legacy_ifrs_prefix() -> None:
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value == Decimal(6605)
+
+
+def test_a_name_only_basic_eps_row_is_never_used() -> None:
+    """기본주당이익은 복원하지 않는다(지표 계약 §복원 규칙, 검증 시나리오 12).
+
+    `EPS × 주식수 = 순이익`은 우선주 때문에 성립하지 않아 검증 수단이 없다. 후보가 하나뿐이어도
+    쓰지 않는다 — 실측 결측 100건 중 28건은 우선주 행이 공존한다.
+    """
+    named = FinancialStatementLine(
+        line_seq=9,
+        sj_div=StatementDivision.COMPREHENSIVE_INCOME,
+        account_id=None,
+        account_nm="보통주 기본주당이익",
+        account_detail=None,
+        ord=9,
+        thstrm_nm="제 57 기",
+        thstrm_amount=Decimal(6605),
+        frmtrm_nm="제 56 기",
+        frmtrm_amount=None,
+        bfefrmtrm_nm=None,
+        bfefrmtrm_amount=None,
+    )
+
+    valuation = compute_valuation(_report(), (named,), _quote(), _shares())
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value is None
+    assert items["eps"].unavailable_reason is IndicatorUnavailableReason.MISSING_ACCOUNT

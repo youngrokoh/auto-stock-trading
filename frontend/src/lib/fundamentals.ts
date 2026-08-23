@@ -48,11 +48,14 @@ const financialReportDetailSchema = z.strictObject({
   source: z.string().min(1),
 });
 
+const accountResolution = z.enum(["standard_account", "identity_verified", "standard_difference"]);
+
 const indicatorInputSchema = z.strictObject({
   account_id: z.string().min(1),
   amount: nullableDecimal,
   name: z.string().min(1),
   period: z.enum(["thstrm", "frmtrm"]),
+  resolution: accountResolution,
   sj_div: statementDivision,
 });
 
@@ -80,6 +83,7 @@ const financialFigureSchema = z.strictObject({
   amount: nullableDecimal,
   key: z.string().min(1),
   name: z.string().min(1),
+  resolution: accountResolution,
   sj_div: statementDivision,
 });
 

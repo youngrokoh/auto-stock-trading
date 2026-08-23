@@ -39,6 +39,17 @@ class AmountPeriod(StrEnum):
     PRIOR = "frmtrm"
 
 
+class AccountResolution(StrEnum):
+    """금액을 어떻게 얻었는지(지표 계약 §표준계정 결측 시 복원 규칙).
+
+    복원한 값과 표준 태깅된 값이 응답에서 구별되지 않으면 안 된다.
+    """
+
+    STANDARD_ACCOUNT = "standard_account"
+    IDENTITY_VERIFIED = "identity_verified"
+    STANDARD_DIFFERENCE = "standard_difference"
+
+
 @dataclass(frozen=True, slots=True)
 class IndicatorInput:
     name: str
@@ -46,6 +57,7 @@ class IndicatorInput:
     account_id: str
     period: AmountPeriod
     amount: Decimal | None
+    resolution: AccountResolution = AccountResolution.STANDARD_ACCOUNT
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +78,7 @@ class FinancialFigure:
     sj_div: StatementDivision
     account_id: str
     amount: Decimal | None
+    resolution: AccountResolution = AccountResolution.STANDARD_ACCOUNT
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +126,46 @@ _EQUITY_OWNERS = _Account(
 )
 _CURRENT_ASSETS = _Account("유동자산", _BALANCE_DIVISIONS, "ifrs-full_CurrentAssets")
 _CURRENT_LIABILITIES = _Account("유동부채", _BALANCE_DIVISIONS, "ifrs-full_CurrentLiabilities")
+_NONCONTROLLING_EQUITY = _Account(
+    "비지배지분",
+    _BALANCE_DIVISIONS,
+    "ifrs-full_NoncontrollingInterests",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _Decomposition:
+    """분해 항등식 `합계 = 이 계정 + 보완 계정`. 계정명은 후보를 좁히는 데만 쓴다."""
+
+    total: _Account
+    name_hints: tuple[str, ...]
+    exclude_hints: tuple[str, ...]
+    complement_hints: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Difference:
+    """표준계정 두 개의 차. 이름을 전혀 쓰지 않는다."""
+
+    minuend: _Account
+    subtrahend: _Account
+
+
+# '비지배주주지분포괄손익'처럼 보완 항목의 이름이 '지배주주'를 포함하므로 제외 힌트가 필요하다.
+_DECOMPOSITIONS: Final = {
+    _NET_INCOME_OWNERS.account_id: _Decomposition(
+        total=_NET_INCOME,
+        name_hints=("지배기업", "지배주주"),
+        exclude_hints=("비지배",),
+        complement_hints=("비지배",),
+    ),
+}
+_DIFFERENCES: Final = {
+    _EQUITY_OWNERS.account_id: _Difference(
+        minuend=_EQUITY,
+        subtrahend=_NONCONTROLLING_EQUITY,
+    ),
+}
 
 _FIGURES: tuple[tuple[str, _Account], ...] = (
     ("revenue", _REVENUE),
@@ -143,23 +196,131 @@ def _resolve(
     division, matches = _matching_lines(lines, account)
     amount: Decimal | None = None
     reason: IndicatorUnavailableReason | None = None
+    resolution = AccountResolution.STANDARD_ACCOUNT
     if len(matches) > 1:
         reason = IndicatorUnavailableReason.AMBIGUOUS_ACCOUNT
-    elif not matches:
-        reason = IndicatorUnavailableReason.MISSING_ACCOUNT
-    else:
-        line = matches[0]
-        amount = line.thstrm_amount if period is AmountPeriod.CURRENT else line.frmtrm_amount
+    elif matches:
+        amount = _amount(matches[0], period)
         if amount is None:
+            # 원문이 그 계정에 대해 말을 했고 값이 없다. 다른 경로로 값을 만들지 않는다.
             reason = IndicatorUnavailableReason.MISSING_AMOUNT
+    else:
+        restored = _restored(lines, account, period)
+        if restored is None:
+            reason = IndicatorUnavailableReason.MISSING_ACCOUNT
+        else:
+            division = restored.division
+            amount = restored.amount
+            resolution = restored.resolution
     spec = IndicatorInput(
         name=account.name,
         sj_div=division,
         account_id=account.account_id,
         period=period,
         amount=amount,
+        resolution=resolution,
     )
     return _ResolvedInput(spec=spec, reason=reason)
+
+
+def _amount(line: FinancialStatementLine, period: AmountPeriod) -> Decimal | None:
+    return line.thstrm_amount if period is AmountPeriod.CURRENT else line.frmtrm_amount
+
+
+@dataclass(frozen=True, slots=True)
+class _Restored:
+    amount: Decimal
+    division: StatementDivision
+    resolution: AccountResolution
+
+
+def _restored(
+    lines: tuple[FinancialStatementLine, ...],
+    account: _Account,
+    period: AmountPeriod,
+) -> _Restored | None:
+    """표준계정이 아예 없을 때만 산술로 복원한다(지표 계약 §표준계정 결측 시 복원 규칙)."""
+    difference = _DIFFERENCES.get(account.account_id)
+    if difference is not None:
+        return _by_difference(lines, difference, period)
+    decomposition = _DECOMPOSITIONS.get(account.account_id)
+    if decomposition is not None:
+        return _by_identity(lines, decomposition, period)
+    return None
+
+
+def _single_standard_amount(
+    lines: tuple[FinancialStatementLine, ...],
+    account: _Account,
+    period: AmountPeriod,
+) -> tuple[StatementDivision, Decimal] | None:
+    division, matches = _matching_lines(lines, account)
+    if len(matches) != 1:
+        return None
+    amount = _amount(matches[0], period)
+    return None if amount is None else (division, amount)
+
+
+def _by_difference(
+    lines: tuple[FinancialStatementLine, ...],
+    spec: _Difference,
+    period: AmountPeriod,
+) -> _Restored | None:
+    minuend = _single_standard_amount(lines, spec.minuend, period)
+    subtrahend = _single_standard_amount(lines, spec.subtrahend, period)
+    if minuend is None or subtrahend is None:
+        return None
+    division, minuend_amount = minuend
+    return _Restored(
+        amount=minuend_amount - subtrahend[1],
+        division=division,
+        resolution=AccountResolution.STANDARD_DIFFERENCE,
+    )
+
+
+def _hits(account_nm: str, hints: tuple[str, ...]) -> bool:
+    squeezed = "".join(account_nm.split())
+    return any(hint in squeezed for hint in hints)
+
+
+def _by_identity(
+    lines: tuple[FinancialStatementLine, ...],
+    spec: _Decomposition,
+    period: AmountPeriod,
+) -> _Restored | None:
+    """항등식을 만족하는 금액이 유일할 때만 채택한다. 값을 결정하는 것은 이름이 아니라 산술이다."""
+    total = _single_standard_amount(lines, spec.total, period)
+    if total is None:
+        return None
+    division, total_amount = total
+    rows = [line for line in lines if line.sj_div is division]
+    candidates = [
+        (line, amount)
+        for line in rows
+        # 표준 ID가 있는 행은 이미 다른 계정이다. 다른 의미의 표준계정을 이름으로 끌어오지 않는다.
+        if line.account_id is None
+        and _hits(line.account_nm, spec.name_hints)
+        and not _hits(line.account_nm, spec.exclude_hints)
+        and (amount := _amount(line, period)) is not None
+    ]
+    complements = [
+        amount
+        for line in rows
+        if _hits(line.account_nm, spec.complement_hints)
+        and (amount := _amount(line, period)) is not None
+    ]
+    resolved = {
+        amount
+        for _, amount in candidates
+        if any(amount + complement == total_amount for complement in complements)
+    }
+    if len(resolved) != 1:
+        return None
+    return _Restored(
+        amount=next(iter(resolved)),
+        division=division,
+        resolution=AccountResolution.IDENTITY_VERIFIED,
+    )
 
 
 def _matching_lines(
@@ -299,6 +460,7 @@ def _figure(
         sj_div=resolved.spec.sj_div,
         account_id=account.account_id,
         amount=resolved.spec.amount,
+        resolution=resolved.spec.resolution,
     )
 
 

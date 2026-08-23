@@ -23,8 +23,9 @@ OpenDART에서 수집한 재무제표 사실 버전, 그 사실에서 파생한 
 
 - 연간 사업보고서(`11011`)의 현재 버전에서만 조회 시점에 계산하며 저장하지 않는다.
 - 연도 항목은 `bsns_year`, `reprt_code`, `fs_div`, 근거 `rcept_no`, `currency`, `version`을 포함한다.
-- 지표 항목은 키·이름·분류(`growth`·`profitability`·`stability`), 단위(`percent`), 수식 문자열, 입력 계정(이름·`sj_div`·`account_id`·기간·금액), 값 또는 실패 사유 코드(`MISSING_ACCOUNT`·`AMBIGUOUS_ACCOUNT`·`MISSING_AMOUNT`·`ZERO_DENOMINATOR`·`SECTOR_ACCOUNT_BASIS`)를 포함한다. `SECTOR_ACCOUNT_BASIS`는 발행사가 업종 회계상 그 계정을 쓰지 않는다는 뜻이며(금융업의 매출액·영업이익) 데이터 결손과 구별한다. 같은 응답의 당기순이익·자본 기반 지표와 가치지표는 금융업에서도 값을 갖는다.
-- 실적 원문 값(`figures`)은 매출액·영업이익·당기순이익·지배주주순이익·자산·부채·자본 금액을 계정 출처와 함께 원문 그대로 제공한다.
+- 지표 항목은 키·이름·분류(`growth`·`profitability`·`stability`), 단위(`percent`), 수식 문자열, 입력 계정(이름·`sj_div`·`account_id`·기간·금액·`resolution`), 값 또는 실패 사유 코드(`MISSING_ACCOUNT`·`AMBIGUOUS_ACCOUNT`·`MISSING_AMOUNT`·`ZERO_DENOMINATOR`·`SECTOR_ACCOUNT_BASIS`)를 포함한다. `SECTOR_ACCOUNT_BASIS`는 발행사가 업종 회계상 그 계정을 쓰지 않는다는 뜻이며(금융업의 매출액·영업이익) 데이터 결손과 구별한다. 같은 응답의 당기순이익·자본 기반 지표와 가치지표는 금융업에서도 값을 갖는다.
+- 실적 원문 값(`figures`)은 매출액·영업이익·당기순이익·지배주주순이익·자산·부채·자본 금액을 계정 출처와 함께 원문 그대로 제공하며 입력 계정과 같은 `resolution`을 담는다.
+- `resolution`은 금액을 어떻게 얻었는지 말한다: `standard_account`(표준 계정 ID 직접 매칭)·`identity_verified`(분해 항등식으로 확정)·`standard_difference`(표준 계정 차감으로 복원). 과거 보고서는 같은 계정을 표준 ID 없이 계정명만으로 적는 경우가 많아 산술로 복원하며, **계정명으로 값을 고르지는 않는다**(정의는 [재무 지표 정의 계약](../data/financial-indicator-contract.md) §표준계정 결측 시 복원 규칙). `account_id`는 우리가 식별한 계정 개념이고, 원문 행이 그 ID를 달고 있었는지는 `resolution`이 말한다.
 - 개별(`OFS`) 조회에서 지배주주 계정이 없는 ROE는 계약대로 값 없이 `MISSING_ACCOUNT`를 반환한다.
 - `valuation` 블록이 가치지표(기본주당이익 원문 `eps`, `per`, `market_cap`)를 제공한다. 기준이
   서로 다른 세 입력을 결합하므로 가격(값·기준시각·출처), 상장주식수(값·기준시각·출처·버전),

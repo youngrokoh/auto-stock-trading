@@ -218,6 +218,7 @@ def _figure_response(figure: FinancialFigure) -> FinancialFigureResponse:
         sj_div=figure.sj_div.value,
         account_id=figure.account_id,
         amount=figure.amount,
+        resolution=figure.resolution.value,
     )
 
 
@@ -234,6 +235,7 @@ def _indicator_response(indicator: IndicatorValue) -> IndicatorResponse:
                 account_id=item.account_id,
                 period=item.period.value,
                 amount=item.amount,
+                resolution=item.resolution.value,
             )
             for item in indicator.inputs
         ),
