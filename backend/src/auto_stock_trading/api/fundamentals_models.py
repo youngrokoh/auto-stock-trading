@@ -121,6 +121,21 @@ class ValuationItemResponse(FundamentalsResponse):
     formula: str
     value: Decimal | None
     unavailable_reason: str | None
+    resolution: str
+
+
+class ShareClassResponse(FundamentalsResponse):
+    """상장 클래스 내역. 거래가 없는 우선주도 기준시각이 그대로 드러나야 한다."""
+
+    symbol: str
+    class_kind: str
+    name: str
+    price: Decimal | None
+    as_of: datetime | None
+    volume: int | None
+    share_count: int | None
+    share_count_as_of: datetime | None
+    market_cap: Decimal | None
 
 
 class ValuationResponse(FundamentalsResponse):
@@ -128,6 +143,7 @@ class ValuationResponse(FundamentalsResponse):
     share_count: ValuationShareCountBasisResponse | None
     report: ValuationReportBasisResponse
     items: tuple[ValuationItemResponse, ...]
+    share_classes: tuple[ShareClassResponse, ...]
 
 
 class FinancialIndicatorsResponse(FundamentalsResponse):

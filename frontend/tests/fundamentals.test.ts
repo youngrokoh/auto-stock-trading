@@ -56,14 +56,48 @@ const yearPayload = {
 };
 
 const valuationPayload = {
+  share_classes: [
+    {
+      as_of: "2026-08-23T04:39:00Z",
+      class_kind: "common",
+      market_cap: "1645727428152000.00000000",
+      name: "삼성전자",
+      price: "281500.00000000",
+      share_count: 5846278608,
+      share_count_as_of: "2026-08-23T04:39:00Z",
+      symbol: "005930",
+      volume: 27746471,
+    },
+    {
+      as_of: "2026-08-23T04:39:00Z",
+      class_kind: "preferred",
+      market_cap: "166090839021000.00000000",
+      name: "삼성전자우",
+      price: "207000.00000000",
+      share_count: 802371203,
+      share_count_as_of: "2026-08-23T04:39:00Z",
+      symbol: "005935",
+      volume: 10625176,
+    },
+  ],
   items: [
     {
-      formula: "현재가 ÷ 최근 연간 기본주당이익",
+      formula: "보통주 현재가 ÷ 최근 연간 기본주당이익",
       key: "per",
       name: "PER",
+      resolution: "standard_account",
       unavailable_reason: null,
       unit: "ratio",
       value: "41.56",
+    },
+    {
+      formula: "최근 연간 지배주주지분 ÷ 보통주 상장주식수",
+      key: "bps",
+      name: "주당순자산(보통주)",
+      resolution: "standard_account",
+      unavailable_reason: "PREFERRED_ALLOCATION_REQUIRED",
+      unit: "krw",
+      value: null,
     },
   ],
   price: { as_of: "2026-08-17T12:31:18Z", price: "274500.00000000", source: "KIS" },
@@ -143,7 +177,8 @@ describe("fundamentals schemas", () => {
         ...valuationPayload,
         items: [
           {
-            formula: "현재가 × 보통주 상장주식수",
+            formula: "보통주 현재가 × 보통주 상장주식수",
+            resolution: "standard_account",
             key: "market_cap",
             name: "시가총액(보통주)",
             unavailable_reason: "MISSING_SHARE_COUNT",
@@ -268,5 +303,53 @@ describe("복원한 입력", () => {
         years: [{ ...yearPayload, indicators: [bad] }],
       }),
     ).toThrow();
+  });
+});
+
+describe("상장 클래스", () => {
+  it("클래스 내역과 우선주 사유를 파싱한다", () => {
+    const parsed = parseFinancialIndicators(indicatorsPayload);
+
+    const classes = parsed.valuation?.share_classes ?? [];
+    expect(classes.map((entry) => entry.class_kind)).toEqual(["common", "preferred"]);
+    expect(classes[1]?.symbol).toBe("005935");
+    const bps = parsed.valuation?.items.find((item) => item.key === "bps");
+    expect(bps?.unavailable_reason).toBe("PREFERRED_ALLOCATION_REQUIRED");
+  });
+
+  it("거래가 없는 우선주의 0 거래량과 기준시각을 수용한다", () => {
+    const stale = {
+      ...indicatorsPayload,
+      valuation: {
+        ...valuationPayload,
+        share_classes: [
+          valuationPayload.share_classes[0],
+          {
+            ...valuationPayload.share_classes[1],
+            as_of: "2026-08-22T06:30:00Z",
+            symbol: "00088K",
+            volume: 0,
+          },
+        ],
+      },
+    };
+
+    const parsed = parseFinancialIndicators(stale);
+
+    const preferred = parsed.valuation?.share_classes[1];
+    expect(preferred?.volume).toBe(0);
+    expect(preferred?.as_of).toBe("2026-08-22T06:30:00Z");
+  });
+
+  it("모르는 클래스 구분은 파싱을 거부한다", () => {
+    const bad = {
+      ...indicatorsPayload,
+      valuation: {
+        ...valuationPayload,
+        share_classes: [{ ...valuationPayload.share_classes[0], class_kind: "bond" }],
+      },
+    };
+
+    expect(() => parseFinancialIndicators(bad)).toThrow();
   });
 });

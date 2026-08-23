@@ -23,6 +23,7 @@ from auto_stock_trading.domain.market_data.models import (
     Quote,
     VersionedDailyBar,
 )
+from auto_stock_trading.domain.market_data.share_classes import ShareClass, ShareClassKind
 from auto_stock_trading.settings.runtime import Environment, Settings
 
 if TYPE_CHECKING:
@@ -518,6 +519,26 @@ class StubValuationMarketDataReader:
         )
 
 
+@final
+class StubShareClassSource:
+    """우선주가 상장되지 않은 회사. 클래스 사실을 아는 상태다."""
+
+    async def share_classes(self, common_symbol: str) -> tuple[ShareClass, ...]:
+        if common_symbol != _SYMBOL:
+            return ()
+        return (
+            ShareClass(
+                symbol=_SYMBOL,
+                class_kind=ShareClassKind.COMMON,
+                isin="KR7005930003",
+                name="삼성전자",
+            ),
+        )
+
+    async def close(self) -> None:
+        return None
+
+
 def _indicator_client() -> TestClient:
     app = create_app(
         settings=Settings(environment=Environment.TEST),
@@ -526,6 +547,7 @@ def _indicator_client() -> TestClient:
         market_data_reader_factory=StubValuationMarketDataReader,
         financial_report_reader_factory=StubIndicatorReportReader,
         disclosure_reader_factory=StubDisclosureReader,
+        share_class_source_factory=StubShareClassSource,
     )
     return TestClient(app)
 
@@ -760,22 +782,67 @@ def _valuation_json(rcept_no: str, fs_div: str) -> dict[str, object]:
                 "formula": "최근 연간 보고서의 기본주당이익 원문 값",
                 "value": "11",
                 "unavailable_reason": None,
+                "resolution": "standard_account",
             },
             {
                 "key": "per",
                 "name": "PER",
                 "unit": "ratio",
-                "formula": "현재가 ÷ 최근 연간 기본주당이익",
+                "formula": "보통주 현재가 ÷ 최근 연간 기본주당이익",
                 "value": "20.00",
                 "unavailable_reason": None,
+                "resolution": "standard_account",
             },
             {
                 "key": "market_cap",
                 "name": "시가총액(보통주)",
                 "unit": "krw",
-                "formula": "현재가 × 보통주 상장주식수",
+                "formula": "보통주 현재가 × 보통주 상장주식수",
                 "value": "220000",
                 "unavailable_reason": None,
+                "resolution": "standard_account",
+            },
+            {
+                "key": "market_cap_total",
+                "name": "시가총액(전종목)",
+                "unit": "krw",
+                "formula": "Σ 클래스별 (현재가 × 상장주식수)",
+                # 우선주가 상장되지 않은 회사라 보통주 시가총액과 같다.
+                "value": "220000",
+                "unavailable_reason": None,
+                "resolution": "standard_account",
+            },
+            {
+                "key": "bps",
+                "name": "주당순자산(보통주)",
+                "unit": "krw",
+                "formula": "최근 연간 지배주주지분 ÷ 보통주 상장주식수",
+                # 개별 재무제표에는 지배주주지분 계정이 없다.
+                "value": None if fs_div == "OFS" else "1.05",
+                "unavailable_reason": "MISSING_ACCOUNT" if fs_div == "OFS" else None,
+                "resolution": "standard_account",
+            },
+            {
+                "key": "pbr",
+                "name": "PBR",
+                "unit": "ratio",
+                "formula": "보통주 현재가 ÷ 주당순자산(보통주)",
+                "value": None if fs_div == "OFS" else "209.52",
+                "unavailable_reason": "MISSING_ACCOUNT" if fs_div == "OFS" else None,
+                "resolution": "standard_account",
+            },
+        ],
+        "share_classes": [
+            {
+                "symbol": "005930",
+                "class_kind": "common",
+                "name": "삼성전자",
+                "price": "220",
+                "as_of": "2026-03-10T01:00:00Z",
+                "volume": 1000,
+                "share_count": 1000,
+                "share_count_as_of": "2026-03-10T01:00:00Z",
+                "market_cap": "220000",
             },
         ],
     }
@@ -1024,6 +1091,7 @@ def test_restored_indicator_inputs_expose_how_the_amount_was_obtained() -> None:
         market_data_reader_factory=StubValuationMarketDataReader,
         financial_report_reader_factory=StubRestoredReportReader,
         disclosure_reader_factory=StubDisclosureReader,
+        share_class_source_factory=StubShareClassSource,
     )
 
     with TestClient(app) as client:

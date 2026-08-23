@@ -15,6 +15,7 @@ from auto_stock_trading.api.fundamentals_models import (
     FinancialStatementLineResponse,
     IndicatorInputResponse,
     IndicatorResponse,
+    ShareClassResponse,
     ValuationItemResponse,
     ValuationPriceBasisResponse,
     ValuationReportBasisResponse,
@@ -23,6 +24,7 @@ from auto_stock_trading.api.fundamentals_models import (
 )
 from auto_stock_trading.application.financial_indicators import (
     SectorSource,
+    ShareClassSource,
     annual_indicator_history,
     valuation_snapshot,
 )
@@ -51,6 +53,7 @@ def create_fundamentals_router(
     reports: FinancialReportReader,
     disclosures: DisclosureReader,
     sectors: SectorSource,
+    share_classes: ShareClassSource,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/fundamentals", tags=["fundamentals"])
 
@@ -111,7 +114,13 @@ def create_fundamentals_router(
         years = await annual_indicator_history(reports, symbol, fs_div, sectors)
         if not years and await instruments.instrument(symbol) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Instrument not found")
-        valuation = await valuation_snapshot(reports, instruments, symbol, fs_div)
+        valuation = await valuation_snapshot(
+            reports,
+            instruments,
+            symbol,
+            fs_div,
+            share_classes,
+        )
         return FinancialIndicatorsResponse(
             symbol=symbol,
             fs_div=fs_div.value,
@@ -138,7 +147,8 @@ def create_fundamentals_router(
             "연간 사업보고서의 현재 버전에서 계산한 성장성·수익성·안정성 지표와 실적 원문 "
             "값을 사업연도 오름차순으로 반환한다. 각 지표는 수식, 입력 계정과 금액, 근거 "
             "접수번호(rcept_no)를 포함하며 필요한 계정이 없으면 값 없이 사유 코드를 담는다. "
-            "가치지표(PER·PBR)는 상장주식수 정규화 수집 후 제공한다."
+            "가치지표는 상장 클래스별 시세·주식수를 결합하며, 우선주가 상장된 회사의 "
+            "BPS·PBR은 자본 배분 판단이 필요해 사유와 함께 빈 값이다."
         ),
     )
     return router
@@ -286,8 +296,23 @@ def _valuation_response(valuation: Valuation) -> ValuationResponse:
                 unavailable_reason=(
                     None if item.unavailable_reason is None else item.unavailable_reason.value
                 ),
+                resolution=item.resolution.value,
             )
             for item in valuation.items
+        ),
+        share_classes=tuple(
+            ShareClassResponse(
+                symbol=entry.symbol,
+                class_kind=entry.class_kind.value,
+                name=entry.name,
+                price=entry.price,
+                as_of=entry.as_of,
+                volume=entry.volume,
+                share_count=entry.share_count,
+                share_count_as_of=entry.share_count_as_of,
+                market_cap=entry.market_cap,
+            )
+            for entry in valuation.share_classes
         ),
     )
 

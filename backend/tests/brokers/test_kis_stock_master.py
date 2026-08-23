@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from auto_stock_trading.adapters.brokers.kis_master_files import (
+    parse_kospi_stock_listings,
     parse_kospi_universe_profiles,
 )
 
@@ -73,3 +74,42 @@ def test_universe_parse_skips_short_or_broken_lines() -> None:
     profiles = parse_kospi_universe_profiles(content, _NOW)
 
     assert [p.symbol for p in profiles] == ["005930"]
+
+
+def test_listings_keep_both_share_classes_and_ignore_the_sector_code() -> None:
+    """주식종류 사실은 KOSPI200 구성 여부와 무관하다. 우선주에는 업종 코드가 없다."""
+    content = b"\n".join(
+        (
+            _record("005930", "KR7005930003", "삼성전자", "ST", "5"),
+            _record("005935", "KR7005931001", "삼성전자우", "ST", "0"),
+            _record("00088K", "KR7000885003", "한화3우B", "ST", "0"),
+            # 다른 그룹은 주권이 아니다
+            _record("069500", "KR7069500007", "KODEX 200", "EF", "0"),
+            _record("500001", "KR7500001004", "삼성 레버리지", "EN", "0"),
+        )
+    )
+
+    listings = parse_kospi_stock_listings(content, _NOW)
+
+    assert [(item.symbol, item.name) for item in listings] == [
+        ("005930", "삼성전자"),
+        ("005935", "삼성전자우"),
+        ("00088K", "한화3우B"),
+    ]
+    assert listings[0].isin == "KR7005930003"
+    assert listings[0].source == "KIS_MASTER"
+    assert listings[0].received_at == _NOW
+
+
+def test_listings_skip_short_lines_and_malformed_codes() -> None:
+    content = b"\n".join(
+        (
+            b"garbage",
+            _record("00593", "KR7005930003", "짧은코드", "ST", "5"),
+            _record("005930", "KR7005930003", "삼성전자", "ST", "5"),
+        )
+    )
+
+    listings = parse_kospi_stock_listings(content, _NOW)
+
+    assert [item.symbol for item in listings] == ["005930"]

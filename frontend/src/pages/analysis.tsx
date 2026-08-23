@@ -21,7 +21,12 @@ import {
   formatKstDateTime,
   formatSignedDecimal,
 } from "../lib/format";
-import type { AnnualIndicators, FinancialIndicator, ValuationItem } from "../lib/fundamentals";
+import type {
+  AnnualIndicators,
+  FinancialIndicator,
+  ShareClassEntry,
+  ValuationItem,
+} from "../lib/fundamentals";
 
 type FsDiv = "CFS" | "OFS";
 
@@ -68,7 +73,34 @@ const UNAVAILABLE_LABEL: Readonly<Record<string, string>> = {
   MISSING_SHARE_COUNT: "주식수 없음",
   // 금융업은 매출액·영업이익 표준계정을 쓰지 않는다. '계정 없음'과 원인이 다르다.
   SECTOR_ACCOUNT_BASIS: "업종 회계기준 미해당",
+  MISSING_CLASS_QUOTE: "클래스 시세 없음",
+  // 우선주가 상장돼 자본 배분 판단이 필요하다. 데이터 결손이 아니다.
+  PREFERRED_ALLOCATION_REQUIRED: "우선주 자본 배분 필요",
   ZERO_DENOMINATOR: "분모 0",
+};
+
+/**
+ * 클래스별 시세·주식수·시가총액. 거래가 없는 우선주는 전일 종가만 돌아오므로(실측 `00088K`)
+ * 기준시각을 값과 함께 보여준다. 합계 하나만 보여주면 어느 클래스가 오래됐는지 알 수 없다.
+ */
+const shareClassText = (entry: ShareClassEntry): string => {
+  if (entry.price === null || entry.share_count === null) {
+    return "시세·주식수 없음";
+  }
+  const parts = [
+    `${formatDecimal(entry.price)}원`,
+    `${formatDecimal(String(entry.share_count))}주`,
+  ];
+  if (entry.market_cap !== null) {
+    parts.push(`${formatKoreanAmount(entry.market_cap)}원`);
+  }
+  if (entry.as_of !== null) {
+    parts.push(formatKstDateTime(entry.as_of));
+  }
+  if (entry.volume === 0) {
+    parts.push("당일 거래 없음");
+  }
+  return parts.join(" · ");
 };
 
 const valuationItemText = (item: ValuationItem): string => {
@@ -603,11 +635,21 @@ export const Analysis = () => {
                         {valuation.report.bsns_year} 사업보고서 · {valuation.report.rcept_no}
                       </dd>
                     </div>
+                    {valuation.share_classes.map((entry) => (
+                      <div key={entry.symbol}>
+                        <dt>
+                          {entry.class_kind === "common" ? "보통주" : "우선주"} {entry.symbol}
+                        </dt>
+                        <dd>{shareClassText(entry)}</dd>
+                      </div>
+                    ))}
                   </dl>
                 )}
               </div>
               <div className="card__note">
-                산식은 각 항목 도움말에 표시 · BPS·PBR은 우선주 반영 설계 확정 후 제공합니다
+                산식은 각 항목 도움말에 표시 · 시가총액은 보통주와 전종목을 따로 제공하며 클래스별
+                기준시각을 함께 표시합니다 · 우선주가 상장된 회사의 BPS·PBR은 자본 배분 판단이
+                필요해 제공하지 않습니다
               </div>
             </section>
 

@@ -20,6 +20,9 @@ from auto_stock_trading.adapters.database.market_data_etf_reader import Postgres
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.market_data_share_class_store import (
+    PostgresShareClassStore,
+)
 from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.adapters.database.strategy_backtest_reader import (
     PostgresBacktestReader,
@@ -41,7 +44,10 @@ from auto_stock_trading.application.adjusted_prices import (
 from auto_stock_trading.application.backtests.reader import BacktestReader
 from auto_stock_trading.application.disclosures import DisclosureReader
 from auto_stock_trading.application.etf import EtfReader
-from auto_stock_trading.application.financial_indicators import SectorSource
+from auto_stock_trading.application.financial_indicators import (
+    SectorSource,
+    ShareClassSource,
+)
 from auto_stock_trading.application.financial_statements import FinancialReportReader
 from auto_stock_trading.application.health import HealthProbe, HealthService
 from auto_stock_trading.application.market_data import MarketDataReader
@@ -57,6 +63,7 @@ EtfReaderFactory = Callable[[], EtfReader]
 BacktestReaderFactory = Callable[[], BacktestReader]
 TradingReaderFactory = Callable[[], TradingReader]
 SectorSourceFactory = Callable[[], SectorSource]
+ShareClassSourceFactory = Callable[[], ShareClassSource]
 
 
 def create_app(  # noqa: PLR0913
@@ -73,6 +80,7 @@ def create_app(  # noqa: PLR0913
     backtest_reader_factory: BacktestReaderFactory | None = None,
     trading_reader_factory: TradingReaderFactory | None = None,
     sector_source_factory: SectorSourceFactory | None = None,
+    share_class_source_factory: ShareClassSourceFactory | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -126,6 +134,10 @@ def create_app(  # noqa: PLR0913
         lambda: PostgresStockStore.from_url(runtime_settings.database_url.get_secret_value())
     )
     sector_source = sector_factory()
+    share_class_factory = share_class_source_factory or (
+        lambda: PostgresShareClassStore.from_url(runtime_settings.database_url.get_secret_value())
+    )
+    share_class_source = share_class_factory()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -142,6 +154,7 @@ def create_app(  # noqa: PLR0913
             await backtest_reader.close()
             await trading_reader.close()
             await sector_source.close()
+            await share_class_source.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -171,6 +184,7 @@ def create_app(  # noqa: PLR0913
             financial_report_reader,
             disclosure_reader,
             sector_source,
+            share_class_source,
         )
     )
     app.include_router(create_backtests_router(backtest_reader))

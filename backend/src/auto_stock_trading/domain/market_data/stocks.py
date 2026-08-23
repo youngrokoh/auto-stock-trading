@@ -37,3 +37,21 @@ class StockMasterBundle:
     profiles: tuple[StockProfile, ...]
     raw: RawBrokerResponse
     collected_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StockListing:
+    """마스터 파일의 주권 한 행. 업종 코드가 없는 우선주도 담는다."""
+
+    symbol: str
+    isin: str
+    name: str
+    source: str
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StockListingBundle:
+    listings: tuple[StockListing, ...]
+    raw: RawBrokerResponse
+    collected_at: datetime

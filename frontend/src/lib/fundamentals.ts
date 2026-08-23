@@ -106,15 +106,31 @@ const unavailableReason = z.enum([
   "MISSING_QUOTE",
   "MISSING_SHARE_COUNT",
   "SECTOR_ACCOUNT_BASIS",
+  "MISSING_CLASS_QUOTE",
+  "PREFERRED_ALLOCATION_REQUIRED",
 ]);
 
 const valuationItemSchema = z.strictObject({
   formula: z.string().min(1),
   key: z.string().min(1),
   name: z.string().min(1),
+  resolution: accountResolution,
   unavailable_reason: unavailableReason.nullable(),
   unit: z.enum(["krw", "ratio"]),
   value: nullableDecimal,
+});
+
+/** 상장 클래스 내역. 거래가 없는 우선주도 기준시각이 드러나야 한다. */
+const shareClassSchema = z.strictObject({
+  as_of: isoDateTime.nullable(),
+  class_kind: z.enum(["common", "preferred"]),
+  market_cap: nullableDecimal,
+  name: z.string().min(1),
+  price: nullableDecimal,
+  share_count: z.number().int().nullable(),
+  share_count_as_of: isoDateTime.nullable(),
+  symbol: z.string().min(1),
+  volume: z.number().int().nullable(),
 });
 
 const valuationSchema = z.strictObject({
@@ -141,6 +157,7 @@ const valuationSchema = z.strictObject({
       version: z.number().int().positive(),
     })
     .nullable(),
+  share_classes: z.array(shareClassSchema).readonly(),
 });
 
 const financialIndicatorsSchema = z.strictObject({
@@ -175,6 +192,7 @@ export type FinancialFigure = z.infer<typeof financialFigureSchema>;
 export type AnnualIndicators = z.infer<typeof annualIndicatorsSchema>;
 export type FinancialValuation = z.infer<typeof valuationSchema>;
 export type ValuationItem = z.infer<typeof valuationItemSchema>;
+export type ShareClassEntry = z.infer<typeof shareClassSchema>;
 export type FinancialIndicators = z.infer<typeof financialIndicatorsSchema>;
 export type Disclosure = z.infer<typeof disclosureSchema>;
 export type Disclosures = z.infer<typeof disclosuresSchema>;

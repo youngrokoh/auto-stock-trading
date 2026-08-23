@@ -32,6 +32,10 @@ class IndicatorUnavailableReason(StrEnum):
     MISSING_SHARE_COUNT = "MISSING_SHARE_COUNT"
     # 발행사가 업종 특성상 매출액·영업이익 표준계정을 쓰지 않는다(계정 누락과 구별한다).
     SECTOR_ACCOUNT_BASIS = "SECTOR_ACCOUNT_BASIS"
+    # 상장 클래스 중 시세·주식수가 빠져 전종목 합계를 만들 수 없다.
+    MISSING_CLASS_QUOTE = "MISSING_CLASS_QUOTE"
+    # 우선주가 상장돼 자본 배분 판단이 필요하다(데이터 결손과 구별한다).
+    PREFERRED_ALLOCATION_REQUIRED = "PREFERRED_ALLOCATION_REQUIRED"
 
 
 class AmountPeriod(StrEnum):
@@ -48,6 +52,8 @@ class AccountResolution(StrEnum):
     STANDARD_ACCOUNT = "standard_account"
     IDENTITY_VERIFIED = "identity_verified"
     STANDARD_DIFFERENCE = "standard_difference"
+    # 상장된 우선주가 없다는 외부 사실로 계정명 후보를 확정했다(지표 계약 §우선주 반영).
+    NO_PREFERRED_CLASS = "no_preferred_class"
 
 
 @dataclass(frozen=True, slots=True)

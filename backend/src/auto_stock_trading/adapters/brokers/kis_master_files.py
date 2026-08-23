@@ -8,7 +8,12 @@ import httpx2
 
 from auto_stock_trading.domain.market_data.etf import EtfMasterBundle, EtfProfile
 from auto_stock_trading.domain.market_data.models import BrokerOperation, RawBrokerResponse
-from auto_stock_trading.domain.market_data.stocks import StockMasterBundle, StockProfile
+from auto_stock_trading.domain.market_data.stocks import (
+    StockListing,
+    StockListingBundle,
+    StockMasterBundle,
+    StockProfile,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -81,6 +86,35 @@ def parse_kospi_universe_profiles(
     return tuple(profiles)
 
 
+def parse_kospi_stock_listings(
+    content: bytes,
+    received_at: datetime,
+) -> tuple[StockListing, ...]:
+    """주권(`ST`) 전 행. 보통주와 우선주를 모두 남긴다(유니버스 계약 §주식종류 사실).
+
+    KOSPI200 섹터 코드는 보지 않는다. 우선주에는 코드가 붙지 않으므로 걸러 버리면 짝을 잃는다.
+    """
+    listings: list[StockListing] = []
+    for line in content.split(b"\n"):
+        if len(line) < _RECORD_MIN_LENGTH:
+            continue
+        if line[61:63].decode("cp949", errors="replace") != _STOCK_GROUP:
+            continue
+        symbol = line[0:9].decode("cp949", errors="replace").strip()
+        if len(symbol) != _SYMBOL_LENGTH:
+            continue
+        listings.append(
+            StockListing(
+                symbol=symbol,
+                isin=line[9:21].decode("cp949", errors="replace"),
+                name=line[21:61].decode("cp949", errors="replace").strip(),
+                source=_SOURCE,
+                received_at=received_at,
+            )
+        )
+    return tuple(listings)
+
+
 def create_master_http_client(base_url: str) -> httpx2.AsyncClient:
     return httpx2.AsyncClient(
         base_url=base_url,
@@ -150,6 +184,15 @@ class KisStockMasterAdapter:
         content = await _download_master(self._client)
         return StockMasterBundle(
             profiles=parse_kospi_universe_profiles(content, now),
+            raw=_master_raw(content, BrokerOperation.STOCK_MASTER, now),
+            collected_at=now,
+        )
+
+    async def fetch_listings(self, now: datetime) -> StockListingBundle:
+        """주권 전 행. 우선주도 남긴다(유니버스 계약 §주식종류 사실)."""
+        content = await _download_master(self._client)
+        return StockListingBundle(
+            listings=parse_kospi_stock_listings(content, now),
             raw=_master_raw(content, BrokerOperation.STOCK_MASTER, now),
             collected_at=now,
         )

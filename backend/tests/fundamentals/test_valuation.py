@@ -10,9 +10,12 @@ from auto_stock_trading.domain.fundamentals.financial_statements import (
     VersionedFinancialReport,
 )
 from auto_stock_trading.domain.fundamentals.indicators import IndicatorUnavailableReason
-from auto_stock_trading.domain.fundamentals.valuation import compute_valuation
-from auto_stock_trading.domain.market_data.listed_shares import VersionedListedShareCount
+from auto_stock_trading.domain.fundamentals.valuation import (
+    ShareClassQuote,
+    compute_valuation,
+)
 from auto_stock_trading.domain.market_data.models import Quote
+from auto_stock_trading.domain.market_data.share_classes import ShareClassKind
 
 _NOW = datetime(2026, 8, 17, 9, 0, tzinfo=UTC)
 
@@ -73,27 +76,36 @@ def _quote() -> Quote:
     )
 
 
-def _shares() -> VersionedListedShareCount:
-    return VersionedListedShareCount(
+def _common(
+    *,
+    price: str | None = "220",
+    share_count: int | None = 1000,
+) -> ShareClassQuote:
+    quote = _quote()
+    return ShareClassQuote(
         symbol="005930",
-        share_count=1000,
-        source="KIS",
-        as_of=_NOW,
-        received_at=_NOW,
-        version=1,
-        valid_from=_NOW,
-        superseded_at=None,
+        class_kind=ShareClassKind.COMMON,
+        name="삼성전자",
+        price=None if price is None else Decimal(price),
+        as_of=None if price is None else quote.as_of,
+        volume=quote.volume,
+        share_count=share_count,
+        share_count_as_of=None if share_count is None else quote.as_of,
     )
 
 
 def test_computes_eps_per_and_market_cap_with_bases() -> None:
-    valuation = compute_valuation(_report(), (_eps_line("11"),), _quote(), _shares())
+    valuation = compute_valuation(_report(), (_eps_line("11"),), _common(), ())
 
     values = {item.key: item.value for item in valuation.items}
     assert values == {
         "eps": Decimal(11),
         "per": Decimal("20.00"),
         "market_cap": Decimal(220000),
+        # 우선주가 상장되지 않은 회사라 전종목 합계가 보통주와 같다.
+        "market_cap_total": Decimal(220000),
+        "bps": None,
+        "pbr": None,
     }
     assert valuation.price is not None
     assert valuation.price.price == Decimal(220)
@@ -105,16 +117,19 @@ def test_computes_eps_per_and_market_cap_with_bases() -> None:
 
 
 def test_every_item_carries_a_formula() -> None:
-    valuation = compute_valuation(_report(), (_eps_line("11"),), _quote(), _shares())
+    valuation = compute_valuation(_report(), (_eps_line("11"),), _common(), ())
 
     formulas = {item.key: item.formula for item in valuation.items}
     assert "기본주당이익" in formulas["eps"]
-    assert formulas["per"] == "현재가 ÷ 최근 연간 기본주당이익"
-    assert formulas["market_cap"] == "현재가 × 보통주 상장주식수"
+    assert formulas["per"] == "보통주 현재가 ÷ 최근 연간 기본주당이익"
+    assert formulas["market_cap"] == "보통주 현재가 × 보통주 상장주식수"
+    assert formulas["market_cap_total"] == "Σ 클래스별 (현재가 × 상장주식수)"
+    assert "지배주주지분" in formulas["bps"]
+    assert formulas["pbr"] == "보통주 현재가 ÷ 주당순자산(보통주)"
 
 
 def test_missing_quote_fails_price_dependent_items_only() -> None:
-    valuation = compute_valuation(_report(), (_eps_line("11"),), None, _shares())
+    valuation = compute_valuation(_report(), (_eps_line("11"),), _common(price=None), ())
 
     reasons = {item.key: item.unavailable_reason for item in valuation.items}
     values = {item.key: item.value for item in valuation.items}
@@ -125,7 +140,7 @@ def test_missing_quote_fails_price_dependent_items_only() -> None:
 
 
 def test_missing_share_count_fails_market_cap_only() -> None:
-    valuation = compute_valuation(_report(), (_eps_line("11"),), _quote(), None)
+    valuation = compute_valuation(_report(), (_eps_line("11"),), _common(share_count=None), ())
 
     reasons = {item.key: item.unavailable_reason for item in valuation.items}
     values = {item.key: item.value for item in valuation.items}
@@ -135,7 +150,7 @@ def test_missing_share_count_fails_market_cap_only() -> None:
 
 
 def test_missing_eps_line_fails_eps_and_per() -> None:
-    valuation = compute_valuation(_report(), (), _quote(), _shares())
+    valuation = compute_valuation(_report(), (), _common(), ())
 
     reasons = {item.key: item.unavailable_reason for item in valuation.items}
     values = {item.key: item.value for item in valuation.items}
@@ -145,14 +160,14 @@ def test_missing_eps_line_fails_eps_and_per() -> None:
 
 
 def test_zero_eps_fails_per_with_zero_denominator() -> None:
-    valuation = compute_valuation(_report(), (_eps_line("0"),), _quote(), _shares())
+    valuation = compute_valuation(_report(), (_eps_line("0"),), _common(), ())
 
     reasons = {item.key: item.unavailable_reason for item in valuation.items}
     assert reasons["per"] is IndicatorUnavailableReason.ZERO_DENOMINATOR
 
 
 def test_empty_eps_amount_fails_with_missing_amount() -> None:
-    valuation = compute_valuation(_report(), (_eps_line(None),), _quote(), _shares())
+    valuation = compute_valuation(_report(), (_eps_line(None),), _common(), ())
 
     reasons = {item.key: item.unavailable_reason for item in valuation.items}
     assert reasons["eps"] is IndicatorUnavailableReason.MISSING_AMOUNT
@@ -164,8 +179,8 @@ def test_eps_falls_back_to_the_comprehensive_income_statement() -> None:
     valuation = compute_valuation(
         _report(),
         (_eps_line("11", StatementDivision.COMPREHENSIVE_INCOME),),
-        _quote(),
-        _shares(),
+        _common(),
+        (),
     )
 
     items = {item.key: item for item in valuation.items}
@@ -206,7 +221,7 @@ def test_split_reported_eps_is_the_sum_of_continuing_and_discontinued() -> None:
         _eps_line_of(_DISCONTINUED, "-55240", 2),
     )
 
-    valuation = compute_valuation(_report(), lines, _quote(), _shares())
+    valuation = compute_valuation(_report(), lines, _common(), ())
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value == Decimal(-21984)
@@ -217,8 +232,8 @@ def test_continuing_eps_alone_is_the_total_when_no_discontinued_row_exists() -> 
     valuation = compute_valuation(
         _report(),
         (_eps_line_of(_CONTINUING, "75", 1),),
-        _quote(),
-        _shares(),
+        _common(),
+        (),
     )
 
     items = {item.key: item for item in valuation.items}
@@ -233,7 +248,7 @@ def test_a_discontinued_row_without_an_amount_fails_closed() -> None:
         _eps_line_of(_DISCONTINUED, None, 2),
     )
 
-    valuation = compute_valuation(_report(), lines, _quote(), _shares())
+    valuation = compute_valuation(_report(), lines, _common(), ())
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value is None
@@ -247,7 +262,7 @@ def test_the_total_eps_account_wins_over_the_split_accounts() -> None:
         _eps_line_of(_DISCONTINUED, "1111", 3),
     )
 
-    valuation = compute_valuation(_report(), lines, _quote(), _shares())
+    valuation = compute_valuation(_report(), lines, _common(), ())
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value == Decimal(6605)
@@ -257,17 +272,17 @@ def test_eps_accepts_the_legacy_ifrs_prefix() -> None:
     """2018년 이전 보고서의 기본주당이익도 같은 계정으로 읽는다."""
     legacy = _eps_line_of("ifrs_BasicEarningsLossPerShare", "6605", 1)
 
-    valuation = compute_valuation(_report(), (legacy,), _quote(), _shares())
+    valuation = compute_valuation(_report(), (legacy,), _common(), ())
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value == Decimal(6605)
 
 
-def test_a_name_only_basic_eps_row_is_never_used() -> None:
-    """기본주당이익은 복원하지 않는다(지표 계약 §복원 규칙, 검증 시나리오 12).
+def test_a_name_only_basic_eps_row_is_unused_without_share_class_facts() -> None:
+    """클래스 사실이 없으면 우선주 유무를 모른다. 모르면 복원하지 않는다.
 
-    `EPS × 주식수 = 순이익`은 우선주 때문에 성립하지 않아 검증 수단이 없다. 후보가 하나뿐이어도
-    쓰지 않는다 — 실측 결측 100건 중 28건은 우선주 행이 공존한다.
+    2026-08-23 개정으로 **우선주 미상장이 확인된 회사**만 복원한다. 그 경로는
+    `test_valuation_preferred.py`가 덮는다.
     """
     named = FinancialStatementLine(
         line_seq=9,
@@ -284,7 +299,7 @@ def test_a_name_only_basic_eps_row_is_never_used() -> None:
         bfefrmtrm_amount=None,
     )
 
-    valuation = compute_valuation(_report(), (named,), _quote(), _shares())
+    valuation = compute_valuation(_report(), (named,), _common(), None)
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value is None

@@ -34,9 +34,11 @@ test("운영 개요가 실제 상태와 안전 경계를 표시한다", async ({
   await expect(page.getByText("A3 · Valkey")).toBeVisible();
   await expect(page.getByText("수집 파이프라인")).toBeVisible();
   if (expectData) {
-    // 개요 표는 종목코드 오름차순 상위 10개만 보여준다(유니버스 201종목).
-    await expect(page.getByText("전체 201종목은 시장 데이터 화면")).toBeVisible();
-    await expect(page.getByText("SK하이닉스 000660")).toBeVisible();
+    // 개요 표는 종목코드 오름차순 상위 10개만 보여준다. 전체 수와 어느 종목이 상위에 오는지는
+    // 수집 범위에 따라 바뀌므로(우선주 클래스 추가로 상위 10개 절반이 우선주가 됐다) 숫자와
+    // 특정 종목명을 고정하지 않고 형태만 확인한다.
+    await expect(page.getByText(/전체 \d+종목은 시장 데이터 화면/)).toBeVisible();
+    await expect(page.getByText(/종목코드 오름차순 \d+개 표시/)).toBeVisible();
   }
 
   await expectNoSecretsAndNoOverflow(page);

@@ -36,6 +36,9 @@ from auto_stock_trading.adapters.database.market_data_minute_bar_store import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
+from auto_stock_trading.adapters.database.market_data_share_class_store import (
+    PostgresShareClassStore,
+)
 from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.application.etf import EtfMasterCollector, EtfNavSweeper
 from auto_stock_trading.application.investor_flows import InvestorFlowCollector
@@ -48,6 +51,10 @@ from auto_stock_trading.application.stock_universe import (
     UniverseBarConfirmation,
 )
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
+from auto_stock_trading.domain.market_data.share_classes import (
+    ShareClassKind,
+    pair_share_classes,
+)
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker import market_calendar
 from auto_stock_trading.worker.broker import broker
@@ -77,6 +84,8 @@ class Arguments(argparse.Namespace):
     collect_etf_master: bool = False
     collect_etf_nav: bool = False
     collect_stock_master: bool = False
+    collect_share_classes: bool = False
+    collect_preferred_quotes: bool = False
     collect_universe_quotes: bool = False
     collect_universe_bars: bool = False
     confirm_universe_bars: bool = False
@@ -296,6 +305,77 @@ async def collect_stock_master() -> tuple[int, int]:
     return result.observed, result.saved
 
 
+async def collect_share_classes() -> tuple[int, int, tuple[tuple[str, str], ...]]:
+    """상장 주식종류 사실 수집. 인증이 필요 없는 공식 파일이며 우선주도 남긴다.
+
+    짝짓기 예외(접두에 보통주 둘 이상, 짝 없는 우선주)는 저장하지 않고 사유와 함께 보고한다.
+    """
+    settings = Settings()
+    source = KisStockMasterAdapter(create_master_http_client(settings.kis_master_base_url))
+    store = PostgresShareClassStore.from_url(settings.database_url.get_secret_value())
+    now = datetime.now(UTC)
+    try:
+        bundle = await source.fetch_listings(now)
+        pairing = pair_share_classes(bundle.listings)
+        saved = await store.save_groups(pairing.groups, bundle.raw, now)
+    finally:
+        await source.close()
+        await store.close()
+    return len(pairing.groups), saved, pairing.refused
+
+
+async def collect_preferred_quotes() -> tuple[int, int]:
+    """우선주 시세·상장주식수 스윕. 종목당 요청 1회이며 실패는 기록하고 계속한다."""
+    settings = Settings()
+    share_classes = PostgresShareClassStore.from_url(settings.database_url.get_secret_value())
+    universe_store = PostgresStockStore.from_url(settings.database_url.get_secret_value())
+    credentials = load_kis_credentials(settings)
+    source = KisMarketDataAdapter(
+        KisHttpClient(
+            create_kis_http_client(settings.kis_base_url),
+            credentials,
+            ValkeyKisRequestCoordinator.from_url(
+                settings.valkey_url.get_secret_value(),
+                kis_coordination_scope(
+                    settings.kis_environment.value,
+                    credentials.app_key,
+                    credentials.app_secret,
+                ),
+            ),
+        ),
+        instrument_details_available=settings.kis_environment is KisEnvironment.LIVE,
+    )
+    store = PostgresStockStore.from_url(settings.database_url.get_secret_value())
+    now = datetime.now(UTC)
+    try:
+        targets = [
+            item
+            for common in await universe_store.universe_symbols()
+            for item in await share_classes.share_classes(common)
+            if item.class_kind is ShareClassKind.PREFERRED
+        ]
+        collected = 0
+        failed = 0
+        for item in targets:
+            # 종목 행은 수집 대상만 만든다. 사실 저장은 KOSPI 전 종목이지만 행은 아니다.
+            await share_classes.ensure_instrument(item, now)
+            try:
+                observation = await source.fetch_quote_snapshot(
+                    InstrumentTarget(symbol=item.symbol, product_type=ProductType.STOCK)
+                )
+            except Exception:  # noqa: BLE001 — 개별 종목 실패는 스윕을 멈추지 않는다
+                failed += 1
+                continue
+            await store.save_quote_snapshot(observation)
+            collected += 1
+    finally:
+        await store.close()
+        await source.close()
+        await universe_store.close()
+        await share_classes.close()
+    return collected, failed
+
+
 async def collect_universe_quotes() -> tuple[int, int]:
     """유니버스 전 종목 현재가 스윕. 종목당 요청 1회다."""
     settings = Settings()
@@ -406,6 +486,8 @@ def main() -> None:
     _ = parser.add_argument("--collect-etf-master", action="store_true")
     _ = parser.add_argument("--collect-etf-nav", action="store_true")
     _ = parser.add_argument("--collect-stock-master", action="store_true")
+    _ = parser.add_argument("--collect-share-classes", action="store_true")
+    _ = parser.add_argument("--collect-preferred-quotes", action="store_true")
     _ = parser.add_argument("--collect-universe-quotes", action="store_true")
     _ = parser.add_argument("--collect-universe-bars", action="store_true")
     _ = parser.add_argument("--confirm-universe-bars", action="store_true")
@@ -435,6 +517,15 @@ def _run_universe(arguments: Arguments) -> bool:
     elif arguments.collect_universe_quotes:
         collected, failed = anyio.run(collect_universe_quotes)
         print(f"quotes collected={collected} failed={failed}")  # noqa: T201
+    elif arguments.collect_share_classes:
+        groups, saved, refused = anyio.run(collect_share_classes)
+        report = f"share_classes groups={groups} new_versions={saved} refused={len(refused)}"
+        if refused:
+            report += " " + " ".join(f"{prefix}:{reason}" for prefix, reason in refused)
+        print(report)  # noqa: T201
+    elif arguments.collect_preferred_quotes:
+        collected, failed = anyio.run(collect_preferred_quotes)
+        print(f"preferred_quotes collected={collected} failed={failed}")  # noqa: T201
     else:
         return False
     return True
