@@ -3,20 +3,51 @@
 확정 일봉만 읽는다. 특징과 목표 계산은 순수 함수가 하고, 이 어댑터는 재료만 모은다.
 """
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
 from auto_stock_trading.application.backtests.lineage import symbol_bar_version_hash
 from auto_stock_trading.domain.market_data.models import BarFinality
-from auto_stock_trading.features.price_features import FeatureBar, feature_rows
+from auto_stock_trading.features.feature_set import FEATURE_SET_PRICE, uses_fundamentals
+from auto_stock_trading.features.fundamental_features import (
+    FUNDAMENTAL_FEATURE_NAMES,
+    fundamental_features,
+)
+from auto_stock_trading.features.price_features import (
+    FeatureBar,
+    FeatureRow,
+    feature_rows,
+)
 from auto_stock_trading.features.targets import excess_return
 
 if TYPE_CHECKING:
     from datetime import date
     from decimal import Decimal
+    from typing import Protocol
 
     from auto_stock_trading.application.backtests.runner import BacktestMarketData
     from auto_stock_trading.domain.market_data.models import VersionedDailyBar
-    from auto_stock_trading.features.price_features import FeatureRow
+    from auto_stock_trading.domain.strategies.composite_rank import (
+        AnnualFact,
+        SymbolFundamentals,
+    )
+
+    class StrategyFundamentals(Protocol):
+        async def read_annual_facts(
+            self,
+            symbols: tuple[str, ...],
+        ) -> tuple[SymbolFundamentals, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetRequest:
+    """데이터셋 범위와 특징 집합. 인자를 늘리는 대신 한 값으로 넘긴다."""
+
+    universe: tuple[str, ...]
+    benchmark_symbol: str
+    range_start: date
+    range_end: date
+    feature_version: str = FEATURE_SET_PRICE
 
 
 @final
@@ -30,16 +61,17 @@ class MarketDataTrainingDataset:
     def __init__(
         self,
         market_data: BacktestMarketData,
-        universe: tuple[str, ...],
-        benchmark_symbol: str,
-        range_start: date,
-        range_end: date,
+        request: DatasetRequest,
+        fundamentals: StrategyFundamentals | None = None,
     ) -> None:
         self._market_data = market_data
-        self._universe = universe
-        self._benchmark_symbol = benchmark_symbol
-        self._range_start = range_start
-        self._range_end = range_end
+        self._universe = request.universe
+        self._benchmark_symbol = request.benchmark_symbol
+        self._range_start = request.range_start
+        self._range_end = request.range_end
+        self._feature_version = request.feature_version
+        self._fundamentals = fundamentals
+        self._facts: dict[str, tuple[AnnualFact, ...]] = {}
         self._benchmark: dict[date, Decimal] = {}
         self._dates: tuple[date, ...] = ()
         self._hashed: list[tuple[str, VersionedDailyBar]] = []
@@ -68,6 +100,19 @@ class MarketDataTrainingDataset:
     async def universe_symbols(self) -> tuple[str, ...]:
         return self._universe
 
+    async def _annual_facts(self, symbol: str) -> tuple[AnnualFact, ...]:
+        if not uses_fundamentals(self._feature_version):
+            return ()
+        if not self._facts:
+            if self._fundamentals is None:
+                message = "feature set requires fundamentals but none were provided"
+                raise ValueError(message)
+            self._facts = {
+                item.symbol: item.facts
+                for item in await self._fundamentals.read_annual_facts(self._universe)
+            }
+        return self._facts.get(symbol, ())
+
     async def feature_rows(self, symbol: str) -> tuple[FeatureRow, ...]:
         await self._load_benchmark()
         bars = await self._confirmed(symbol)
@@ -77,7 +122,7 @@ class MarketDataTrainingDataset:
         shared = tuple(day for day in self._dates if day in by_date)
         if not shared:
             return ()
-        return feature_rows(
+        price_rows = feature_rows(
             tuple(
                 FeatureBar(
                     trading_date=day,
@@ -92,6 +137,29 @@ class MarketDataTrainingDataset:
             ),
             tuple(self._benchmark[day] for day in shared),
         )
+        if not uses_fundamentals(self._feature_version):
+            return price_rows
+        facts = await self._annual_facts(symbol)
+        combined: list[FeatureRow] = []
+        for row in price_rows:
+            extra = fundamental_features(
+                facts,
+                row.trading_date,
+                by_date[row.trading_date].close_price,
+            )
+            if extra is None:
+                # 재무를 아직 알 수 없거나 값이 없으면 그 종목-일 표본을 만들지 않는다.
+                continue
+            combined.append(
+                FeatureRow(
+                    trading_date=row.trading_date,
+                    values={
+                        **dict(row.values),
+                        **{name: extra[name] for name in FUNDAMENTAL_FEATURE_NAMES},
+                    },
+                )
+            )
+        return tuple(combined)
 
     async def targets(self, symbol: str, horizon_days: int) -> dict[date, Decimal]:
         await self._load_benchmark()

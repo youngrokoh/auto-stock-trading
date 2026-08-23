@@ -93,12 +93,24 @@ class FinancialCollection:
     existing: int = 0
 
 
-def collection_plan(today: date, annual_years: int = 5) -> tuple[ReportPeriod, ...]:
+def collection_plan(
+    today: date,
+    annual_years: int = 5,
+    *,
+    include_interim: bool = True,
+) -> tuple[ReportPeriod, ...]:
+    """수집할 보고서 기간. 연간 소급 깊이는 파라미터다(계약 §범위).
+
+    시점 정합 학습은 과거 시점의 최신 사업보고서를 요구하므로 5개년으로는 부족할 수 있다.
+    연간만 소급할 때는 분·반기를 건너뛴다 — 요청 수가 3배가 되고 쓰지 않는 기간이다.
+    """
     latest_annual_year = today.year - 1
     annual = tuple(
         ReportPeriod(year, ReportCode.ANNUAL)
         for year in range(latest_annual_year - annual_years + 1, latest_annual_year + 1)
     )
+    if not include_interim:
+        return annual
     interim = tuple(ReportPeriod(today.year, code) for code in _INTERIM_CODES)
     return annual + interim
 

@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID, uuid4
 
-from auto_stock_trading.features.price_features import FEATURE_NAMES, FEATURE_VERSION
+from auto_stock_trading.features.feature_set import FEATURE_SET_PRICE, feature_names
 from auto_stock_trading.features.splits import (
     DEFAULT_EMBARGO_DAYS,
     DEFAULT_MIN_TRAIN_DAYS,
@@ -90,6 +90,7 @@ class ModelTrainingRequest:
     min_train_samples: int = 1_000
     top_k: int = 10
     horizon_days: int = TARGET_HORIZON_DAYS
+    feature_version: str = FEATURE_SET_PRICE
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,14 +111,14 @@ class ModelTrainer:
             valid_days=request.valid_days,
             horizon_days=request.horizon_days,
         )
+        names = feature_names(request.feature_version)
         symbols = await self.dataset.universe_symbols()
         features: dict[str, dict[date, tuple[float, ...]]] = {}
         excess: dict[date, dict[str, Decimal]] = {}
         for symbol in symbols:
             rows = await self.dataset.feature_rows(symbol)
             features[symbol] = {
-                row.trading_date: tuple(float(row.values[name]) for name in FEATURE_NAMES)
-                for row in rows
+                row.trading_date: tuple(float(row.values[name]) for name in names) for row in rows
             }
             for signal_date, value in (
                 await self.dataset.targets(symbol, request.horizon_days)
@@ -161,7 +162,7 @@ class ModelTrainer:
             name=request.name,
             version=request.version,
             algorithm=model.algorithm,
-            feature_version=FEATURE_VERSION,
+            feature_version=request.feature_version,
             target_definition=target_definition(request.horizon_days),
             train_start=final_fold.train_start,
             train_end=final_fold.train_end,
@@ -226,7 +227,7 @@ def _fit(
     if request.algorithm == RIDGE_ALGORITHM:
         return train_ridge(
             training,
-            FEATURE_NAMES,
+            feature_names(request.feature_version),
             alpha=request.alpha,
             seed=request.seed,
             min_samples=request.min_train_samples,
@@ -234,7 +235,7 @@ def _fit(
     if request.algorithm == LIGHTGBM_ALGORITHM:
         return train_lightgbm(
             training,
-            FEATURE_NAMES,
+            feature_names(request.feature_version),
             LightGbmSettings(
                 parameters=default_parameters(seed=request.seed),
                 seed=request.seed,
@@ -278,6 +279,7 @@ def _hyperparameters_json(request: ModelTrainingRequest) -> str:
         {
             "algorithm": request.algorithm,
             "alpha": request.alpha,
+            "feature_version": request.feature_version,
             "horizon_days": request.horizon_days,
             "min_train_days": request.min_train_days,
             "min_train_samples": request.min_train_samples,

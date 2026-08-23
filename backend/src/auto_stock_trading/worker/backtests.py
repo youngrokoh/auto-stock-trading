@@ -22,7 +22,10 @@ from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
 from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
-from auto_stock_trading.adapters.database.ml_dataset_reader import MarketDataTrainingDataset
+from auto_stock_trading.adapters.database.ml_dataset_reader import (
+    DatasetRequest,
+    MarketDataTrainingDataset,
+)
 from auto_stock_trading.adapters.database.ml_model_reader import PostgresModelReader
 from auto_stock_trading.adapters.database.strategy_backtest_store import (
     PostgresBacktestStore,
@@ -44,7 +47,7 @@ from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
 from auto_stock_trading.domain.strategies.composite_rank import CompositeParameters
 from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 from auto_stock_trading.domain.strategies.momentum import MomentumParameters
-from auto_stock_trading.features.price_features import FEATURE_NAMES
+from auto_stock_trading.features.feature_set import feature_names, uses_fundamentals
 from auto_stock_trading.ml.lightgbm_model import LIGHTGBM_ALGORITHM, LightGbmModel
 from auto_stock_trading.ml.ridge import RIDGE_ALGORITHM, RidgeCoefficients
 from auto_stock_trading.settings.runtime import Settings
@@ -126,7 +129,7 @@ def _restore_model(record: ModelRecord) -> PredictiveModel:
     if record.algorithm == RIDGE_ALGORITHM:
         return RidgeCoefficients.from_json(record.artifact)
     if record.algorithm == LIGHTGBM_ALGORITHM:
-        return LightGbmModel.from_artifact(record.artifact, FEATURE_NAMES)
+        return LightGbmModel.from_artifact(record.artifact, feature_names(record.feature_version))
     message = f"unknown model algorithm: {record.algorithm!r}"
     raise ValueError(message)
 
@@ -143,6 +146,7 @@ async def run_ml_rank_backtest(arguments: Arguments) -> str:
     models = PostgresModelReader.from_url(database_url)
     features_market_data = PostgresMarketDataRepository.from_url(database_url)
     store = PostgresBacktestStore.from_url(database_url)
+    fundamentals: PostgresStrategyFundamentalsReader | None = None
     runner = PortfolioRunner(
         calendar=calendar,
         market_data=market_data,
@@ -159,19 +163,26 @@ async def run_ml_rank_backtest(arguments: Arguments) -> str:
         range_start = date.fromisoformat(arguments.start_date)
         range_end = date.fromisoformat(arguments.end_date)
         # 특징은 모델 학습과 같은 계산기로 만든다. 창은 시그널일 계산에 필요한 만큼 앞으로 넓힌다.
+        if uses_fundamentals(record.feature_version):
+            fundamentals = PostgresStrategyFundamentalsReader.from_url(database_url)
         dataset = MarketDataTrainingDataset(
             features_market_data,
-            universe,
-            arguments.benchmark,
-            record.train_start,
-            range_end,
+            DatasetRequest(
+                universe=universe,
+                benchmark_symbol=arguments.benchmark,
+                range_start=record.train_start,
+                range_end=range_end,
+                feature_version=record.feature_version,
+            ),
+            fundamentals,
         )
+        names = feature_names(record.feature_version)
         features: dict[str, dict[date, dict[str, float]]] = {}
         for symbol in universe:
             rows = await dataset.feature_rows(symbol)
             if rows:
                 features[symbol] = {
-                    row.trading_date: {name: float(row.values[name]) for name in FEATURE_NAMES}
+                    row.trading_date: {name: float(row.values[name]) for name in names}
                     for row in rows
                 }
         request = PortfolioRequest(
@@ -194,10 +205,13 @@ async def run_ml_rank_backtest(arguments: Arguments) -> str:
                     out_of_sample_start=record.out_of_sample_start,
                 ),
                 features=features,
+                feature_version=record.feature_version,
             ),
         )
         run_record = await runner.run(request, datetime.now(UTC))
     finally:
+        if fundamentals is not None:
+            await fundamentals.close()
         await store.close()
         await features_market_data.close()
         await models.close()

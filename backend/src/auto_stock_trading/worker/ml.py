@@ -12,9 +12,20 @@ from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
 from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
-from auto_stock_trading.adapters.database.ml_dataset_reader import MarketDataTrainingDataset
+from auto_stock_trading.adapters.database.ml_dataset_reader import (
+    DatasetRequest,
+    MarketDataTrainingDataset,
+)
 from auto_stock_trading.adapters.database.ml_model_store import PostgresModelStore
+from auto_stock_trading.adapters.database.strategy_fundamentals_reader import (
+    PostgresStrategyFundamentalsReader,
+)
 from auto_stock_trading.application.ml.training import ModelTrainer, ModelTrainingRequest
+from auto_stock_trading.features.feature_set import (
+    FEATURE_SET_PRICE,
+    FEATURE_SET_WITH_FUNDAMENTALS,
+    uses_fundamentals,
+)
 from auto_stock_trading.features.splits import (
     DEFAULT_EMBARGO_DAYS,
     DEFAULT_MIN_TRAIN_DAYS,
@@ -41,6 +52,7 @@ class Arguments(argparse.Namespace):
     seed: int = 7
     min_train_samples: int = 1000
     horizon_days: int = TARGET_HORIZON_DAYS
+    feature_version: str = FEATURE_SET_PRICE
 
 
 async def train_ridge_baseline(arguments: Arguments) -> str:
@@ -49,14 +61,23 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
     market_data = PostgresMarketDataRepository.from_url(database_url)
     universe_store = PostgresStockStore.from_url(database_url)
     store = PostgresModelStore.from_url(database_url)
+    fundamentals = (
+        PostgresStrategyFundamentalsReader.from_url(database_url)
+        if uses_fundamentals(arguments.feature_version)
+        else None
+    )
     try:
         universe = await universe_store.universe_symbols()
         dataset = MarketDataTrainingDataset(
             market_data,
-            universe,
-            arguments.benchmark,
-            date.fromisoformat(arguments.start_date),
-            date.fromisoformat(arguments.end_date),
+            DatasetRequest(
+                universe=universe,
+                benchmark_symbol=arguments.benchmark,
+                range_start=date.fromisoformat(arguments.start_date),
+                range_end=date.fromisoformat(arguments.end_date),
+                feature_version=arguments.feature_version,
+            ),
+            fundamentals,
         )
         record = await ModelTrainer(dataset=dataset, store=store).run(
             ModelTrainingRequest(
@@ -72,10 +93,13 @@ async def train_ridge_baseline(arguments: Arguments) -> str:
                 seed=arguments.seed,
                 min_train_samples=arguments.min_train_samples,
                 horizon_days=arguments.horizon_days,
+                feature_version=arguments.feature_version,
             ),
             datetime.now(UTC),
         )
     finally:
+        if fundamentals is not None:
+            await fundamentals.close()
         await store.close()
         await universe_store.close()
         await market_data.close()
@@ -108,6 +132,11 @@ def main() -> None:
     _ = parser.add_argument("--seed", type=int, default=7)
     _ = parser.add_argument("--min-train-samples", type=int, default=1000)
     _ = parser.add_argument("--horizon-days", type=int, default=TARGET_HORIZON_DAYS)
+    _ = parser.add_argument(
+        "--feature-version",
+        default=FEATURE_SET_PRICE,
+        choices=(FEATURE_SET_PRICE, FEATURE_SET_WITH_FUNDAMENTALS),
+    )
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.train_ridge:
         print(anyio.run(train_ridge_baseline, arguments))  # noqa: T201

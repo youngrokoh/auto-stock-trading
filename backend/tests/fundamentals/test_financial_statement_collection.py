@@ -181,3 +181,19 @@ def test_collector_marks_failure_and_reraises() -> None:
         assert store.succeeded == 0
 
     anyio.run(run)
+
+
+def test_collection_plan_can_reach_further_back_for_point_in_time_training() -> None:
+    """ML 학습은 과거 시점의 최신 보고서를 요구한다(계약 §범위 개정, 2026-08-22 승인)."""
+    plan = collection_plan(date(2026, 8, 23), annual_years=10)
+
+    annual_years = [period.bsns_year for period in plan if period.reprt_code is ReportCode.ANNUAL]
+    assert annual_years == list(range(2016, 2026))
+
+
+def test_the_plan_can_skip_interim_reports() -> None:
+    """연간만 소급할 때 분·반기를 다시 부르지 않는다. 요청 수가 3배가 된다."""
+    plan = collection_plan(date(2026, 8, 23), annual_years=10, include_interim=False)
+
+    assert all(period.reprt_code is ReportCode.ANNUAL for period in plan)
+    assert len(plan) == 10

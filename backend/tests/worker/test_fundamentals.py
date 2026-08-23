@@ -61,4 +61,40 @@ def test_cli_routes_universe_collection_with_the_resume_flag() -> None:
     ):
         fundamentals.main()
 
-    collect.assert_awaited_once_with(only_missing=True)
+    collect.assert_awaited_once_with(only_missing=True, annual_years=5, include_interim=True)
+
+
+def test_cli_routes_the_annual_only_backfill_options() -> None:
+    """연간 소급 깊이와 분·반기 제외가 전달되지 않으면 조용히 기본 5개년만 수집한다."""
+    collect = AsyncMock(
+        return_value=UniverseStatementResult(
+            symbols=200,
+            saved=0,
+            skipped=0,
+            existing=0,
+            failed_symbols=(),
+            missing_corp_codes=(),
+            remaining_symbols=(),
+            quota_exhausted=False,
+        )
+    )
+    argv = [
+        "fundamentals",
+        "--universe-statements",
+        "--only-missing",
+        "--annual-years",
+        "10",
+        "--annual-only",
+    ]
+
+    with (
+        patch.object(fundamentals, "collect_universe_financial_statements", new=collect),
+        patch.object(sys, "argv", argv),
+    ):
+        fundamentals.main()
+
+    collect.assert_awaited_once_with(
+        only_missing=True,
+        annual_years=10,
+        include_interim=False,
+    )

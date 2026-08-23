@@ -3,7 +3,10 @@ from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
-from auto_stock_trading.domain.fundamentals.financial_statements import StatementDivision
+from auto_stock_trading.domain.fundamentals.financial_statements import (
+    StatementDivision,
+    normalized_account_id,
+)
 
 if TYPE_CHECKING:
     from auto_stock_trading.domain.fundamentals.financial_statements import (
@@ -168,7 +171,8 @@ def _matching_lines(
         matches = [
             line
             for line in lines
-            if line.sj_div is division and line.account_id == account.account_id
+            if line.sj_div is division
+            and normalized_account_id(line.account_id) == account.account_id
         ]
         if matches:
             return division, matches

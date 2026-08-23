@@ -403,3 +403,38 @@ def test_relabelling_keeps_computed_indicators_untouched() -> None:
     relabelled = relabel_operating_account_basis(annual)
 
     assert relabelled == annual
+
+
+def test_the_legacy_ifrs_prefix_is_the_same_account() -> None:
+    """실측: 2018년 이전 보고서는 `ifrs_`, 2019년 이후는 `ifrs-full_` 접두를 쓴다.
+
+    IFRS 택소노미 개정으로 접두만 바뀌었고 계정의 의미는 같다. 접두를 구분해 읽으면 과거
+    보고서에서 아무 계정도 매칭되지 않는다 — 2026-08-23 실측으로 FY2016~2018 연간 연결 보고서
+    432건 중 ROE·EPS가 둘 다 계산되던 것은 9건(2.1%)뿐이었고, 정규화 후 78/109/113건이 됐다.
+    """
+    lines = tuple(
+        _line(
+            line.line_seq,
+            line.sj_div,
+            None if line.account_id is None else line.account_id.replace("ifrs-full_", "ifrs_"),
+            line.account_nm,
+            amounts=(
+                None if line.thstrm_amount is None else str(line.thstrm_amount),
+                None if line.frmtrm_amount is None else str(line.frmtrm_amount),
+            ),
+        )
+        for line in _full_lines()
+    )
+
+    values = _indicator_values(lines)
+
+    assert values["revenue_growth"] == Decimal("20.00")
+    assert values["roe"] == Decimal("10.00")
+    assert values["debt_ratio"] == Decimal("50.00")
+
+
+def test_a_dart_prefixed_account_is_unchanged_by_the_normalisation() -> None:
+    values = _indicator_values(_full_lines())
+
+    # 영업이익은 `dart_` 접두이며 정규화 대상이 아니다.
+    assert values["operating_margin"] == Decimal("12.50")

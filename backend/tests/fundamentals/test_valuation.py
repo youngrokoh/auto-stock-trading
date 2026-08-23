@@ -251,3 +251,13 @@ def test_the_total_eps_account_wins_over_the_split_accounts() -> None:
 
     items = {item.key: item for item in valuation.items}
     assert items["eps"].value == Decimal(6605)
+
+
+def test_eps_accepts_the_legacy_ifrs_prefix() -> None:
+    """2018년 이전 보고서의 기본주당이익도 같은 계정으로 읽는다."""
+    legacy = _eps_line_of("ifrs_BasicEarningsLossPerShare", "6605", 1)
+
+    valuation = compute_valuation(_report(), (legacy,), _quote(), _shares())
+
+    items = {item.key: item for item in valuation.items}
+    assert items["eps"].value == Decimal(6605)

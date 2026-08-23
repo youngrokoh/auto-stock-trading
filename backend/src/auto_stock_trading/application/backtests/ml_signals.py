@@ -19,7 +19,7 @@ from auto_stock_trading.domain.strategies.ranking import (
     Rebalance,
     quantized_score,
 )
-from auto_stock_trading.features.price_features import FEATURE_NAMES, FEATURE_VERSION
+from auto_stock_trading.features.feature_set import FEATURE_SET_PRICE, feature_names
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -60,6 +60,9 @@ class _MlSource:
     model: PredictiveModel
     window: ModelWindow
     features: SymbolFeatures
+    # 특징 이름은 모델이 학습한 집합을 따라간다. 하드코딩하면 집합이 다른 모델에서
+    # 열 개수가 어긋난다(2026-08-22 실측 결함).
+    feature_version: str = FEATURE_SET_PRICE
 
     def plan(
         self,
@@ -138,12 +141,13 @@ class _MlSource:
             values = self.features.get(item.symbol, {}).get(signal_date)
             if values is None or item.closes.get(signal_date) is None:
                 continue
-            if any(name not in values for name in FEATURE_NAMES):
+            names = feature_names(self.feature_version)
+            if any(name not in values for name in names):
                 continue
             scored.append(
                 (
                     item.symbol,
-                    self.model.predict(tuple(values[name] for name in FEATURE_NAMES)),
+                    self.model.predict(tuple(values[name] for name in names)),
                 )
             )
         scored.sort(key=lambda entry: (-entry[1], entry[0]))
@@ -164,6 +168,7 @@ def ml_rank_strategy(
     model: PredictiveModel,
     window: ModelWindow,
     features: SymbolFeatures,
+    feature_version: str = FEATURE_SET_PRICE,
 ) -> StrategySpec:
     settings = parameters.validated()
     return StrategySpec(
@@ -175,7 +180,7 @@ def ml_rank_strategy(
             {
                 "algorithm": model.algorithm,
                 "embargo_days": window.embargo_days,
-                "feature_version": FEATURE_VERSION,
+                "feature_version": feature_version,
                 "holdings": settings.holdings,
                 "lookback_days": settings.lookback_days,
                 "train_end": window.train_end.isoformat(),
@@ -184,5 +189,5 @@ def ml_rank_strategy(
             separators=(",", ":"),
             sort_keys=True,
         ),
-        source=_MlSource(settings, model, window, features),
+        source=_MlSource(settings, model, window, features, feature_version),
     )

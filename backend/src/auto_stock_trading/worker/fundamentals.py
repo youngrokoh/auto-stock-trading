@@ -53,6 +53,8 @@ class Arguments(argparse.Namespace):
     collect_disclosures: bool = False
     universe_statements: bool = False
     only_missing: bool = False
+    annual_years: int = 5
+    annual_only: bool = False
 
 
 @final
@@ -86,6 +88,8 @@ class _UniverseStatementSource:
 async def collect_universe_financial_statements(
     *,
     only_missing: bool = False,
+    annual_years: int = 5,
+    include_interim: bool = True,
 ) -> UniverseStatementResult:
     settings = Settings()
     api_key = load_dart_api_key(settings)
@@ -103,7 +107,12 @@ async def collect_universe_financial_statements(
     )
     now = datetime.now(UTC)
     try:
-        return await collection.run(collection_plan(now.astimezone(_SEOUL).date()), now)
+        plan = collection_plan(
+            now.astimezone(_SEOUL).date(),
+            annual_years,
+            include_interim=include_interim,
+        )
+        return await collection.run(plan, now)
     finally:
         await client.close()
         await codes.close()
@@ -173,10 +182,16 @@ def main() -> None:
     _ = parser.add_argument("--collect-disclosures", action="store_true")
     _ = parser.add_argument("--universe-statements", action="store_true")
     _ = parser.add_argument("--only-missing", action="store_true")
+    _ = parser.add_argument("--annual-years", type=int, default=5)
+    _ = parser.add_argument("--annual-only", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
     if arguments.universe_statements:
         result = anyio.run(
-            lambda: collect_universe_financial_statements(only_missing=arguments.only_missing)
+            lambda: collect_universe_financial_statements(
+                only_missing=arguments.only_missing,
+                annual_years=arguments.annual_years,
+                include_interim=not arguments.annual_only,
+            )
         )
         report = (
             f"statements symbols={result.symbols} saved={result.saved} "

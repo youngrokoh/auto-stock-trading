@@ -271,23 +271,22 @@ Polars / DuckDB
 
 ### 5.1 특징 계산
 
-보조지표는 Polars 기반의 순수 계산 모듈로 구현한다.
+보조지표는 순수 계산 모듈로 구현한다. 2026-08-23 현재 구현은 다음과 같다 — 계획 단계의 Polars 기반 모듈 목록을 실제 구조로 갱신했다.
 
 ```text
+domain/strategies/indicators.py   # SMA·EMA·RSI(Wilder)·MACD·ATR·볼린저, 순수 Decimal
 features/
-├─ returns
-├─ volatility
-├─ moving_average
-├─ rsi
-├─ macd
-├─ atr
-├─ bollinger
-├─ candlestick
-├─ volume
-└─ investor_flow
+├─ price_features.py       # 가격·거래량 파생 23종 (features-1)
+├─ fundamental_features.py # 이익수익률·ROE (features-2 추가분)
+├─ feature_set.py          # 특징 집합 버전과 이름 목록
+├─ targets.py              # 초과수익과 횡단면 순위
+└─ splits.py               # 워크포워드 분할·엠바고
 ```
 
-동일한 특징 계산 코드를 웹 차트, 백테스트, 모의매매와 실전매매에서 공유한다. 라이브러리별 계산 차이로 결과가 달라지지 않도록 실제 사용하는 지표만 고정된 공식과 테스트 데이터로 검증한다.
+- 외부 수치 라이브러리(Polars·numpy·scikit-learn)를 특징 계산에 쓰지 않는다. `typeCheckingMode = "all"` 게이트를 통과하지 못하는 것이 직접 이유이고(§6.1), 금액은 `Decimal`이어야 하므로 부동소수 프레임과 맞지 않는다.
+- 재무 특징은 정의를 새로 만들지 않고 [재무 지표 정의 계약](../data/financial-indicator-contract.md)의 도메인 함수를 호출한다. 화면·백테스트·ML이 같은 정의를 쓰지 않으면 결과를 비교할 수 없다.
+- **특징 집합은 버전 문자열이다**(`features-1`, `features-2`). 모델마다 자기 집합을 저장하고 추론 경로가 그 버전을 따라간다. 이름을 하드코딩하면 집합이 다른 모델에서 열 개수가 어긋난다(2026-08-22 실측 결함).
+- 동일한 특징 계산 코드를 웹 차트, 백테스트, 모의매매와 실전매매에서 공유한다. 라이브러리별 계산 차이로 결과가 달라지지 않도록 실제 사용하는 지표만 고정된 공식과 테스트 데이터로 검증한다.
 
 ### 5.2 백테스트 엔진
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Final, override
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -26,6 +26,23 @@ class StatementDivision(StrEnum):
     COMPREHENSIVE_INCOME = "CIS"
     CASH_FLOW = "CF"
     EQUITY_CHANGES = "SCE"
+
+
+_LEGACY_IFRS_PREFIX: Final = "ifrs_"
+_IFRS_PREFIX: Final = "ifrs-full_"
+
+
+def normalized_account_id(account_id: str | None) -> str | None:
+    """계정 ID를 현행 접두로 맞춘다.
+
+    실측(2026-08-23): 2018년 이전 보고서는 `ifrs_`, 2019년 이후는 `ifrs-full_` 접두를 쓴다.
+    IFRS 택소노미 개정으로 접두만 바뀌었고 계정의 의미는 같다. `dart_` 접두는 변하지 않았다.
+    """
+    if account_id is None:
+        return None
+    if account_id.startswith(_LEGACY_IFRS_PREFIX):
+        return _IFRS_PREFIX + account_id[len(_LEGACY_IFRS_PREFIX) :]
+    return account_id
 
 
 class FinancialReportInvariant(StrEnum):
