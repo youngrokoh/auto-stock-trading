@@ -47,3 +47,5 @@ class InvestorFlowBundle:
     flows: tuple[InvestorFlow, ...]
     raw: RawBrokerResponse
     collected_at: datetime
+    # 투자자 필드가 빈 문자열로 온 거래일. 값을 만들지 않았음을 호출자가 알 수 있어야 한다.
+    skipped_blank_dates: tuple[date, ...] = ()

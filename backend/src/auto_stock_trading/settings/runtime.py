@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     krx_attachment_base_url: str = "https://inc.krx.co.kr/attach/"
     krx_calendar_schedule_enabled: bool = False
     kis_calendar_schedule_enabled: bool = False
+    # 유니버스 수급 일일 예약. 기본은 꺼져 있고 Compose 오버라이드에서만 켠다.
+    investor_flow_schedule_enabled: bool = False
 
     @property
     def kis_base_url(self) -> str:

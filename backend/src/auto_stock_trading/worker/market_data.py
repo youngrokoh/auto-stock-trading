@@ -50,6 +50,9 @@ from auto_stock_trading.application.stock_universe import (
     UniverseBarBackfill,
     UniverseBarConfirmation,
 )
+from auto_stock_trading.application.universe_investor_flows import (
+    UniverseInvestorFlowSweep,
+)
 from auto_stock_trading.domain.market_data.models import InstrumentTarget, ProductType
 from auto_stock_trading.domain.market_data.share_classes import (
     ShareClassKind,
@@ -81,6 +84,7 @@ class Arguments(argparse.Namespace):
     confirm_daily_bars: bool = False
     collect_minute_bars: bool = False
     collect_investor_flows: bool = False
+    collect_universe_investor_flows: bool = False
     collect_etf_master: bool = False
     collect_etf_nav: bool = False
     collect_stock_master: bool = False
@@ -245,6 +249,46 @@ async def collect_seed_investor_flows() -> int:
         await source.close()
         await store.close()
     return collected
+
+
+async def collect_universe_investor_flows() -> tuple[int, int, tuple[str, ...]]:
+    """유니버스 전 종목 수급 스윕. 종목당 요청 1회이며 실패는 기록하고 계속한다.
+
+    원천이 최근 약 30거래일만 주므로 이력은 첫 수집부터 축적된다. 거를수록 영구 공백이 커진다.
+    """
+    settings = Settings()
+    credentials = load_kis_credentials(settings)
+    http_client = KisHttpClient(
+        create_kis_http_client(settings.kis_base_url),
+        credentials,
+        ValkeyKisRequestCoordinator.from_url(
+            settings.valkey_url.get_secret_value(),
+            kis_coordination_scope(
+                settings.kis_environment.value,
+                credentials.app_key,
+                credentials.app_secret,
+            ),
+        ),
+    )
+    source = KisInvestorFlowAdapter(http_client)
+    store = PostgresInvestorFlowStore.from_url(settings.database_url.get_secret_value())
+    universe = PostgresStockStore.from_url(settings.database_url.get_secret_value())
+    sweep = UniverseInvestorFlowSweep(
+        universe=universe,
+        collector=InvestorFlowCollector(source, store),
+    )
+    try:
+        result = await sweep.run(datetime.now(UTC))
+    finally:
+        await universe.close()
+        await source.close()
+        await store.close()
+    return result.collected, result.failed, result.failed_symbols
+
+
+collect_universe_investor_flows_task = broker.task(task_name="collect_universe_investor_flows")(
+    collect_universe_investor_flows
+)
 
 
 collect_seed_investor_flows_task = broker.task(task_name="collect_seed_investor_flows")(
@@ -483,6 +527,7 @@ def main() -> None:
     _ = parser.add_argument("--confirm-daily-bars", action="store_true")
     _ = parser.add_argument("--collect-minute-bars", action="store_true")
     _ = parser.add_argument("--collect-investor-flows", action="store_true")
+    _ = parser.add_argument("--collect-universe-investor-flows", action="store_true")
     _ = parser.add_argument("--collect-etf-master", action="store_true")
     _ = parser.add_argument("--collect-etf-nav", action="store_true")
     _ = parser.add_argument("--collect-stock-master", action="store_true")
@@ -526,6 +571,12 @@ def _run_universe(arguments: Arguments) -> bool:
     elif arguments.collect_preferred_quotes:
         collected, failed = anyio.run(collect_preferred_quotes)
         print(f"preferred_quotes collected={collected} failed={failed}")  # noqa: T201
+    elif arguments.collect_universe_investor_flows:
+        collected, failed, failed_symbols = anyio.run(collect_universe_investor_flows)
+        report = f"universe_investor_flows collected={collected} failed={failed}"
+        if failed_symbols:
+            report += " " + " ".join(failed_symbols)
+        print(report)  # noqa: T201
     else:
         return False
     return True

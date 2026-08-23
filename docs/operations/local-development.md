@@ -247,8 +247,24 @@ uv run python -m auto_stock_trading.worker.market_data --collect-etf-nav   # KIS
 ```bash
 cd backend
 uv run python -m auto_stock_trading.worker.market_data --collect-investor-flows
+# 유니버스 200종목 스윕(종목당 요청 1회, 약 3.5분). 개별 실패는 종목코드와 함께 보고된다
+uv run python -m auto_stock_trading.worker.market_data --collect-universe-investor-flows
 curl "http://localhost:8000/api/market-data/instruments/069500/minute-bars?trading_date=2026-08-14"
 ```
+
+수급 축적을 자동화하려면 예약 override를 겹친다. 기본 Compose는 꺼져 있다.
+
+```bash
+docker compose -f infra/compose.yaml \
+  -f infra/compose.investor-flow-schedule.yaml \
+  --profile investor-flow-scheduler up -d
+```
+
+worker에만 모의 자격증명을 Docker secret으로 준다. 스케줄러는 자격증명을 받지 않고 시각만 안다.
+예약은 07:10·08:10·09:10 KST에 시도하고 성공하면 PostgreSQL 실행 claim이 나머지를 건너뛴다.
+휴장일 실행은 같은 30거래일을 다시 관측하는 멱등 동작이라 놓친 날이 자동으로 복구된다. 중지는 같은
+두 Compose 파일과 프로필로 `stop investor-flow-scheduler worker`다. 이 override는 읽기 전용
+조회만 켜며 주문 작업을 등록하거나 활성화하지 않는다.
 
 모의환경 당일분봉 API는 날짜 지정이 불가능해 최신 세션만 수집할 수 있다. 수집하지 않은 과거 거래일은 영구 결손으로 남으므로 거래일마다 실행한다. 달력이 없거나 충돌 상태면 수집은 실패 상태만 남기고 아무것도 저장하지 않는다.
 

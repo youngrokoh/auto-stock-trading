@@ -1,0 +1,62 @@
+# 유니버스 수급 일일 예약을 켜는 오버라이드(ADR-0006 패턴).
+#
+# 기본 Compose는 이 예약이 꺼져 있다. 이 파일을 겹쳐야 자동 수집이 시작된다.
+#
+#   docker compose -f infra/compose.yaml \
+#     -f infra/compose.investor-flow-schedule.yaml \
+#     --profile investor-flow-scheduler up -d
+#
+# 규칙 세 가지를 달력 예약과 똑같이 지킨다:
+#   1. 자격증명은 **worker에만** 준다. 스케줄러는 시각만 알고 비밀정보를 받지 않는다.
+#      (스케줄러 프로세스가 둘이 되지만 ADR-0006대로 중복 방지는 프로세스 수가 아니라
+#       PostgreSQL 실행 claim이 한다. 달력 예약과 독립적으로 켜고 끌 수 있게 분리했다.)
+#   2. 모의(paper) 자격증명만 쓴다. 실전 자격증명은 승인된 달력 확인 경로 전용이다.
+#   3. 이 작업은 읽기 전용 조회다. 주문·정정·취소 경로와 무관하다.
+services:
+  worker:
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_INVESTOR_FLOW_SCHEDULE_ENABLED: "true"
+      AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_paper_app_key
+      AUTO_STOCK_KIS_APP_SECRET_FILE: /run/secrets/kis_paper_app_secret
+    secrets:
+      - kis_paper_app_key
+      - kis_paper_app_secret
+    command:
+      [
+        "taskiq",
+        "worker",
+        "auto_stock_trading.worker.market_data:broker",
+        "auto_stock_trading.worker.market_calendar_schedule",
+        "auto_stock_trading.worker.investor_flow_schedule",
+      ]
+
+  investor-flow-scheduler:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "scheduler",
+        "auto_stock_trading.worker.investor_flow_schedule:scheduler",
+      ]
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      # 스케줄러는 자격증명을 받지 않는다. 시각만 알고 실제 조회는 worker가 한다.
+      AUTO_STOCK_INVESTOR_FLOW_SCHEDULE_ENABLED: "true"
+    profiles: ["investor-flow-scheduler"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+secrets:
+  kis_paper_app_key:
+    file: ${KIS_PAPER_APP_KEY_FILE:-../.secrets/kis-paper-app-key}
+  kis_paper_app_secret:
+    file: ${KIS_PAPER_APP_SECRET_FILE:-../.secrets/kis-paper-app-secret}
