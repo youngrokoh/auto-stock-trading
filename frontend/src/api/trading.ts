@@ -1,8 +1,10 @@
 import {
   type AccountSnapshots,
   type Automation,
+  type NotificationStatus,
   parseAccountSnapshots,
   parseAutomation,
+  parseNotificationStatus,
   parseOrders,
   parseRiskLimits,
   type RiskLimits,
@@ -28,3 +30,6 @@ export const fetchTradingOrders = async (limit: number): Promise<TradingOrders> 
 
 export const fetchRiskLimits = async (): Promise<RiskLimits> =>
   parseRiskLimits(await fetchJson("/api/trading/risk-limits"));
+
+export const fetchNotificationStatus = async (): Promise<NotificationStatus> =>
+  parseNotificationStatus(await fetchJson("/api/trading/notifications"));

@@ -8,6 +8,7 @@ import {
   limitLabel,
   orderStateLabel,
   parseAutomation,
+  parseNotificationStatus,
   parseOrders,
   parseRiskLimits,
   positionReturnPct,
@@ -233,5 +234,59 @@ describe("거래일 변경 복귀", () => {
 
     expect(parsed.stale_reason_code).toBeNull();
     expect(parsed.state).toBe(parsed.stored_state);
+  });
+});
+
+describe("외부 알림 발신 현황", () => {
+  it("미발신·실패 건수를 파싱한다", () => {
+    const status = parseNotificationStatus({
+      environment: "paper",
+      failed: 1,
+      oldest_pending_at: "2026-08-24T05:03:11Z",
+      pending: 3,
+      recent: [
+        {
+          attempts: 1,
+          event_occurred_at: "2026-08-24T05:03:11Z",
+          kind: "order_state",
+          reason: null,
+          severity: "info",
+          state: "sent",
+        },
+      ],
+      sent_today: 12,
+    });
+
+    expect(status.pending).toBe(3);
+    expect(status.failed).toBe(1);
+    expect(status.recent[0]?.kind).toBe("order_state");
+  });
+
+  it("보낼 것이 없는 상태와 적체를 구분할 수 있다", () => {
+    const quiet = parseNotificationStatus({
+      environment: "paper",
+      failed: 0,
+      oldest_pending_at: null,
+      pending: 0,
+      recent: [],
+      sent_today: 0,
+    });
+
+    expect(quiet.pending).toBe(0);
+    expect(quiet.oldest_pending_at).toBeNull();
+  });
+
+  it("응답에 없는 필드가 오면 거부한다", () => {
+    expect(() =>
+      parseNotificationStatus({
+        environment: "paper",
+        failed: 0,
+        nav: "10000000",
+        oldest_pending_at: null,
+        pending: 0,
+        recent: [],
+        sent_today: 0,
+      }),
+    ).toThrow();
   });
 });

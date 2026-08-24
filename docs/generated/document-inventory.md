@@ -15,6 +15,7 @@
 | [백테스트·규칙형 전략 계약](../data/backtest-strategy-contract.md) | `docs/data/backtest-strategy-contract.md` | 구현 기준 |
 | [기업행사·수정주가 데이터 계약](../data/corporate-action-adjusted-price-data-contract.md) | `docs/data/corporate-action-adjusted-price-data-contract.md` | 승인 |
 | [ETF 탐색 데이터 계약](../data/etf-exploration-data-contract.md) | `docs/data/etf-exploration-data-contract.md` | 구현 기준 |
+| [주문·위험 이벤트 외부 알림 계약](../data/event-notification-contract.md) | `docs/data/event-notification-contract.md` | 승인 |
 | [재무 지표 정의 계약](../data/financial-indicator-contract.md) | `docs/data/financial-indicator-contract.md` | 구현 기준 |
 | [재무제표 데이터 계약](../data/financial-statement-data-contract.md) | `docs/data/financial-statement-data-contract.md` | 구현 기준 |
 | [수급·공시 연결 데이터 계약](../data/investor-flow-disclosure-contract.md) | `docs/data/investor-flow-disclosure-contract.md` | 구현 기준 |
@@ -38,6 +39,7 @@
 | [ADR-0011: 모의투자 주문 정정 경계](../decisions/0011-paper-order-revision.md) | `docs/decisions/0011-paper-order-revision.md` | 승인 |
 | [ADR-0012: ML 신호의 전략 경계](../decisions/0012-ml-signal-boundary.md) | `docs/decisions/0012-ml-signal-boundary.md` | 승인 |
 | [ADR-0013: 미체결 수량 축소 경계 (부분 취소)](../decisions/0013-paper-partial-cancel.md) | `docs/decisions/0013-paper-partial-cancel.md` | 승인 |
+| [ADR-0014: 주문·위험 이벤트 외부 알림 경계](../decisions/0014-outbound-event-notification.md) | `docs/decisions/0014-outbound-event-notification.md` | 승인 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |

@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     kis_account_product_code_file: Path | None = None
     kis_hts_id: SecretStr | None = None
     kis_hts_id_file: Path | None = None
+    # 외부 알림(ADR-0014). 토큰과 chat_id 둘 다 secret 파일로만 주입한다.
+    telegram_bot_token: SecretStr | None = None
+    telegram_bot_token_file: Path | None = None
+    telegram_chat_id: SecretStr | None = None
+    telegram_chat_id_file: Path | None = None
+    telegram_base_url: str = "https://api.telegram.org"
+    # 한 폴에서 개별 전송할 최대 건수. 넘으면 요약 한 건으로 대체한다(계약 §폴 상한).
+    notification_poll_cap: int = 20
     dart_api_key: SecretStr | None = None
     dart_api_key_file: Path | None = None
     dart_base_url: str = "https://opendart.fss.or.kr"

@@ -1,0 +1,41 @@
+services:
+  # 주문·위험 이벤트 외부 알림 폴러(ADR-0014 결정 6).
+  # 기본 Compose에는 이 서비스가 없다. 이 오버라이드를 명시적으로 지정할 때만 뜬다.
+  #
+  # 읽기 전용이다: 이벤트를 투영해 메신저로 보내며 주문을 만들거나 바꾸지 않는다.
+  # 전송 실패는 매매를 막지 않으므로 이 서비스가 죽어도 주문 경로는 그대로 동작한다(결정 4).
+  #
+  # KIS 자격증명을 주지 않는다. 알림은 저장된 사실만 읽으므로 증권사에 접속할 이유가 없다.
+  event-notifier:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    # 폴러는 한 번 실행하고 끝난다. 주기 실행은 아직 없다 — 사람이 실행하거나 이 서비스가
+    # 재시작 정책으로 반복한다. 단일 대화 초당 1건 한도(결정 7)를 폴 간격으로도 지킨다.
+    command:
+      [
+        "sh",
+        "-c",
+        "while true; do python -m auto_stock_trading.worker.notifications --dispatch; sleep 30; done",
+      ]
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      AUTO_STOCK_KIS_ENVIRONMENT: paper
+      AUTO_STOCK_TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      AUTO_STOCK_TELEGRAM_CHAT_ID_FILE: /run/secrets/telegram_chat_id
+    secrets:
+      - telegram_bot_token
+      - telegram_chat_id
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+secrets:
+  # 토큰은 URL 경로에 들어가는 비밀이다. 파일로만 주입하고 환경변수 값으로 노출하지 않는다.
+  telegram_bot_token:
+    file: ${TELEGRAM_BOT_TOKEN_FILE:-../.secrets/telegram-bot-token}
+  telegram_chat_id:
+    file: ${TELEGRAM_CHAT_ID_FILE:-../.secrets/telegram-chat-id}

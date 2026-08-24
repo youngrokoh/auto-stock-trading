@@ -130,6 +130,7 @@ Taskiq worker ── Valkey
 - [종목 유니버스·업종 분류 데이터 계약](data/stock-universe-data-contract.md)
 - [백테스트·규칙형 전략 계약](data/backtest-strategy-contract.md)
 - [주문 계획·위험검사 데이터 계약](data/order-planning-risk-contract.md)
+- [주문·위험 이벤트 외부 알림 계약](data/event-notification-contract.md)
 - [주문 제출·체결 동기화 계약](data/order-submission-contract.md)
 - [실시간 체결통보 계약](data/realtime-fill-notification-contract.md)
 - [ML 신호 데이터·모델 계약](data/ml-signal-contract.md)
@@ -167,6 +168,7 @@ Taskiq worker ── Valkey
 - [ADR-0011: 모의투자 주문 정정 경계](decisions/0011-paper-order-revision.md)
 - [ADR-0012: ML 신호의 전략 경계](decisions/0012-ml-signal-boundary.md)
 - [ADR-0013: 미체결 수량 축소 경계 (부분 취소)](decisions/0013-paper-partial-cancel.md) (승인)
+- [ADR-0014: 주문·위험 이벤트 외부 알림 경계](decisions/0014-outbound-event-notification.md) (제안)
 
 #### Governance
 

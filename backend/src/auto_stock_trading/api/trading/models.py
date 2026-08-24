@@ -152,6 +152,28 @@ class OrdersResponse(TradingResponse):
     orders: tuple[OrderListEntryResponse, ...]
 
 
+class NotificationEntryResponse(TradingResponse):
+    """최근 알림 한 건. 본문은 담지 않는다 — 현황만 본다."""
+
+    kind: str
+    severity: str
+    state: str
+    attempts: int
+    reason: str | None
+    event_occurred_at: datetime
+
+
+class NotificationStatusResponse(TradingResponse):
+    """외부 알림 발신 현황(ADR-0014 결정 4)."""
+
+    environment: str
+    pending: int
+    failed: int
+    sent_today: int
+    oldest_pending_at: datetime | None
+    recent: tuple[NotificationEntryResponse, ...]
+
+
 class RiskLimitUsageResponse(TradingResponse):
     rule_code: str
     basis: str

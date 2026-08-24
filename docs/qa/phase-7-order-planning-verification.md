@@ -721,9 +721,64 @@ uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
 시점에 증권사에서 다시 읽는다. 재시작 후 미체결이 남아 있으면 리스너 부착이 `NOTIFICATION_GAP`으로
 차단한다(ADR-0009, 별도 검증됨).
 
+## 외부 알림 검증 (2026-08-24, 부분)
+
+[ADR-0014](../decisions/0014-outbound-event-notification.md)와 [계약](../data/event-notification-contract.md)의 구현 검증이다.
+
+### 자격증명 없이 실행 (완료)
+
+| 확인 | 결과 |
+|---|---|
+| `--status` | `pending=0 failed=0 sent=0 oldest_pending=- credentials=no` |
+| `--dispatch` | `자격증명이 없어 전송하지 않았다(봇 토큰·chat_id secret 미설정)` |
+| 아웃박스 행 수 | **0** — 투영도 하지 않았다 |
+| 워터마크 행 수 | **0** — 옮기지 않았다 |
+
+워터마크만 옮기고 끝나면 그 사이 이벤트가 조용히 지나간다. 그래서 자격증명이 없는 실행은 둘 다 하지
+않는다(계약 §완료 조건).
+
+### 조회 API (완료)
+
+```bash
+curl -s localhost:8000/api/trading/notifications
+# {"environment":"paper","pending":0,"failed":0,"sent_today":0,"oldest_pending_at":null}
+```
+
+금지 필드가 응답에 없음을 테스트로 고정했다(`nav`·`account` 문자열 부재).
+
+### 실제 전송 (대기 — 봇 토큰 필요)
+
+봇 토큰이 없어 실제 호출을 하지 못했다. 준비 절차와 확인 항목:
+
+```bash
+# 1. @BotFather에서 /newbot → 토큰 발급, 봇과 대화 시작
+# 2. chat_id 확인 (토큰은 화면·기록에 남기지 않는다)
+#    GET https://api.telegram.org/bot<token>/getUpdates → result[].message.chat.id
+# 3. secret 파일에 넣는다
+#    .secrets/telegram-bot-token, .secrets/telegram-chat-id
+# 4. 폴러 실행
+cd backend
+uv run python -m auto_stock_trading.worker.notifications --status    # credentials=yes 확인
+uv run python -m auto_stock_trading.worker.notifications --dispatch
+```
+
+확인할 것 (계약 §미실측을 이 결과로 교체한다):
+
+1. `429` 응답이 `parameters.retry_after`를 **항상** 싣는가.
+2. `text` 길이 상한이 4096자인가(구현은 3900자에서 자르고 `…(잘렸음)`을 붙인다).
+3. 전송 후 응답 유실 시 재시도가 중복 메시지를 만드는가(at-least-once의 실제 결과).
+4. 한글 메시지의 인코딩·줄바꿈이 그대로 도착하는가.
+5. 폴 상한 초과 시 요약 한 건으로 대체되고 생략 건수가 보이는가.
+
+### 콘솔 적체 배너 (대기 — 실제 미발신 건 필요)
+
+배너는 `pending > 0` 또는 `failed > 0`일 때만 뜬다. 지금은 아웃박스가 비어 있어 화면에 나타날 수
+없고, **감사 테이블에 가짜 행을 넣어 화면을 만들지 않는다.** 실제 알림이 쌓인 뒤 390/768/1360px에서
+확인한다.
+
 ## 남은 범위
 
 - 지정가 정정의 장중 검증(위 "지정가 정정 검증 계획" 절, 다음 거래일)
 - 부분 취소의 장중 검증(위 절, 다음 거래일)
 - 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
-- 주문·위험 이벤트 알림(웹·메신저)
+- 외부 알림의 실제 전송 실측과 콘솔 배너 브라우저 QA(위 절, 봇 토큰 확보 후)

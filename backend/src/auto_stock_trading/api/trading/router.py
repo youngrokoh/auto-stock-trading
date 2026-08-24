@@ -12,6 +12,8 @@ from auto_stock_trading.api.trading.models import (
     AccountSnapshotsResponse,
     AutomationEventResponse,
     AutomationResponse,
+    NotificationEntryResponse,
+    NotificationStatusResponse,
     OrderConditionsResponse,
     OrderListEntryResponse,
     OrderPlanResponse,
@@ -37,6 +39,7 @@ from auto_stock_trading.domain.risk.utilization import (
 )
 
 if TYPE_CHECKING:
+    from auto_stock_trading.domain.notifications.records import NotificationStatusRecord
     from auto_stock_trading.domain.orders.records import (
         AutomationEventRecord,
         AutomationRecord,
@@ -71,6 +74,8 @@ class TradingReader(Protocol):
     ) -> tuple[StoredAccountSnapshot, ...]: ...
 
     async def order_plans(self, environment: str, limit: int) -> tuple[OrderPlanSummary, ...]: ...
+
+    async def notification_status(self, environment: str) -> NotificationStatusRecord: ...
 
     async def order_plan(self, plan_id: UUID) -> OrderPlanRecord | None: ...
 
@@ -315,6 +320,27 @@ def create_trading_router(
             events=tuple(_event_response(event) for event in events),
         )
 
+    async def notifications() -> NotificationStatusResponse:
+        status_record = await trading.notification_status(environment)
+        return NotificationStatusResponse(
+            environment=environment,
+            pending=status_record.pending,
+            failed=status_record.failed,
+            sent_today=status_record.sent,
+            oldest_pending_at=status_record.oldest_pending_at,
+            recent=tuple(
+                NotificationEntryResponse(
+                    kind=entry.kind,
+                    severity=entry.severity,
+                    state=entry.state,
+                    attempts=entry.attempts,
+                    reason=entry.reason,
+                    event_occurred_at=entry.event_occurred_at,
+                )
+                for entry in status_record.recent
+            ),
+        )
+
     async def account_snapshots(
         limit: Annotated[int, Query(ge=1, le=100)] = 20,
     ) -> AccountSnapshotsResponse:
@@ -393,6 +419,15 @@ def create_trading_router(
         description=(
             "계획 경계를 넘어 주문을 최신 순으로 반환한다. 체결 수량은 저장된 값이며 주문 제출 "
             "단계가 없는 동안 계획·거절 주문은 항상 0이다. 값을 만들지 않는다."
+        ),
+    )
+    router.add_api_route(
+        "/notifications",
+        notifications,
+        methods=["GET"],
+        description=(
+            "외부 알림 발신 현황을 반환한다. 미발신·실패 건수를 드러내 '알림이 조용한 것'과 "
+            "'보낼 것이 없는 것'을 구분한다. 계좌·NAV 등 금지 필드는 담지 않는다."
         ),
     )
     router.add_api_route(

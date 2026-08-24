@@ -167,6 +167,13 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CREATE TABLE ml.model_evaluation",
         "CONSTRAINT uq_model_evaluation_metric UNIQUE",
         "CREATE TABLE ml.feature_importance",
+        "CREATE TABLE trading.notification_outbox",
+        "CONSTRAINT uq_notification_outbox_event UNIQUE",
+        "CONSTRAINT ck_notification_outbox_state",
+        "CONSTRAINT ck_notification_outbox_severity",
+        "CREATE INDEX ix_notification_outbox_pending",
+        "CREATE TABLE trading.notification_watermark",
+        "CONSTRAINT uq_notification_watermark_environment UNIQUE",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

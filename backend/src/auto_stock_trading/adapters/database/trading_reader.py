@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
+from auto_stock_trading.adapters.database.notification_rows import NotificationOutboxRow
 from auto_stock_trading.adapters.database.reference_stock_rows import StockProfileRow
 from auto_stock_trading.adapters.database.trading_queries import (
     buy_amount_query,
@@ -29,6 +30,10 @@ from auto_stock_trading.adapters.database.trading_rows import (
     OrderPlanRow,
     OrderRow,
     RiskDecisionRow,
+)
+from auto_stock_trading.domain.notifications.records import (
+    NotificationEntryRecord,
+    NotificationStatusRecord,
 )
 from auto_stock_trading.domain.orders.account import AccountPosition, AccountSnapshot
 from auto_stock_trading.domain.orders.models import (
@@ -59,6 +64,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 _API_FAILURE: Final = "api_failure"
+_PENDING_STATE: Final = "pending"
+# 콘솔이 보여줄 최근 알림 행 수. 현황 파악용이며 전수 조회는 목적이 아니다.
+_NOTIFICATION_ROWS: Final = 10
 
 
 def _won(value: Decimal) -> Decimal:
@@ -319,6 +327,49 @@ class PostgresTradingReader:
             counters=counters,
             api_failures=failures or 0,
             sectors=sectors,
+        )
+
+    async def notification_status(self, environment: str) -> NotificationStatusRecord:
+        """외부 알림 발신 현황(ADR-0014 결정 4). 미발신·실패를 숨기지 않는다.
+
+        본문은 읽지 않는다 — 콘솔은 현황만 보고, 본문에는 종목·수량이 들어 있어 조회 응답을 통해
+        다시 넓힐 이유가 없다.
+        """
+        states = (
+            select(NotificationOutboxRow.state, func.count())
+            .where(NotificationOutboxRow.environment == environment)
+            .group_by(NotificationOutboxRow.state)
+        )
+        oldest_statement = select(func.min(NotificationOutboxRow.event_occurred_at)).where(
+            NotificationOutboxRow.environment == environment,
+            NotificationOutboxRow.state == _PENDING_STATE,
+        )
+        recent_statement = (
+            select(NotificationOutboxRow)
+            .where(NotificationOutboxRow.environment == environment)
+            .order_by(NotificationOutboxRow.event_occurred_at.desc())
+            .limit(_NOTIFICATION_ROWS)
+        )
+        async with self._sessions() as session:
+            counts = dict((await session.execute(states)).tuples().all())
+            oldest = await session.scalar(oldest_statement)
+            recent = (await session.scalars(recent_statement)).all()
+        return NotificationStatusRecord(
+            pending=counts.get(_PENDING_STATE, 0),
+            failed=counts.get("failed", 0),
+            sent=counts.get("sent", 0),
+            oldest_pending_at=oldest,
+            recent=tuple(
+                NotificationEntryRecord(
+                    kind=row.kind,
+                    severity=row.severity,
+                    state=row.state,
+                    attempts=row.attempts,
+                    reason=row.last_error,
+                    event_occurred_at=row.event_occurred_at,
+                )
+                for row in recent
+            ),
         )
 
     async def close(self) -> None:

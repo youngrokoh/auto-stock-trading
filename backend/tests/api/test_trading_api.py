@@ -8,7 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
-from auto_stock_trading.api.trading.models import AutomationResponse
+from auto_stock_trading.api.trading.models import (
+    AutomationResponse,
+    NotificationStatusResponse,
+)
+from auto_stock_trading.domain.notifications.records import (
+    NotificationEntryRecord,
+    NotificationStatusRecord,
+)
 from auto_stock_trading.domain.orders.account import AccountPosition, AccountSnapshot
 from auto_stock_trading.domain.orders.models import (
     AutomationState,
@@ -112,6 +119,25 @@ def _plan() -> OrderPlanRecord:
 @final
 class StubTradingReader:
     sectors: tuple[tuple[str, str], ...] = ()
+
+    async def notification_status(self, environment: str) -> NotificationStatusRecord:
+        _ = environment
+        return NotificationStatusRecord(
+            pending=3,
+            failed=1,
+            sent=12,
+            oldest_pending_at=_NOW,
+            recent=(
+                NotificationEntryRecord(
+                    kind="order_state",
+                    severity="info",
+                    state="sent",
+                    attempts=1,
+                    reason=None,
+                    event_occurred_at=_NOW,
+                ),
+            ),
+        )
 
     async def automation(self, environment: str) -> AutomationRecord | None:
         _ = environment
@@ -766,3 +792,21 @@ def test_the_api_refuses_to_start_when_the_automation_reset_fails() -> None:
 
     with pytest.raises(ConnectionError), TestClient(app):
         pass
+
+
+def test_the_notifications_endpoint_reports_pending_and_failed_counts() -> None:
+    """콘솔이 '알림이 조용한 것'과 '보낼 것이 없는 것'을 구분할 수 있어야 한다."""
+    response = _client().get("/api/trading/notifications")
+
+    assert response.status_code == 200
+    payload = NotificationStatusResponse.model_validate(response.json())
+    assert payload.pending == 3
+    assert payload.failed == 1
+    assert payload.sent_today == 12
+    assert payload.oldest_pending_at is not None
+    assert len(payload.recent) == 1
+    assert payload.recent[0].kind == "order_state"
+    # 금지 필드가 조회 응답에도 없어야 한다(계약 §조회).
+    body = response.text
+    assert "nav" not in body.lower()
+    assert "account" not in body.lower()

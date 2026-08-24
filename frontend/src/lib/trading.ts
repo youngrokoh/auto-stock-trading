@@ -116,6 +116,24 @@ const riskLimitsSchema = z.strictObject({
   snapshot_id: z.uuid().nullable(),
 });
 
+const notificationEntrySchema = z.strictObject({
+  attempts: z.number().int(),
+  event_occurred_at: isoDateTime,
+  kind: z.string().min(1),
+  reason: z.string().nullable(),
+  severity: z.string().min(1),
+  state: z.string().min(1),
+});
+
+const notificationStatusSchema = z.strictObject({
+  environment: z.string().min(1),
+  failed: z.number().int(),
+  oldest_pending_at: isoDateTime.nullable(),
+  pending: z.number().int(),
+  recent: z.array(notificationEntrySchema).readonly(),
+  sent_today: z.number().int(),
+});
+
 export type AutomationEvent = z.infer<typeof automationEventSchema>;
 export type Automation = z.infer<typeof automationSchema>;
 export type AccountPosition = z.infer<typeof accountPositionSchema>;
@@ -125,12 +143,16 @@ export type TradingOrder = z.infer<typeof orderSchema>;
 export type TradingOrders = z.infer<typeof ordersSchema>;
 export type RiskLimitUsage = z.infer<typeof riskLimitUsageSchema>;
 export type RiskLimits = z.infer<typeof riskLimitsSchema>;
+export type NotificationEntry = z.infer<typeof notificationEntrySchema>;
+export type NotificationStatus = z.infer<typeof notificationStatusSchema>;
 
 export const parseAutomation = (payload: unknown): Automation => automationSchema.parse(payload);
 export const parseAccountSnapshots = (payload: unknown): AccountSnapshots =>
   accountSnapshotsSchema.parse(payload);
 export const parseOrders = (payload: unknown): TradingOrders => ordersSchema.parse(payload);
 export const parseRiskLimits = (payload: unknown): RiskLimits => riskLimitsSchema.parse(payload);
+export const parseNotificationStatus = (payload: unknown): NotificationStatus =>
+  notificationStatusSchema.parse(payload);
 
 /** 화면 디자인 사양 5.5절의 소진율 막대 색 단계. 85% 초과가 위험이다. */
 export type UsageLevel = "danger" | "normal" | "unknown" | "warn";

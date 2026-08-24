@@ -4,6 +4,7 @@ import { fetchInstruments } from "../api/market-data";
 import {
   fetchAccountSnapshots,
   fetchAutomation,
+  fetchNotificationStatus,
   fetchRiskLimits,
   fetchTradingOrders,
 } from "../api/trading";
@@ -128,7 +129,14 @@ export const Trading = () => {
     queryKey: ["instruments"],
     retry: false,
   });
+  const notificationsQuery = useQuery({
+    queryFn: fetchNotificationStatus,
+    queryKey: ["trading-notifications"],
+    refetchInterval: 60_000,
+    retry: false,
+  });
 
+  const notifications = notificationsQuery.data;
   const automation = automationQuery.data;
   const snapshot = snapshotsQuery.data?.snapshots[0];
   const limits = limitsQuery.data;
@@ -201,6 +209,15 @@ export const Trading = () => {
           description={`거래일이 바뀌어 자동매매가 ${automationLabel("disabled")} 상태로 돌아갔습니다. 기록에 남은 상태는 ${automationLabel(automation.stored_state)}이며 그 거래일 기준입니다. 다시 켜려면 worker CLI로 상태를 전이합니다.`}
           level="warning"
           title="거래일 변경으로 자동매매 복귀"
+        />
+      )}
+
+      {notifications !== undefined && (notifications.pending > 0 || notifications.failed > 0) && (
+        <SafetyBanner
+          code="NOTIFICATION_BACKLOG"
+          description={`외부 알림이 밀려 있습니다. 미발신 ${String(notifications.pending)}건, 실패 ${String(notifications.failed)}건. 알림 전송은 매매를 막지 않으므로 주문 경로는 그대로 동작합니다. 폴러가 떠 있는지와 자격증명을 확인합니다.`}
+          level={notifications.failed > 0 ? "warning" : "info"}
+          title="외부 알림 적체"
         />
       )}
 
