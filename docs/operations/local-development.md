@@ -48,6 +48,11 @@ docker compose -f infra/compose.yaml up --build -d --wait --wait-timeout 300
 docker compose -f infra/compose.yaml ps -a
 ```
 
+**새 Alembic 리비전을 추가한 뒤에는 `--build`가 필수다.** 로컬에서 `uv run alembic upgrade head`로
+DB를 올려 두면 데이터베이스는 새 리비전에 있지만 컨테이너 이미지에는 그 파일이 없어
+`migrate`가 `Can't locate revision identified by '<revision>'`으로 실패하고 스택 전체가 뜨지
+않는다(2026-08-24 실측). 이미지를 다시 빌드하면 해소된다.
+
 서비스가 준비되면 다음 주소를 사용한다.
 
 - 웹: `http://localhost:8080`
