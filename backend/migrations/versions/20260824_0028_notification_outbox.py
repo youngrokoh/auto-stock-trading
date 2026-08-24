@@ -7,7 +7,6 @@ Revision ID: 20260824_0028
 Revises: 20260823_0027
 """
 
-from collections.abc import Sequence
 from typing import Final
 
 import sqlalchemy as sa
@@ -15,8 +14,8 @@ from alembic import op
 
 revision: str = "20260824_0028"
 down_revision: str | None = "20260823_0027"
-branch_labels: Sequence[str] | None = None
-depends_on: Sequence[str] | None = None
+branch_labels: str | tuple[str, ...] | None = None
+depends_on: str | tuple[str, ...] | None = None
 
 _ENVIRONMENTS: Final = "('paper', 'live')"
 _SOURCES: Final = "('order_event', 'automation_event', 'risk_decision')"
