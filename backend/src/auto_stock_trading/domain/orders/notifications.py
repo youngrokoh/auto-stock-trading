@@ -194,6 +194,12 @@ def _problem(
         return ReconcileProblem.SYMBOL_MISMATCH
     if not notification.cancel_confirmed and notification.order_quantity != order.quantity:
         return ReconcileProblem.ORDER_QUANTITY_MISMATCH
+    if (
+        notification.cancel_confirmed
+        and notification.quantity > order.quantity - order.filled_quantity
+    ):
+        # 증권사가 초과 취소를 막지만(실측 40430000) 막지 못한 값이 오면 추측하지 않는다.
+        return ReconcileProblem.ORDER_QUANTITY_MISMATCH
     if order.state in _TERMINAL_STATES:
         return ReconcileProblem.TERMINAL_STATE_CHANGED
     if accumulated > order.quantity:
@@ -205,10 +211,44 @@ def _unchanged(order: OrderSnapshot, problem: ReconcileProblem | None) -> FillOu
     return FillOutcome(
         client_order_id=order.client_order_id,
         state=order.state,
+        quantity=order.quantity,
         filled_quantity=order.filled_quantity,
         average_fill_price=order.average_fill_price,
         changed=False,
         problem=problem,
+    )
+
+
+def _cancelled(order: OrderSnapshot, notification: FillNotification) -> FillOutcome:
+    """취소 확인을 **통보된 수량만큼** 반영한다(ADR-0013 결정 4).
+
+    실측(2026-08-24): 통보는 취소된 수량을 싣는다. 카카오 14주 중 5주를 취소하면 통보 수량이 5이고
+    9주가 증권사에 남는다. 통보 수량을 무시하고 전량 취소로 처리하면 내부는 취소됨·증권사는 열려
+    있음이 되고, 비상정지가 그 주문을 대상에서 빼 미체결을 놓친다.
+
+    수량 `0`은 **측정된 적이 없다.** 실측된 취소 통보는 모두 취소 수량을 실었다. 정보가 없는 값으로
+    보고 종전 동작(전량 취소)을 유지한다 — 측정하지 않은 곳에서 동작을 바꾸지 않는다.
+    """
+    outstanding = order.quantity - order.filled_quantity
+    cancelled = notification.quantity
+    if cancelled == 0 or cancelled >= outstanding:
+        return FillOutcome(
+            client_order_id=order.client_order_id,
+            state=OrderState.CANCELED,
+            quantity=order.quantity,
+            filled_quantity=order.filled_quantity,
+            average_fill_price=order.average_fill_price,
+            changed=True,
+            problem=None,
+        )
+    return FillOutcome(
+        client_order_id=order.client_order_id,
+        state=order.state,
+        quantity=order.quantity - cancelled,
+        filled_quantity=order.filled_quantity,
+        average_fill_price=order.average_fill_price,
+        changed=True,
+        problem=None,
     )
 
 
@@ -224,26 +264,21 @@ def apply_notification(order: OrderSnapshot, notification: FillNotification) -> 
         return FillOutcome(
             client_order_id=order.client_order_id,
             state=OrderState.REJECTED,
+            quantity=order.quantity,
             filled_quantity=order.filled_quantity,
             average_fill_price=order.average_fill_price,
             changed=True,
             problem=None,
         )
     if notification.cancel_confirmed:
-        return FillOutcome(
-            client_order_id=order.client_order_id,
-            state=OrderState.CANCELED,
-            filled_quantity=order.filled_quantity,
-            average_fill_price=order.average_fill_price,
-            changed=True,
-            problem=None,
-        )
+        return _cancelled(order, notification)
     if notification.kind is not NotificationKind.EXECUTION or notification.quantity == 0:
         return _unchanged(order, None)
     state = OrderState.FILLED if accumulated == order.quantity else OrderState.PARTIALLY_FILLED
     return FillOutcome(
         client_order_id=order.client_order_id,
         state=state,
+        quantity=order.quantity,
         filled_quantity=accumulated,
         average_fill_price=_average_price(order, notification),
         changed=True,

@@ -139,3 +139,37 @@ async def transition_order(session: AsyncSession, transition: OrderTransition) -
             occurred_at=transition.occurred_at,
         )
     )
+
+
+async def reduce_order_quantity(
+    session: AsyncSession,
+    order_id: UUID,
+    quantity: int,
+    reason_code: str,
+    occurred_at: datetime,
+) -> None:
+    """부분 취소로 줄어든 미체결 수량을 반영한다. 상태는 바꾸지 않는다(ADR-0013 결정 6).
+
+    상태 전이가 아니므로 `transition_order`를 쓸 수 없다 — 상태 그래프는 같은 상태로의 전이를
+    허용하지 않는다. 이벤트를 붙이기 전에 주문 행을 잠근다: 상태를 바꾸지 않는 기록은 `UPDATE`가
+    직렬화해 주지 않으므로 잠금이 없으면 같은 시퀀스를 잡는다(2026-08-21 실측 결함).
+    """
+    current = await lock_order(session, order_id)
+    state = OrderState(current.state)
+    _ = await session.execute(
+        update(OrderRow)
+        .where(OrderRow.id == order_id)
+        .values(quantity=quantity, updated_at=occurred_at)
+    )
+    session.add(
+        OrderEventRow(
+            id=uuid4(),
+            order_id=order_id,
+            sequence=await next_event_sequence(session, order_id),
+            previous_state=state.value,
+            state=state.value,
+            reason_code=reason_code,
+            detail=f"quantity {current.quantity} -> {quantity}",
+            occurred_at=occurred_at,
+        )
+    )

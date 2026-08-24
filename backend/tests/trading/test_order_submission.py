@@ -664,3 +664,229 @@ def test_submission_uses_the_seoul_trading_date() -> None:
         assert len(broker.submissions) == 1
 
     anyio.run(scenario)
+
+
+def test_partial_cancel_sends_the_human_quantity_and_records_the_cancel_order_number() -> None:
+    """ADR-0013 결정 2·5·6: 사람이 정한 수량만 보내고, 취소 주문번호는 이벤트에만 남는다."""
+
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    quantity=14,
+                    broker_order_id="0000117057",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker(
+            acknowledgement=BrokerAcknowledgement(
+                accepted=True,
+                broker_order_id="0000117090",
+                broker_org_no="00950",
+                broker_order_time="101153",
+                message_code="APBK0013",
+                message="주문 전송 완료 되었습니다.",
+                raw=_RAW,
+            )
+        )
+
+        result = await _submitter(store, broker).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000117057",
+            5,
+            _NOW,
+        )
+
+        assert result.accepted is True
+        assert result.reason_code is None
+        assert result.cancel_order_id == "0000117090"
+        (request,) = broker.cancels
+        assert request.broker_order_id == "0000117057"
+        assert request.quantity == 5
+        assert request.partial is True
+        (event,) = store.events
+        assert event[1] == "partial_cancel_requested"
+        assert event[2] is not None
+        assert "0000117090" in event[2]
+        # 결정 4·6: 수량은 통보로 확인될 때만 줄어든다. 요청만으로 상태·수량을 바꾸지 않는다.
+        assert store.fills_applied == []
+
+    anyio.run(scenario)
+
+
+def test_partial_cancel_beyond_the_outstanding_quantity_is_refused_locally() -> None:
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.PARTIALLY_FILLED,
+                    quantity=14,
+                    filled_quantity=10,
+                    broker_order_id="0000117057",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000117057",
+            5,
+            _NOW,
+        )
+
+        assert result.accepted is False
+        assert result.reason_code == "QUANTITY_EXCEEDS_OUTSTANDING"
+        assert broker.cancels == []
+        assert store.events == []
+
+    anyio.run(scenario)
+
+
+def test_partial_cancel_of_an_unknown_order_is_refused_without_calling_the_broker() -> None:
+    async def scenario() -> None:
+        store = FakeStore()
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000999999",
+            1,
+            _NOW,
+        )
+
+        assert result.accepted is False
+        assert result.reason_code == "ORDER_NOT_FOUND"
+        assert broker.cancels == []
+
+    anyio.run(scenario)
+
+
+def test_partial_cancel_rejection_records_the_message_code_and_changes_nothing() -> None:
+    """실측 `40430000`(취소수량 초과) 경로. 결정 7: 거절은 fail-closed다."""
+
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    quantity=14,
+                    broker_order_id="0000117057",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker(
+            acknowledgement=BrokerAcknowledgement(
+                accepted=False,
+                broker_order_id=None,
+                broker_org_no=None,
+                broker_order_time=None,
+                message_code="40430000",
+                message="취소수량이 취소가능수량을 초과합니다.",
+                raw=_RAW,
+            )
+        )
+
+        result = await _submitter(store, broker).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000117057",
+            5,
+            _NOW,
+        )
+
+        assert result.accepted is False
+        assert result.reason_code == "40430000"
+        assert [event[1] for event in store.events] == ["partial_cancel_failed"]
+        assert store.fills_applied == []
+        assert len(store.raw_responses) == 1
+
+    anyio.run(scenario)
+
+
+def test_partial_cancel_does_not_require_a_listener_or_a_running_automation() -> None:
+    """ADR-0013 결정 3: 노출 축소는 위험검사·리스너 조건을 면제한다."""
+
+    async def scenario() -> None:
+        store = FakeStore(
+            automation=AutomationState.DISABLED,
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    quantity=14,
+                    broker_order_id="0000117057",
+                    broker_org_no="00950",
+                ),
+            ),
+        )
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker, listener_attached=False).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000117057",
+            5,
+            _NOW,
+        )
+
+        assert result.accepted is True
+        assert len(broker.cancels) == 1
+
+    anyio.run(scenario)
+
+
+def test_partial_cancel_transport_failure_records_an_api_failure() -> None:
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    quantity=14,
+                    broker_order_id="0000117057",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker(failure=TimeoutError("timeout"))
+
+        with pytest.raises(TimeoutError):
+            _ = await _submitter(store, broker).reduce_open_quantity(
+                _ENVIRONMENT,
+                "0000117057",
+                5,
+                _NOW,
+            )
+
+        assert store.api_failures == ["order_cancel:TimeoutError"]
+
+    anyio.run(scenario)
+
+
+def test_partial_cancel_requires_a_positive_quantity() -> None:
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    quantity=14,
+                    broker_order_id="0000117057",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000117057",
+            0,
+            _NOW,
+        )
+
+        assert result.accepted is False
+        assert result.reason_code == "INVALID_QUANTITY"
+        assert broker.cancels == []
+
+    anyio.run(scenario)

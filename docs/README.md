@@ -166,7 +166,7 @@ Taskiq worker ── Valkey
 - [ADR-0010: 사람이 확인한 주문 대조 종결](decisions/0010-human-attested-order-reconciliation.md)
 - [ADR-0011: 모의투자 주문 정정 경계](decisions/0011-paper-order-revision.md)
 - [ADR-0012: ML 신호의 전략 경계](decisions/0012-ml-signal-boundary.md)
-- [ADR-0013: 미체결 수량 축소 경계 (부분 취소)](decisions/0013-paper-order-quantity-revision.md) (제안)
+- [ADR-0013: 미체결 수량 축소 경계 (부분 취소)](decisions/0013-paper-partial-cancel.md) (승인)
 
 #### Governance
 

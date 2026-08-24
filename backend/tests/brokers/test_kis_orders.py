@@ -218,3 +218,34 @@ def test_unparsable_response_fails_closed() -> None:
             await adapter.close()
 
     anyio.run(scenario)
+
+
+def test_a_partial_cancel_sends_the_quantity_and_the_partial_flag() -> None:
+    """실측(2026-08-24): `QTY_ALL_ORD_YN="N"` + 명시 `ORD_QTY`가 취소할 수량이다.
+
+    전량 플래그를 고정으로 보내면 수량을 지정할 자리가 없다 — 부분 취소가 막혀 있던 이유다.
+    """
+
+    async def scenario() -> None:
+        client, handler = create_fixture_handler_client()
+        adapter = KisOrderAdapter(client, _ACCOUNT, paper=True)
+        try:
+            acknowledgement = await adapter.cancel(
+                CancelRequest(
+                    broker_org_no="00950",
+                    broker_order_id="0000117057",
+                    quantity=5,
+                    partial=True,
+                )
+            )
+        finally:
+            await adapter.close()
+
+        assert acknowledgement.accepted is True
+        (request,) = handler.market_requests
+        body = _body(request)
+        assert body["RVSE_CNCL_DVSN_CD"] == "02"
+        assert body["QTY_ALL_ORD_YN"] == "N"
+        assert body["ORD_QTY"] == "5"
+
+    anyio.run(scenario)

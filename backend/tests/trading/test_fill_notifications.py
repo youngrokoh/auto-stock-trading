@@ -329,3 +329,68 @@ def test_broker_order_quantity_mismatch_is_a_reconcile_problem() -> None:
 
     assert outcome.problem is ReconcileProblem.ORDER_QUANTITY_MISMATCH
     assert not outcome.changed
+
+
+def test_a_partial_cancel_reduces_the_quantity_and_keeps_the_order_open() -> None:
+    """실측(2026-08-24): 취소 확인 통보는 **취소된 수량**을 싣는다(카카오 14주 중 5주 → 5).
+
+    통보 수량을 무시하고 전량 취소로 처리하면 내부는 취소됨, 증권사는 열려 있음 상태가 되고
+    비상정지가 그 주문을 건너뛴다. 사람의 마지막 통제 수단이 무력화된다.
+    """
+    (notification,) = parse_notifications(
+        _payload(kind="1", revise_code="2", accept_code="2", quantity="5", price="0")
+    )
+
+    outcome = apply_notification(_order(quantity=14), notification)
+
+    assert outcome.state is OrderState.SUBMITTED
+    assert outcome.quantity == 9
+    assert outcome.filled_quantity == 0
+    assert outcome.changed
+    assert outcome.problem is None
+
+
+def test_a_cancel_covering_the_outstanding_quantity_cancels_the_order() -> None:
+    """실측: 부분 취소로 9주가 남은 뒤 전량 취소 통보가 9주를 싣고 왔다."""
+    (notification,) = parse_notifications(
+        _payload(kind="1", revise_code="2", accept_code="2", quantity="9", price="0")
+    )
+
+    outcome = apply_notification(_order(quantity=9), notification)
+
+    assert outcome.state is OrderState.CANCELED
+    assert outcome.quantity == 9
+    assert outcome.changed
+
+
+def test_a_partial_cancel_after_a_partial_fill_reduces_only_the_open_part() -> None:
+    (notification,) = parse_notifications(
+        _payload(kind="1", revise_code="2", accept_code="2", quantity="2", price="0")
+    )
+
+    outcome = apply_notification(
+        _order(
+            quantity=4,
+            filled_quantity=1,
+            average_fill_price=Decimal(250000),
+            state=OrderState.PARTIALLY_FILLED,
+        ),
+        notification,
+    )
+
+    assert outcome.state is OrderState.PARTIALLY_FILLED
+    assert outcome.quantity == 2
+    assert outcome.filled_quantity == 1
+    assert outcome.average_fill_price == Decimal(250000)
+
+
+def test_a_cancel_larger_than_the_outstanding_quantity_is_a_divergence() -> None:
+    """증권사는 초과 취소를 막지만(실측 `40430000`), 막지 못한 값이 오면 추측하지 않는다."""
+    (notification,) = parse_notifications(
+        _payload(kind="1", revise_code="2", accept_code="2", quantity="9", price="0")
+    )
+
+    outcome = apply_notification(_order(quantity=4), notification)
+
+    assert not outcome.changed
+    assert outcome.problem is ReconcileProblem.ORDER_QUANTITY_MISMATCH

@@ -48,6 +48,10 @@ _WITHDRAW_REASON: Final = "USER_COMMAND"
 _WITHDRAW_NEEDS_PLAN: Final = "--withdraw requires --plan-id"
 _ATTEST_NEEDS: Final = "--attest requires {}"
 _REVISE_NEEDS: Final = "--revise requires --broker-order-id and --price-offset-pct"
+_REDUCE_NEEDS: Final = "--reduce requires --broker-order-id and --quantity"
+_ACTION_REQUIRED: Final = (
+    "--submit, --sync, --withdraw, --attest, --revise, --reduce, --emergency-stop 중 하나 필요"
+)
 _PERCENT: Final = Decimal(100)
 
 
@@ -59,6 +63,7 @@ class Arguments(argparse.Namespace):
     withdraw: bool = False
     attest: bool = False
     revise: bool = False
+    reduce: bool = False
     price_offset_pct: str | None = None
     broker_order_id: str | None = None
     state: str | None = None
@@ -235,6 +240,29 @@ async def attest_order_state(arguments: Arguments) -> str:
     return f"attested order={result.client_order_id} state={state}"
 
 
+async def reduce_open_quantity(arguments: Arguments) -> str:
+    """미체결 수량 일부만 취소한다(ADR-0013). 위험검사·리스너 조건은 면제된다."""
+    settings = _paper_settings()
+    if arguments.broker_order_id is None or arguments.quantity is None:
+        raise RuntimeError(_REDUCE_NEEDS)
+    collaborators = _collaborators(settings)
+    try:
+        result = await collaborators.submitter.reduce_open_quantity(
+            settings.kis_environment.value,
+            arguments.broker_order_id,
+            arguments.quantity,
+            datetime.now(UTC),
+        )
+    finally:
+        await collaborators.close()
+    if not result.accepted:
+        return f"refused reason={result.reason_code} quantity={result.requested_quantity}"
+    return (
+        f"cancel_requested order={result.client_order_id} "
+        f"quantity={result.requested_quantity} cancel_order_id={result.cancel_order_id}"
+    )
+
+
 async def synchronize_fills() -> str:
     settings = _paper_settings()
     collaborators = _collaborators(settings)
@@ -294,6 +322,7 @@ def main() -> None:
     _ = parser.add_argument("--withdraw", action="store_true")
     _ = parser.add_argument("--attest", action="store_true")
     _ = parser.add_argument("--revise", action="store_true")
+    _ = parser.add_argument("--reduce", action="store_true")
     _ = parser.add_argument("--price-offset-pct")
     _ = parser.add_argument("--broker-order-id")
     _ = parser.add_argument(
@@ -315,6 +344,9 @@ def main() -> None:
     if arguments.revise:
         print(anyio.run(revise_order, arguments))  # noqa: T201
         return
+    if arguments.reduce:
+        print(anyio.run(reduce_open_quantity, arguments))  # noqa: T201
+        return
     if arguments.emergency_stop:
         print(anyio.run(emergency_stop))  # noqa: T201
         return
@@ -326,7 +358,7 @@ def main() -> None:
     if arguments.sync:
         print(anyio.run(synchronize_fills))  # noqa: T201
     if not arguments.submit and not arguments.sync:
-        parser.error("--submit, --sync, --withdraw, --attest, --emergency-stop 중 하나가 필요하다")
+        parser.error(_ACTION_REQUIRED)
 
 
 if __name__ == "__main__":

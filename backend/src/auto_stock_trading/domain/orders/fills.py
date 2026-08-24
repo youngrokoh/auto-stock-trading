@@ -57,6 +57,8 @@ class OrderSnapshot:
 class FillOutcome:
     client_order_id: str
     state: OrderState
+    # 부분 취소가 미체결 수량을 줄인다. 다른 경로에서는 주문 수량 그대로다.
+    quantity: int
     filled_quantity: int
     average_fill_price: Decimal | None
     changed: bool
@@ -73,6 +75,7 @@ def _unchanged(order: OrderSnapshot, problem: ReconcileProblem | None) -> FillOu
     return FillOutcome(
         client_order_id=order.client_order_id,
         state=order.state,
+        quantity=order.quantity,
         filled_quantity=order.filled_quantity,
         average_fill_price=order.average_fill_price,
         changed=False,
@@ -115,6 +118,8 @@ def _outcome(order: OrderSnapshot, fill: BrokerFill) -> FillOutcome:
     return FillOutcome(
         client_order_id=order.client_order_id,
         state=state,
+        # 일별주문체결 대조는 수량을 바꾸지 않는다. 부분 취소는 통보 경로만 다룬다.
+        quantity=order.quantity,
         filled_quantity=fill.filled_quantity,
         average_fill_price=fill.average_fill_price or order.average_fill_price,
         changed=True,

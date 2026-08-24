@@ -618,7 +618,7 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 
 ## 부분 취소 실측 (2026-08-24 장중, 사용자 승인)
 
-[ADR-0013](../decisions/0013-paper-order-quantity-revision.md) 초안의 미측정 항목을 확인하기 위한
+[ADR-0013](../decisions/0013-paper-partial-cancel.md) 초안의 미측정 항목을 확인하기 위한
 측정이다. 부분 취소 호출은 프로덕션 경로에 없으므로(어댑터가 `QTY_ALL_ORD_YN="Y"` 고정) 측정 전용
 스크립트로 어댑터의 HTTP 클라이언트를 직접 호출했다 — 승인되지 않은 기능을 제품 코드에 넣지 않기
 위한 구분이다.
@@ -639,7 +639,7 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 
 정리: 자동매매 `disabled` 복귀, 리스너 중지, 열린 주문 0, 체결 0(보유는 기존 삼성전자 1주 그대로).
 
-### 이 측정이 드러낸 결함 (미수정, 부분 취소 도입 전 선행 조건)
+### 이 측정이 드러낸 결함 (2026-08-24 수정 완료)
 
 **체결통보 리스너가 취소 확인을 통보된 수량과 무관하게 전량 취소로 적용한다.**
 
@@ -647,9 +647,14 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 대상에서 빼고 `cancel_requested=1`로 끝나 **증권사에 남은 9주를 취소하지 않았다.** 수동으로 정리했다.
 두 번째 시험에서도 재현됐다(3건 중 2건 취소).
 
-**지금은 잠재 결함이다** — 프로덕션은 전량 취소만 보내므로 통보 수량과 주문 수량이 늘 같다. 부분
-취소를 도입하면 즉시 실제 결함이 되고, 비상정지가 미체결을 놓치는 형태이므로 사람의 마지막 통제
-수단이 무력화된다. ADR-0013 §선행 조건에 기록했다.
+**측정 시점에는 잠재 결함이었다** — 프로덕션이 전량 취소만 보내므로 통보 수량과 주문 수량이 늘
+같았다. 부분 취소를 도입하면 즉시 실제 결함이 되고, 비상정지가 미체결을 놓치는 형태이므로 사람의
+마지막 통제 수단이 무력화된다.
+
+ADR-0013 승인 후 **부분 취소 구현보다 먼저** 고쳤다: 취소 확인 통보는 통보된 수량이 잔여를 덮을
+때만 `CANCELED`가 되고, 그보다 적으면 상태를 유지하고 수량만 줄인다(`reduce_order_quantity`).
+잔여를 넘는 취소 통보는 `ORDER_QUANTITY_MISMATCH` 발산이다. 도메인 4건과 저장 통합 1건으로
+검증했고, 저장 통합 테스트는 수정을 되돌리면 실패하는지 확인했다(뮤테이션 확인).
 
 ### 부수 확인
 
@@ -658,9 +663,34 @@ uv run pytest tests/risk tests/trading tests/brokers/test_kis_account.py \
 - 주문당 상한(NAV 5%)이 수량을 정하므로, 부분 취소를 시험하려면 **가격이 낮은 종목**이 필요하다.
   삼성전자(281,500원)는 1주뿐이라 부분 취소를 만들 수 없다.
 
+## 부분 취소 장중 검증 계획 (다음 거래일)
+
+구현은 끝났고 실측만 남았다. 09:05-15:15 KST 안에서 실행한다.
+
+```bash
+cd backend
+# 1. 리스너를 띄운 뒤 미체결이 남을 주문을 만든다(가격 낮은 종목 + 하방 오프셋)
+docker compose -f ../infra/compose.yaml -f ../infra/compose.fill-notifications.yaml up -d --build
+uv run python -m auto_stock_trading.worker.execution.planning --automation running
+uv run python -m auto_stock_trading.worker.execution.submission --submit
+
+# 2. 부분 취소 (증권사 주문번호는 /api/trading/orders 또는 통보 기록에서 확인)
+uv run python -m auto_stock_trading.worker.execution.submission \
+  --reduce --broker-order-id <ODNO> --quantity <취소할 수량>
+
+# 3. 확인: 잔여 수량이 줄고 상태는 유지되는가, 취소 주문번호가 이벤트에 남는가
+#    잔여 초과 요청이 QUANTITY_EXCEEDS_OUTSTANDING으로 거부되는가
+#    비상정지가 남은 잔여를 정확히 취소하는가(이번 결함의 회귀 확인)
+uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
+```
+
+확인할 사실: 통보의 `quantity`가 취소량이고 내부 수량이 그만큼만 줄어드는지, 상태가
+`SUBMITTED`/`PARTIALLY_FILLED`로 유지되는지, `broker_order_id`가 원주문번호로 남는지.
+
 ## 남은 범위
 
 - 지정가 정정의 장중 검증(위 "지정가 정정 검증 계획" 절, 다음 거래일)
-- 수량 정정과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
+- 부분 취소의 장중 검증(위 절, 다음 거래일)
+- 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
 - 서버 재시작 후 상태 복구 시나리오 테스트(현재는 거래일 변경 복귀만 검증)
 - 주문·위험 이벤트 알림(웹·메신저)

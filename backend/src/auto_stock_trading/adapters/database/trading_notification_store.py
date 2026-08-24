@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
 from auto_stock_trading.adapters.database.trading_order_writes import (
     OrderTransition,
     broker_order_query,
+    reduce_order_quantity,
     tracked_order,
     transition_order,
 )
@@ -117,9 +118,22 @@ class PostgresNotificationStore:
                     created_at=record.received_at,
                 )
             )
-            if record.order_id is None or record.state is None:
+            if record.order_id is None:
+                return
+            if record.state is None:
+                if record.quantity is not None:
+                    # 부분 취소: 상태는 그대로 두고 미체결 수량만 줄인다.
+                    await reduce_order_quantity(
+                        session,
+                        record.order_id,
+                        record.quantity,
+                        _FILL_NOTIFICATION,
+                        record.received_at,
+                    )
                 return
             values: dict[str, object] = {}
+            if record.quantity is not None:
+                values["quantity"] = record.quantity
             if record.filled_quantity is not None:
                 values["filled_quantity"] = record.filled_quantity
             if record.average_fill_price is not None:

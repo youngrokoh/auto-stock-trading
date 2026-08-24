@@ -19,6 +19,7 @@ from auto_stock_trading.adapters.database.trading_rows import (
     AutomationStateRow,
     FillNotificationRow,
     NotificationSessionRow,
+    OrderEventRow,
     OrderPlanRow,
 )
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
@@ -158,11 +159,12 @@ def _acknowledgement() -> BrokerAcknowledgement:
     )
 
 
-def _record(
+def _record(  # noqa: PLR0913 — 통보 기록 조립기라 필드를 그대로 노출한다
     order_id: UUID | None,
     *,
     state: OrderState | None,
     filled_quantity: int | None,
+    quantity: int | None = None,
     problem: ReconcileProblem | None = None,
     payload: str | None = None,
 ) -> FillNotificationRecord:
@@ -175,6 +177,7 @@ def _record(
         masked_payload=payload if payload is not None else mask_notification_payload(_PAYLOAD),
         problem=problem,
         state=state,
+        quantity=quantity,
         filled_quantity=filled_quantity,
         average_fill_price=None if filled_quantity is None else Decimal(100_000),
         received_at=_NOW,
@@ -224,6 +227,49 @@ def test_notification_and_order_transition_are_stored_together() -> None:
     anyio.run(_run_scenario, scenario)
 
 
+def test_a_partial_cancel_notification_reduces_the_stored_quantity_without_a_transition() -> None:
+    """ADR-0013 결정 6: 부분 취소는 수량만 줄이고 상태는 유지한다. 이력은 이벤트로 남는다."""
+
+    async def scenario(
+        notifications: PostgresNotificationStore,
+        store: PostgresTradingStore,
+        connection: AsyncConnection,
+    ) -> None:
+        order_id, _ = await _submitted_order(store, connection)
+
+        # 기록의 `quantity`는 취소량이 아니라 축소 후 주문 수량이다(4주 중 1주 취소 → 3주).
+        await notifications.record_notification(
+            _record(order_id, state=None, quantity=3, filled_quantity=None)
+        )
+
+        tracked = await notifications.order_by_broker_order_id(_ENVIRONMENT, _BROKER_ORDER_ID)
+        assert tracked is not None
+        assert tracked.quantity == 3
+        assert tracked.state is OrderState.SUBMITTED
+        assert tracked.filled_quantity == 0
+        events = (
+            (
+                await connection.execute(
+                    select(
+                        OrderEventRow.previous_state,
+                        OrderEventRow.state,
+                        OrderEventRow.reason_code,
+                    )
+                    .where(OrderEventRow.order_id == order_id)
+                    .order_by(OrderEventRow.sequence)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        previous, state, reason = events[-1]
+        assert previous == OrderState.SUBMITTED.value
+        assert state == OrderState.SUBMITTED.value
+        assert reason is not None
+
+    anyio.run(_run_scenario, scenario)
+
+
 def test_unmatched_notification_is_stored_without_an_order() -> None:
     async def scenario(
         notifications: PostgresNotificationStore,
@@ -236,6 +282,7 @@ def test_unmatched_notification_is_stored_without_an_order() -> None:
             _record(
                 None,
                 state=None,
+                quantity=None,
                 filled_quantity=None,
                 problem=ReconcileProblem.UNKNOWN_BROKER_ORDER,
             )

@@ -51,6 +51,11 @@ _COUNTRY: Final = "KR"
 _EXCHANGE: Final = "XKRX"
 _CANCEL_REQUESTED: Final = "cancel_requested"
 _CANCEL_FAILED: Final = "cancel_failed"
+_PARTIAL_CANCEL_REQUESTED: Final = "partial_cancel_requested"
+_PARTIAL_CANCEL_FAILED: Final = "partial_cancel_failed"
+_ORDER_NOT_FOUND: Final = "ORDER_NOT_FOUND"
+_INVALID_QUANTITY: Final = "INVALID_QUANTITY"
+_QUANTITY_EXCEEDS_OUTSTANDING: Final = "QUANTITY_EXCEEDS_OUTSTANDING"
 _SUBMIT_FAILURE: Final = "order_submit"
 _FILLS_FAILURE: Final = "order_fills"
 _CANCEL_FAILURE: Final = "order_cancel"
@@ -98,6 +103,17 @@ class SyncSummary:
 class CancelSummary:
     requested: tuple[str, ...]
     failed: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ReductionResult:
+    """부분 취소 요청 결과. 수량 반영은 체결통보가 하며 여기서는 요청 사실만 남는다."""
+
+    client_order_id: str
+    requested_quantity: int
+    accepted: bool
+    reason_code: str | None
+    cancel_order_id: str | None
 
 
 class SubmissionCalendar(Protocol):
@@ -186,6 +202,17 @@ class SubmissionStore(Protocol):
     ) -> None: ...
 
     async def save_broker_response(self, raw: RawBrokerResponse) -> None: ...
+
+
+def _reduction_refusal(order: TrackedOrder | None, quantity: int) -> str | None:
+    """부분 취소를 보내기 전에 거절할 이유. 증권사도 초과 취소를 막지만 먼저 우리가 막는다."""
+    if order is None:
+        return _ORDER_NOT_FOUND
+    if quantity <= 0:
+        return _INVALID_QUANTITY
+    if quantity > order.quantity - order.filled_quantity:
+        return _QUANTITY_EXCEEDS_OUTSTANDING
+    return None
 
 
 def _session_key(trading_date: date) -> CalendarSessionKey:
@@ -340,6 +367,86 @@ class OrderSubmitter:
                 )
                 failed.append((order.client_order_id, acknowledgement.message_code))
         return CancelSummary(requested=tuple(requested), failed=tuple(failed))
+
+    async def reduce_open_quantity(
+        self,
+        environment: str,
+        broker_order_id: str,
+        quantity: int,
+        now: datetime,
+    ) -> ReductionResult:
+        """사람이 지정한 미체결 수량만 취소한다(ADR-0013).
+
+        위험검사와 리스너 부착은 요구하지 않는다(결정 3) — 노출을 줄이는 동작은 정책 §3·§4의
+        어떤 한도도 새로 위반할 수 없고, 통보가 끊긴 상황에서 위험을 줄일 수단을 막으면 안 된다.
+        자동매매 상태도 보지 않는다. 비상정지가 리스너 조건 없이 전량 취소하는 것과 같은 논리다.
+
+        수량은 요청만으로 줄이지 않는다(결정 4·6). 증권사 체결통보가 실제 취소 수량을 실어 올 때
+        `apply_notification` 경로가 줄인다 — 취소 요청과 체결이 경합할 수 있기 때문이다.
+        """
+        trading_date = now.astimezone(_SEOUL).date()
+        orders = await self.store.open_orders(environment, trading_date)
+        order = next(
+            (
+                candidate
+                for candidate in orders
+                if candidate.broker_order_id == broker_order_id
+                and candidate.broker_org_no is not None
+            ),
+            None,
+        )
+        refusal = _reduction_refusal(order, quantity)
+        if refusal is not None or order is None:
+            return ReductionResult(
+                client_order_id=order.client_order_id if order is not None else "",
+                requested_quantity=quantity,
+                accepted=False,
+                reason_code=refusal,
+                cancel_order_id=None,
+            )
+        acknowledgement = await self._cancel_one(
+            environment,
+            CancelRequest(
+                broker_org_no=order.broker_org_no or "",
+                broker_order_id=broker_order_id,
+                quantity=quantity,
+                partial=True,
+            ),
+            now,
+        )
+        await self.store.save_broker_response(acknowledgement.raw)
+        if not acknowledgement.accepted:
+            await self.store.record_order_event(
+                order.order_id,
+                _PARTIAL_CANCEL_FAILED,
+                f"quantity={quantity} {acknowledgement.message_code}",
+                now,
+            )
+            return ReductionResult(
+                client_order_id=order.client_order_id,
+                requested_quantity=quantity,
+                accepted=False,
+                reason_code=acknowledgement.message_code,
+                cancel_order_id=None,
+            )
+        # 결정 5: 취소는 자체 주문번호를 받지만 원주문번호가 살아 있다. 내부 `broker_order_id`는
+        # 갱신하지 않고 취소 주문번호를 이벤트에만 남긴다 — 이후 체결은 원주문번호로 온다.
+        await self.store.record_order_event(
+            order.order_id,
+            _PARTIAL_CANCEL_REQUESTED,
+            (
+                f"quantity={quantity} outstanding={order.quantity - order.filled_quantity} "
+                f"cancel_order_id={acknowledgement.broker_order_id or ''}"
+            ),
+            now,
+        )
+        return ReductionResult(
+            client_order_id=order.client_order_id,
+            requested_quantity=quantity,
+            accepted=True,
+            reason_code=None,
+            cancel_order_id=acknowledgement.broker_order_id,
+        )
 
     async def _block_code(
         self,

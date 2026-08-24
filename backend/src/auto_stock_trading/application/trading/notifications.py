@@ -350,12 +350,16 @@ class FillNotificationListener:
             return await self._unmatched(notification, masked_payload, received_at)
         result = apply_notification(_snapshot(order), notification)
         problem = result.problem
-        state = result.state if result.changed else None
+        # 부분 취소는 상태를 바꾸지 않고 수량만 줄인다(ADR-0013 결정 6). 같은 상태로의 전이를
+        # 상태 그래프에 물어보면 거부되므로, 상태가 그대로일 때는 전이 검사를 하지 않는다.
+        reduced = result.quantity if result.quantity != order.quantity else None
+        state = result.state if result.changed and result.state is not order.state else None
         if state is not None and not _allowed(order, state):
             problem = ReconcileProblem.TERMINAL_STATE_CHANGED
             state = None
         if problem is not None:
             state = None
+            reduced = None
         await self.notifications.record_notification(
             FillNotificationRecord(
                 environment=self.environment,
@@ -365,6 +369,7 @@ class FillNotificationListener:
                 masked_payload=masked_payload,
                 problem=problem,
                 state=state,
+                quantity=reduced,
                 filled_quantity=None if state is None else result.filled_quantity,
                 average_fill_price=None if state is None else result.average_fill_price,
                 received_at=received_at,
@@ -413,6 +418,7 @@ class FillNotificationListener:
                 masked_payload=masked_payload,
                 problem=problem,
                 state=None,
+                quantity=None,
                 filled_quantity=None,
                 average_fill_price=None,
                 received_at=received_at,

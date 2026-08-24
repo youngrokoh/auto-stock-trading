@@ -36,6 +36,7 @@ _LIMIT_ORDER_DIVISION: Final = "00"
 _CANCEL_DIVISION: Final = "02"
 _REVISE_DIVISION: Final = "01"
 _ALL_QUANTITY: Final = "Y"
+_PARTIAL_QUANTITY: Final = "N"
 _CANCELED: Final = "Y"
 
 
@@ -80,9 +81,17 @@ class OrderSubmission:
 
 @dataclass(frozen=True, slots=True)
 class CancelRequest:
+    """취소 요청. `partial`이면 `quantity`가 '취소할 수량'이다(ADR-0013 결정 1).
+
+    전량 취소는 `QTY_ALL_ORD_YN="Y"`로 보내며 이때 증권사는 `ORD_QTY`를 보지 않는다. 부분 취소는
+    같은 엔드포인트에 `"N"`을 보내야 수량 지정이 반영된다 — 전량 플래그를 고정으로 보내는 동안
+    부분 취소가 구조적으로 불가능했다.
+    """
+
     broker_org_no: str
     broker_order_id: str
     quantity: int
+    partial: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,7 +212,7 @@ class KisOrderAdapter:
                 "RVSE_CNCL_DVSN_CD": _CANCEL_DIVISION,
                 "ORD_QTY": str(request.quantity),
                 "ORD_UNPR": "0",
-                "QTY_ALL_ORD_YN": _ALL_QUANTITY,
+                "QTY_ALL_ORD_YN": _PARTIAL_QUANTITY if request.partial else _ALL_QUANTITY,
             },
             request_fingerprint=fingerprint,
         )

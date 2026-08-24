@@ -150,6 +150,8 @@ class FillNotificationRecord:
     masked_payload: str
     problem: ReconcileProblem | None
     state: OrderState | None
+    # 부분 취소 후의 주문 수량(취소량이 아니다). 수량이 바뀌지 않는 통보는 `None`이다.
+    quantity: int | None
     filled_quantity: int | None
     average_fill_price: Decimal | None
     received_at: datetime
