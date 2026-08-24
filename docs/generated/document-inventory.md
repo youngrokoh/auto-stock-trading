@@ -37,6 +37,7 @@
 | [ADR-0010: 사람이 확인한 주문 대조 종결](../decisions/0010-human-attested-order-reconciliation.md) | `docs/decisions/0010-human-attested-order-reconciliation.md` | 승인 |
 | [ADR-0011: 모의투자 주문 정정 경계](../decisions/0011-paper-order-revision.md) | `docs/decisions/0011-paper-order-revision.md` | 승인 |
 | [ADR-0012: ML 신호의 전략 경계](../decisions/0012-ml-signal-boundary.md) | `docs/decisions/0012-ml-signal-boundary.md` | 승인 |
+| [ADR-0013: 미체결 수량 축소 경계 (부분 취소)](../decisions/0013-paper-order-quantity-revision.md) | `docs/decisions/0013-paper-order-quantity-revision.md` | 제안 |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |
