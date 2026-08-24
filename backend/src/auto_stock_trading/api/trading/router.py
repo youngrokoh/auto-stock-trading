@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Final, Protocol
 from uuid import UUID
@@ -22,7 +24,12 @@ from auto_stock_trading.api.trading.models import (
     RiskLimitUsageResponse,
 )
 from auto_stock_trading.domain.orders.models import AutomationState
-from auto_stock_trading.domain.risk.limits import PAPER_RISK_LIMITS
+from auto_stock_trading.domain.orders.recovery import (
+    STALE_TRADING_DAY_REASON,
+    effective_automation_state,
+    is_stale_trading_day,
+)
+from auto_stock_trading.domain.risk.limits import PAPER_RISK_LIMITS, seoul_trading_date
 from auto_stock_trading.domain.risk.utilization import (
     UsageState,
     classify_positions,
@@ -277,15 +284,31 @@ def _risk_limits_response(environment: str, state: TradingRiskState) -> RiskLimi
     )
 
 
-def create_trading_router(trading: TradingReader, environment: str) -> APIRouter:
+type Clock = Callable[[], datetime]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def create_trading_router(
+    trading: TradingReader,
+    environment: str,
+    clock: Clock = _utc_now,
+) -> APIRouter:
     router = APIRouter(prefix="/api/trading", tags=["trading"])
 
     async def automation() -> AutomationResponse:
         record = await trading.automation(environment)
         events = await trading.automation_events(environment, _EVENT_LIMIT)
+        trading_date = seoul_trading_date(clock())
+        effective = effective_automation_state(record, trading_date)
+        stale = record is not None and is_stale_trading_day(record, trading_date)
         return AutomationResponse(
             environment=environment,
-            state=AutomationState.DISABLED.value if record is None else record.state.value,
+            state=effective.value,
+            stored_state=(AutomationState.DISABLED.value if record is None else record.state.value),
+            stale_reason_code=STALE_TRADING_DAY_REASON if stale else None,
             reason_code=None if record is None else record.reason_code,
             trading_date=None if record is None else record.trading_date,
             changed_at=None if record is None else record.changed_at,

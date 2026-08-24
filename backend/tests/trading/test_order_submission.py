@@ -123,6 +123,7 @@ class FakeBroker:
 @dataclass
 class FakeStore:
     automation: AutomationState = AutomationState.RUNNING
+    automation_trading_date: date = _TRADING_DATE
     pending: tuple[TrackedOrder, ...] = ()
     open_orders_rows: tuple[TrackedOrder, ...] = ()
     submissions: list[tuple[UUID, str, str]] = field(default_factory=list)
@@ -139,7 +140,7 @@ class FakeStore:
             environment=environment,
             state=self.automation,
             reason_code=None,
-            trading_date=_TRADING_DATE,
+            trading_date=self.automation_trading_date,
             changed_at=_NOW,
         )
 
@@ -350,6 +351,31 @@ def test_submission_requires_running_automation() -> None:
 
         assert result.block_code == BlockCode.AUTOMATION_NOT_RUNNING.value
         assert broker.submissions == []
+
+    anyio.run(scenario)
+
+
+def test_submission_resets_a_stale_trading_day_before_submitting() -> None:
+    """정책 §6은 거래일 변경 시 **항상** DISABLED다. 리셋이 계획 경로에만 있으면 안 된다.
+
+    제출 게이트가 저장된 RUNNING을 그대로 믿으면, 계획을 돌리지 않은 날에도 자동매매가 켜져
+    있는 것으로 판정된다.
+    """
+
+    async def scenario() -> None:
+        store = FakeStore(pending=(_tracked(),))
+        store.automation_trading_date = date(2026, 8, 21)
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker).submit(
+            SubmissionInput(environment=_ENVIRONMENT, plan_id=None),
+            _NOW,
+        )
+
+        assert result.block_code == BlockCode.AUTOMATION_NOT_RUNNING.value
+        assert broker.submissions == []
+        # 감사 기록이 계획 경로와 같은 사유를 남겨야 원인이 하나로 읽힌다.
+        assert store.transitions == [(AutomationState.DISABLED, "TRADING_DAY_CHANGED")]
 
     anyio.run(scenario)
 

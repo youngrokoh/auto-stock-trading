@@ -38,7 +38,9 @@ const automationPayload = {
     },
   ],
   reason_code: "USER_COMMAND",
+  stale_reason_code: null,
   state: "disabled",
+  stored_state: "disabled",
   trading_date: "2026-08-18",
 };
 
@@ -209,5 +211,27 @@ describe("포지션 파생 값", () => {
     expect(positionWeightPct("1000000", "10000000")).toBe(10);
     expect(positionWeightPct("1000000", null)).toBeNull();
     expect(positionWeightPct("1000000", "0")).toBeNull();
+  });
+});
+
+describe("거래일 변경 복귀", () => {
+  it("서버가 되돌린 상태와 저장된 상태를 함께 파싱한다", () => {
+    const parsed = parseAutomation({
+      ...automationPayload,
+      stale_reason_code: "TRADING_DAY_CHANGED",
+      state: "disabled",
+      stored_state: "running",
+    });
+
+    expect(parsed.state).toBe("disabled");
+    expect(parsed.stored_state).toBe("running");
+    expect(parsed.stale_reason_code).toBe("TRADING_DAY_CHANGED");
+  });
+
+  it("복귀가 없으면 stale 사유가 null이다", () => {
+    const parsed = parseAutomation(automationPayload);
+
+    expect(parsed.stale_reason_code).toBeNull();
+    expect(parsed.state).toBe(parsed.stored_state);
   });
 });

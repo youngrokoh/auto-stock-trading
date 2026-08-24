@@ -21,7 +21,12 @@ class AutomationEventResponse(TradingResponse):
 
 class AutomationResponse(TradingResponse):
     environment: str
+    # 지금 동작을 지배하는 상태. 저장된 값이 지난 거래일이면 정책 §6대로 `disabled`다.
     state: str
+    # 저장된 사실 그대로. 조회는 기록을 고쳐 쓰지 않는다.
+    stored_state: str
+    # 저장값과 다르게 판정한 사유. 같으면 `null`이다.
+    stale_reason_code: str | None
     reason_code: str | None
     trading_date: date | None
     changed_at: datetime | None

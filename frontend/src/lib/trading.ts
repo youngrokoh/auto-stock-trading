@@ -18,7 +18,11 @@ const automationSchema = z.strictObject({
   environment: z.string().min(1),
   events: z.array(automationEventSchema).readonly(),
   reason_code: z.string().nullable(),
+  /** 지금 동작을 지배하는 상태. 저장값이 지난 거래일이면 서버가 `disabled`로 판정한다. */
   state: z.string().min(1),
+  /** 저장된 사실 그대로. `state`와 다르면 서버가 되돌린 것이다. */
+  stale_reason_code: z.string().nullable(),
+  stored_state: z.string().min(1),
   trading_date: isoDate.nullable(),
 });
 

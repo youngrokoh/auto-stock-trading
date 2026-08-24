@@ -28,6 +28,7 @@ HTTP로 주문을 만들거나 상태를 바꾸는 엔드포인트는 제공하�
 
 - **계좌번호 원문을 노출하지 않는다.** 스냅샷은 `account_reference`(계좌번호+상품코드 sha256의 앞
   12자)만 포함한다. `nav`는 우리 계산값이고 `broker_net_asset`은 증권사 보고값(대조용)이다.
+- 자동매매 응답은 세 값을 분리한다: `state`(지금 동작을 지배하는 상태), `stored_state`(저장된 사실 그대로), `stale_reason_code`(되돌린 사유, 같으면 `null`). **거래일이 바뀌면 `state`가 `disabled`가 된다** — 거래 안전 정책 §6이 "서버 재시작·거래일 변경·자격증명 환경 변경 시 항상 `DISABLED`"로 정하기 때문이다. 조회는 저장 기록을 고쳐 쓰지 않고 지금 성립하는 값만 계산한다.
 - 자동매매 상태 행이 없으면 정책 기본값 `disabled`로 응답하고 `changed_at`은 `null`이다. 이벤트에는
   상태 전이(`state_change`), 외부 API 실패(`api_failure`), 대조 불일치(`reconcile_problem`),
   체결통보 리스너 상태(`listener_state`), 사람이 확인한 대조 종결(`attestation`)이 함께 시간 역순으로

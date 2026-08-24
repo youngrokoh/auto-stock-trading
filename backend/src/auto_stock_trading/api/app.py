@@ -36,7 +36,7 @@ from auto_stock_trading.api.market_data import create_market_data_router
 from auto_stock_trading.api.market_data_adjusted import create_market_data_adjusted_router
 from auto_stock_trading.api.market_data_etf import create_market_data_etf_router
 from auto_stock_trading.api.trading import create_trading_router
-from auto_stock_trading.api.trading.router import TradingReader
+from auto_stock_trading.api.trading.router import Clock, TradingReader
 from auto_stock_trading.application.adjusted_prices import (
     AdjustedPriceReader,
     CorporateActionReader,
@@ -81,6 +81,7 @@ def create_app(  # noqa: PLR0913
     trading_reader_factory: TradingReaderFactory | None = None,
     sector_source_factory: SectorSourceFactory | None = None,
     share_class_source_factory: ShareClassSourceFactory | None = None,
+    clock: Clock | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     database_factory = database_probe_factory or (
@@ -189,7 +190,11 @@ def create_app(  # noqa: PLR0913
     )
     app.include_router(create_backtests_router(backtest_reader))
     app.include_router(
-        create_trading_router(trading_reader, runtime_settings.kis_environment.value)
+        create_trading_router(
+            trading_reader,
+            runtime_settings.kis_environment.value,
+            *((clock,) if clock is not None else ()),
+        )
     )
     return app
 

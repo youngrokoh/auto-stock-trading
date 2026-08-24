@@ -195,6 +195,14 @@ export const Trading = () => {
           title={`자동매매 ${automationLabel(automation.state)}`}
         />
       )}
+      {automation?.stale_reason_code !== undefined && automation.stale_reason_code !== null && (
+        <SafetyBanner
+          code={automation.stale_reason_code}
+          description={`거래일이 바뀌어 자동매매가 ${automationLabel("disabled")} 상태로 돌아갔습니다. 기록에 남은 상태는 ${automationLabel(automation.stored_state)}이며 그 거래일 기준입니다. 다시 켜려면 worker CLI로 상태를 전이합니다.`}
+          level="warning"
+          title="거래일 변경으로 자동매매 복귀"
+        />
+      )}
 
       <div className="work__body">
         <KpiGrid columns={7} label="계좌 상태 KPI">

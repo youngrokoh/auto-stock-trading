@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
+from auto_stock_trading.api.trading.models import AutomationResponse
 from auto_stock_trading.domain.orders.account import AccountPosition, AccountSnapshot
 from auto_stock_trading.domain.orders.models import (
     AutomationState,
@@ -243,7 +244,10 @@ class StubTradingReader:
         return None
 
 
-def _client(sectors: tuple[tuple[str, str], ...] = ()) -> TestClient:
+def _client(
+    sectors: tuple[tuple[str, str], ...] = (),
+    now: datetime = _NOW,
+) -> TestClient:
     def reader() -> StubTradingReader:
         stub = StubTradingReader()
         stub.sectors = sectors
@@ -254,8 +258,29 @@ def _client(sectors: tuple[tuple[str, str], ...] = ()) -> TestClient:
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,
         trading_reader_factory=reader,
+        # 거래일 판정을 시각에 의존시키면 테스트가 실행 날짜에 따라 바뀐다. 주입한다.
+        clock=lambda: now,
     )
     return TestClient(app)
+
+
+def test_a_stale_trading_day_is_reported_as_disabled_without_rewriting_the_record() -> None:
+    """정책 §6: 거래일이 바뀌면 상태는 DISABLED다.
+
+    콘솔이 꺼진 자동매매를 가동 중으로 보여주면 안 된다. 조회는 쓰기를 하지 않으므로 저장된
+    사실은 `stored_state`로 그대로 노출한다.
+    """
+    # 기록은 2026-08-18 거래일이고 조회 시각은 그 다음 거래일이다.
+    response = _client(now=datetime(2026, 8, 19, 4, 0, tzinfo=UTC)).get("/api/trading/automation")
+
+    assert response.status_code == 200
+    payload = AutomationResponse.model_validate(response.json())
+    assert payload.state == "disabled"
+    assert payload.stored_state == "paused"
+    assert payload.stale_reason_code == "TRADING_DAY_CHANGED"
+    # 저장된 사유와 거래일은 그대로 남아 근거가 된다.
+    assert payload.reason_code == "RISK_DAILY_LOSS"
+    assert payload.trading_date == date(2026, 8, 18)
 
 
 def test_automation_state_and_events_are_exposed() -> None:
@@ -265,6 +290,8 @@ def test_automation_state_and_events_are_exposed() -> None:
     assert response.json() == {
         "environment": "paper",
         "state": "paused",
+        "stored_state": "paused",
+        "stale_reason_code": None,
         "reason_code": "RISK_DAILY_LOSS",
         "trading_date": "2026-08-18",
         "changed_at": "2026-08-18T04:00:00Z",

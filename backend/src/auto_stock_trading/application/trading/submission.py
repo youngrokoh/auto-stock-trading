@@ -22,6 +22,10 @@ from auto_stock_trading.domain.orders.fills import (
     synchronize,
 )
 from auto_stock_trading.domain.orders.models import AutomationState, OrderSide, OrderState
+from auto_stock_trading.domain.orders.recovery import (
+    STALE_TRADING_DAY_REASON,
+    is_stale_trading_day,
+)
 from auto_stock_trading.domain.risk.limits import (
     PAPER_RISK_LIMITS,
     BlockCode,
@@ -344,6 +348,18 @@ class OrderSubmitter:
         now: datetime,
     ) -> str | None:
         automation = await self.store.automation_record(environment)
+        if automation is not None and is_stale_trading_day(automation, trading_date):
+            # 정책 §6: 거래일 변경은 어떤 상태에서든 DISABLED 복귀다. 계획 경로와 같은 규칙·사유를
+            # 쓴다 — 게이트가 저장된 RUNNING을 그대로 믿으면 어제 켠 상태로 제출된다.
+            automation = await self.store.transition_automation(
+                AutomationTransition(
+                    environment=environment,
+                    requested=AutomationState.DISABLED,
+                    reason_code=STALE_TRADING_DAY_REASON,
+                    occurred_at=now,
+                    trading_date=trading_date,
+                )
+            )
         if automation is None or automation.state is not AutomationState.RUNNING:
             return BlockCode.AUTOMATION_NOT_RUNNING.value
         if not await self._is_trading_day(trading_date):
