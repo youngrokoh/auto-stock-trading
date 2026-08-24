@@ -110,6 +110,8 @@ class StrategySpec:
     holdings: int
     parameters_json: str
     source: PortfolioSignalSource
+    # 목표비중 초과분을 되팔지 여부. 전략이 정한다(자산배분은 리밸런싱이 전략의 핵심이다).
+    trim_to_target: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -379,6 +381,7 @@ class PortfolioRunner:
             market=KrxMarket.KOSPI,
             initial_cash=request.initial_cash,
             holdings=request.strategy.holdings,
+            trim_to_target=request.strategy.trim_to_target,
         )
         return _Loaded(
             inputs=inputs,

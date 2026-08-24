@@ -56,6 +56,9 @@ class PortfolioInputs:
     market: KrxMarket
     initial_cash: Decimal
     holdings: int
+    # 목표비중을 넘은 보유를 되팔지 여부. 기본은 끔이다 — v2·v3 실행의 재현성을 지킨다.
+    # 자산배분처럼 리밸런싱이 전략의 핵심인 경우에만 켠다(ADR 없음, 계약 §ETF 자산배분).
+    trim_to_target: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +158,38 @@ def _execute_sell(
     book.cash += gross - costs.total
     del book.positions[fill.symbol]
     return _record(book, sequence, _Execution(fill, _SELL, quantity, gross, costs))
+
+
+def _execute_partial_sell(
+    inputs: PortfolioInputs,
+    book: _Book,
+    sequence: int,
+    fill: _Fill,
+    quantity: int,
+) -> PortfolioTrade:
+    """일부 수량만 매도한다. 전량 매도와 달리 보유를 남긴다."""
+    held = book.positions.get(fill.symbol, 0)
+    if quantity <= 0 or held == 0:
+        return _skip(
+            sequence, fill.symbol, fill.signal_date, _SELL, PortfolioSkipReason.NO_POSITION
+        )
+    sold = min(quantity, held)
+    rule_set = cost_rule_set_for(fill.execution_date)
+    gross = fill.open_price * sold
+    costs = trade_costs(
+        rule_set,
+        inputs.product_types[fill.symbol],
+        inputs.market,
+        TradeSide.SELL,
+        gross,
+    )
+    book.cash += gross - costs.total
+    remaining = held - sold
+    if remaining == 0:
+        del book.positions[fill.symbol]
+    else:
+        book.positions[fill.symbol] = remaining
+    return _record(book, sequence, _Execution(fill, _SELL, sold, gross, costs))
 
 
 def _execute_buy(
@@ -288,6 +323,27 @@ def _rebalance_trades(
                 )
             )
         sequence += 1
+    if inputs.trim_to_target:
+        # 매수 전에 초과분을 팔아야 그 현금으로 부족한 자리를 채울 수 있다.
+        for symbol in selected:
+            bar = inputs.bars.get(symbol, {}).get(execution_date)
+            if bar is None:
+                continue
+            excess = bar.close_price * book.positions.get(symbol, 0) - target_value
+            trim_quantity = int(excess / bar.open_price) if excess > 0 else 0
+            if trim_quantity <= 0:
+                # 1주 미만 초과는 결정이 없었던 것이다. 사유 코드를 만들면 원인을 잘못 말한다.
+                continue
+            trades.append(
+                _execute_partial_sell(
+                    inputs,
+                    book,
+                    sequence,
+                    _Fill(symbol, rebalance.signal_date, execution_date, bar.open_price),
+                    trim_quantity,
+                )
+            )
+            sequence += 1
     for symbol in selected:
         bar = inputs.bars.get(symbol, {}).get(execution_date)
         if bar is None:

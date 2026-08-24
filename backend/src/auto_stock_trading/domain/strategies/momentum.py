@@ -30,7 +30,7 @@ class MomentumParameters:
         return self
 
 
-def _momentum(series: SymbolSeries, signal_date: date, basis_date: date) -> Decimal | None:
+def momentum_return(series: SymbolSeries, signal_date: date, basis_date: date) -> Decimal | None:
     current = series.closes.get(signal_date)
     basis = series.closes.get(basis_date)
     if current is None or basis is None or basis <= 0:
@@ -61,7 +61,7 @@ def momentum_rebalances(
         basis_index = position - settings.lookback_days
         if basis_index < 0:
             continue
-        ranked = _ranked(universe, signal_date, calendar[basis_index])
+        ranked = ranked_by_momentum(universe, signal_date, calendar[basis_index])
         if not ranked:
             continue
         rebalances.append(
@@ -73,7 +73,7 @@ def momentum_rebalances(
     return tuple(rebalances)
 
 
-def _ranked(
+def ranked_by_momentum(
     universe: Sequence[SymbolSeries],
     signal_date: date,
     basis_date: date,
@@ -81,7 +81,7 @@ def _ranked(
     candidates = [
         RankedSymbol(symbol=series.symbol, score=value)
         for series in universe
-        if (value := _momentum(series, signal_date, basis_date)) is not None
+        if (value := momentum_return(series, signal_date, basis_date)) is not None
     ]
     candidates.sort(key=lambda item: (-item.score, item.symbol))
     return candidates

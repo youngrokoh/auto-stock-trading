@@ -38,6 +38,7 @@ def _inputs(
     *,
     holdings: int = 2,
     dividends: dict[str, dict[date, Decimal]] | None = None,
+    trim_to_target: bool = False,
 ) -> PortfolioInputs:
     return PortfolioInputs(
         trading_dates=_DATES,
@@ -48,6 +49,7 @@ def _inputs(
         market=KrxMarket.KOSPI,
         initial_cash=_CASH,
         holdings=holdings,
+        trim_to_target=trim_to_target,
     )
 
 
@@ -181,3 +183,89 @@ def test_a_symbol_not_held_is_not_bought_just_because_it_is_retained() -> None:
 
     executed = {trade.symbol for trade in result.trades if trade.quantity > 0}
     assert executed == {"000100"}
+
+
+def test_trimming_sells_the_excess_of_a_still_selected_holding() -> None:
+    """ETF 자산배분의 동일가중은 오른 자산을 되팔아야 성립한다(2026-08-24 승인).
+
+    기본값은 트리밍하지 않는다(회전율을 줄이려는 기존 의도). 켠 경우에만 목표 초과분을 팔아 부족한
+    자리를 채운다 — 실측에서 41회 중 20회가 `insufficient_cash`로 두 번째 자리를 못 채웠다.
+    """
+    bars = _bars(
+        {
+            "000010": ("1000", "1000", "3000", "3000"),
+            "000020": ("1000", "1000", "1000", "1000"),
+        }
+    )
+    inputs = _inputs(bars, trim_to_target=True)
+
+    result = run_portfolio_backtest(
+        inputs,
+        (
+            _rebalance(_DATES[0], "000010"),
+            _rebalance(_DATES[1], "000010", "000020"),
+        ),
+    )
+
+    trims = [
+        trade
+        for trade in result.trades
+        if trade.action == "sell" and trade.symbol == "000010" and trade.quantity > 0
+    ]
+    assert trims, "목표를 넘은 보유가 트리밍되지 않았다"
+    # 트리밍 뒤에는 두 자리를 모두 채울 현금이 생긴다.
+    assert all(
+        trade.skip_reason is not PortfolioSkipReason.INSUFFICIENT_CASH for trade in result.trades
+    )
+
+
+def test_trimming_is_off_by_default() -> None:
+    """v2·v3 실행의 재현성을 지킨다. 기본값이 바뀌면 저장된 실행과 결과가 달라진다."""
+    bars = _bars(
+        {
+            "000010": ("1000", "1000", "3000", "3000"),
+            "000020": ("1000", "1000", "1000", "1000"),
+        }
+    )
+    inputs = _inputs(bars)
+
+    result = run_portfolio_backtest(
+        inputs,
+        (
+            _rebalance(_DATES[0], "000010"),
+            _rebalance(_DATES[1], "000010", "000020"),
+        ),
+    )
+
+    assert not [
+        trade
+        for trade in result.trades
+        if trade.action == "sell" and trade.symbol == "000010" and trade.quantity > 0
+    ]
+
+
+def test_an_excess_smaller_than_one_share_records_nothing() -> None:
+    """1주 미만 초과는 결정이 없었던 것이다.
+
+    `no_position`으로 기록하면 사유가 원인을 잘못 말한다 — 보유는 있고 초과분이 작을 뿐이다.
+    실측에서 이 형태로 4건이 남았다.
+    """
+    bars = _bars(
+        {
+            "000010": ("1000", "1000", "1001", "1001"),
+            "000020": ("1000", "1000", "1000", "1000"),
+        }
+    )
+    inputs = _inputs(bars, trim_to_target=True)
+
+    result = run_portfolio_backtest(
+        inputs,
+        (
+            _rebalance(_DATES[0], "000010", "000020"),
+            _rebalance(_DATES[1], "000010", "000020"),
+        ),
+    )
+
+    assert not [
+        trade for trade in result.trades if trade.skip_reason is PortfolioSkipReason.NO_POSITION
+    ]

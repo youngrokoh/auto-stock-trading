@@ -1,7 +1,7 @@
 import argparse
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import anyio
 
@@ -40,11 +40,17 @@ from auto_stock_trading.application.backtests.portfolio_runner import (
 )
 from auto_stock_trading.application.backtests.portfolio_strategies import (
     composite_strategy,
+    etf_allocation_strategy,
     momentum_strategy,
 )
 from auto_stock_trading.application.backtests.runner import BacktestRequest, BacktestRunner
 from auto_stock_trading.domain.market_data.adjustments import AdjustmentMethod
 from auto_stock_trading.domain.strategies.composite_rank import CompositeParameters
+from auto_stock_trading.domain.strategies.etf_allocation import (
+    ALLOCATION_WINDOW_START,
+    EtfAllocationParameters,
+    allocation_symbols,
+)
 from auto_stock_trading.domain.strategies.ma_rsi import MaRsiParameters
 from auto_stock_trading.domain.strategies.momentum import MomentumParameters
 from auto_stock_trading.features.feature_set import feature_names, uses_fundamentals
@@ -56,7 +62,7 @@ from auto_stock_trading.settings.runtime import Settings
 class Arguments(argparse.Namespace):
     symbol: str = "005930"
     benchmark: str = "069500"
-    start_date: str = "2025-01-02"
+    start_date: str | None = None
     end_date: str = "2026-08-14"
     initial_cash: str = "10000000"
     signal_method: str = AdjustmentMethod.TOTAL_RETURN.value
@@ -66,11 +72,23 @@ class Arguments(argparse.Namespace):
     rsi_overbought: str = "70"
     cross_momentum: bool = False
     composite_rank: bool = False
+    etf_allocation: bool = False
     ml_rank: bool = False
     model_name: str = "ridge-baseline"
     model_version: str = "1"
     lookback_days: int = 126
     holdings: int = 10
+
+
+# 다종목 실행의 기본 창. 6단계 백필과 같은 날짜다.
+_PORTFOLIO_START: Final = date(2025, 1, 2)
+
+
+def _range_start(arguments: Arguments, fallback: date) -> date:
+    """전략마다 기본 창이 다르다. 공용 기본값을 두면 승인된 창을 조용히 자른다."""
+    if arguments.start_date is None:
+        return fallback
+    return date.fromisoformat(arguments.start_date)
 
 
 async def run_cross_momentum_backtest(arguments: Arguments) -> str:
@@ -95,7 +113,7 @@ async def run_cross_momentum_backtest(arguments: Arguments) -> str:
         request = PortfolioRequest(
             universe=universe,
             benchmark_symbol=arguments.benchmark,
-            range_start=date.fromisoformat(arguments.start_date),
+            range_start=_range_start(arguments, _PORTFOLIO_START),
             range_end=date.fromisoformat(arguments.end_date),
             initial_cash=Decimal(arguments.initial_cash),
             benchmark_method=AdjustmentMethod(arguments.signal_method),
@@ -160,7 +178,7 @@ async def run_ml_rank_backtest(arguments: Arguments) -> str:
             return f"failed reason=model_not_found name={arguments.model_name}"
         model = _restore_model(record)
         universe = await universe_store.universe_symbols()
-        range_start = date.fromisoformat(arguments.start_date)
+        range_start = _range_start(arguments, _PORTFOLIO_START)
         range_end = date.fromisoformat(arguments.end_date)
         # 특징은 모델 학습과 같은 계산기로 만든다. 창은 시그널일 계산에 필요한 만큼 앞으로 넓힌다.
         if uses_fundamentals(record.feature_version):
@@ -230,6 +248,58 @@ async def run_ml_rank_backtest(arguments: Arguments) -> str:
     )
 
 
+async def run_etf_allocation_backtest(arguments: Arguments) -> str:
+    """승인된 ETF 6자산으로 모멘텀 자산배분 실행을 만든다(계약 §ETF 자산배분).
+
+    유니버스는 코드 상수이므로 DB 유니버스를 읽지 않는다. 기본 창은 승인된 공통 구간이며 그 앞은
+    6자산 배분이 성립하지 않는다.
+    """
+    settings = Settings()
+    database_url = settings.database_url.get_secret_value()
+    calendar = PostgresMarketCalendarRepository.from_url(database_url)
+    market_data = PostgresMarketDataRepository.from_url(database_url)
+    adjusted = PostgresAdjustedPriceReader.from_url(database_url)
+    corporate_actions = PostgresCorporateActionReader.from_url(database_url)
+    store = PostgresBacktestStore.from_url(database_url)
+    runner = PortfolioRunner(
+        calendar=calendar,
+        market_data=market_data,
+        adjusted_prices=adjusted,
+        corporate_actions=corporate_actions,
+        store=store,
+    )
+    try:
+        request = PortfolioRequest(
+            universe=allocation_symbols(),
+            benchmark_symbol=arguments.benchmark,
+            range_start=_range_start(arguments, ALLOCATION_WINDOW_START),
+            range_end=date.fromisoformat(arguments.end_date),
+            initial_cash=Decimal(arguments.initial_cash),
+            benchmark_method=AdjustmentMethod(arguments.signal_method),
+            strategy=etf_allocation_strategy(
+                EtfAllocationParameters(
+                    lookback_days=arguments.lookback_days,
+                    holdings=arguments.holdings,
+                )
+            ),
+        )
+        record = await runner.run(request, datetime.now(UTC))
+    finally:
+        await store.close()
+        await corporate_actions.close()
+        await adjusted.close()
+        await market_data.close()
+        await calendar.close()
+    metrics = record.metrics
+    if metrics is None:
+        return f"failed run_id={record.run_id} failure_code={record.failure_code}"
+    return (
+        f"completed run_id={record.run_id} universe={len(record.universe)} "
+        f"total_return={metrics.total_return_pct} benchmark={metrics.benchmark_return_pct} "
+        f"mdd={metrics.mdd_pct} trades={metrics.trade_count} turnover={metrics.turnover_pct}"
+    )
+
+
 async def run_composite_rank_backtest(arguments: Arguments) -> str:
     """저장된 유니버스 전 종목으로 가치·수익성·모멘텀 종합 순위 실행을 만든다(계약 v3)."""
     settings = Settings()
@@ -254,7 +324,7 @@ async def run_composite_rank_backtest(arguments: Arguments) -> str:
         request = PortfolioRequest(
             universe=universe,
             benchmark_symbol=arguments.benchmark,
-            range_start=date.fromisoformat(arguments.start_date),
+            range_start=_range_start(arguments, _PORTFOLIO_START),
             range_end=date.fromisoformat(arguments.end_date),
             initial_cash=Decimal(arguments.initial_cash),
             benchmark_method=AdjustmentMethod(arguments.signal_method),
@@ -304,7 +374,7 @@ async def run_ma_rsi_backtest(arguments: Arguments) -> str:
     request = BacktestRequest(
         symbol=arguments.symbol,
         benchmark_symbol=arguments.benchmark,
-        range_start=date.fromisoformat(arguments.start_date),
+        range_start=_range_start(arguments, _PORTFOLIO_START),
         range_end=date.fromisoformat(arguments.end_date),
         initial_cash=Decimal(arguments.initial_cash),
         signal_method=AdjustmentMethod(arguments.signal_method),
@@ -354,6 +424,7 @@ def main() -> None:
     _ = parser.add_argument("--rsi-overbought", default=Arguments.rsi_overbought)
     _ = parser.add_argument("--cross-momentum", action="store_true")
     _ = parser.add_argument("--composite-rank", action="store_true")
+    _ = parser.add_argument("--etf-allocation", action="store_true")
     _ = parser.add_argument("--ml-rank", action="store_true")
     _ = parser.add_argument("--model-name", default="ridge-baseline")
     _ = parser.add_argument("--model-version", default="1")
@@ -364,6 +435,8 @@ def main() -> None:
         print(anyio.run(run_ml_rank_backtest, arguments))  # noqa: T201
     elif arguments.composite_rank:
         print(anyio.run(run_composite_rank_backtest, arguments))  # noqa: T201
+    elif arguments.etf_allocation:
+        print(anyio.run(run_etf_allocation_backtest, arguments))  # noqa: T201
     elif arguments.cross_momentum:
         print(anyio.run(run_cross_momentum_backtest, arguments))  # noqa: T201
     else:

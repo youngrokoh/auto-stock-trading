@@ -8,10 +8,24 @@
 자산군이 서로 다를 때 의미가 생기므로 다양성을 택했다(사용자 승인).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+from auto_stock_trading.domain.strategies.momentum import (
+    momentum_return,
+    ranked_by_momentum,
+)
+from auto_stock_trading.domain.strategies.ranking import RankedSymbol, Rebalance
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from decimal import Decimal
+
+    from auto_stock_trading.domain.strategies.ranking import SymbolSeries
 
 
 class AssetClass(StrEnum):
@@ -95,3 +109,92 @@ ALLOCATION_WINDOW_START: Final = max(entry.listed_on for entry in ALLOCATION_UNI
 def allocation_symbols() -> tuple[str, ...]:
     """수집·백테스트가 쓰는 종목코드. 정렬해 돌려주므로 실행 순서가 재현된다."""
     return tuple(sorted(entry.symbol for entry in ALLOCATION_UNIVERSE))
+
+
+# 대피처. 승인된 유니버스의 현금성 자산이며, 절대 모멘텀 조건에 걸린 자리를 이것으로 채운다.
+CASH_PROXY_SYMBOL: Final = "357870"
+
+
+@dataclass(frozen=True, slots=True)
+class EtfAllocationParameters:
+    """전략 파라미터. `lookback_days`는 거래일 수이며 12개월은 약 250거래일이다."""
+
+    lookback_days: int
+    holdings: int
+
+    def validated(self) -> EtfAllocationParameters:
+        if self.lookback_days < 1:
+            message = "etf allocation lookback_days must be at least 1"
+            raise ValueError(message)
+        if self.holdings < 1:
+            message = "etf allocation holdings must be at least 1"
+            raise ValueError(message)
+        return self
+
+
+def _shelter(
+    ranked: Sequence[RankedSymbol],
+    holdings: int,
+    cash_score: Decimal,
+) -> tuple[RankedSymbol, ...]:
+    """상위 N 중 수익률이 음수인 자리를 현금성으로 바꾼다.
+
+    같은 종목을 두 자리에 넣을 수 없으므로 중복은 하나로 접는다. 그 경우 엔진이 NAV를 고정 보유
+    개수로 나누기 때문에 남는 자리는 미투자 현금이 된다 — 수익 0이라 CD ETF보다 보수적이다.
+
+    기록하는 점수는 **실제로 보유하는 자산**의 모멘텀이다. 배제된 자산의 점수를 남기면 감사에서
+    보유 근거가 틀린다.
+    """
+    chosen: list[RankedSymbol] = []
+    seen: set[str] = set()
+    for item in ranked[:holdings]:
+        entry = item if item.score > 0 else RankedSymbol(symbol=CASH_PROXY_SYMBOL, score=cash_score)
+        if entry.symbol in seen:
+            continue
+        seen.add(entry.symbol)
+        chosen.append(entry)
+    return tuple(chosen)
+
+
+def etf_allocation_rebalances(
+    signal_dates: Sequence[date],
+    universe: Sequence[SymbolSeries],
+    parameters: EtfAllocationParameters,
+    trading_dates: Sequence[date],
+) -> tuple[Rebalance, ...]:
+    """회차별 목표 보유. 상대 서열로 뽑고 절대 모멘텀으로 대피시킨다(2026-08-24 승인).
+
+    lookback 구간이 달력 안에 없는 회차는 만들지 않는다. 대피처(현금성 ETF)의 모멘텀을 계산할 수
+    없는 회차도 만들지 않는다 — 대피할 수 없는 상태를 통과시키면 음수 자산을 그대로 보유한다.
+    """
+    settings = parameters.validated()
+    calendar = tuple(trading_dates)
+    index_of = {day: index for index, day in enumerate(calendar)}
+    cash_series = next(
+        (series for series in universe if series.symbol == CASH_PROXY_SYMBOL),
+        None,
+    )
+    rebalances: list[Rebalance] = []
+    for signal_date in signal_dates:
+        position = index_of.get(signal_date)
+        if position is None:
+            continue
+        basis_index = position - settings.lookback_days
+        if basis_index < 0:
+            continue
+        basis_date = calendar[basis_index]
+        cash_score = (
+            None if cash_series is None else momentum_return(cash_series, signal_date, basis_date)
+        )
+        if cash_score is None:
+            continue
+        ranked = ranked_by_momentum(universe, signal_date, basis_date)
+        if not ranked:
+            continue
+        rebalances.append(
+            Rebalance(
+                signal_date=signal_date,
+                selected=_shelter(ranked, settings.holdings, cash_score),
+            )
+        )
+    return tuple(rebalances)
