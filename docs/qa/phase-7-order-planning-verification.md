@@ -687,10 +687,43 @@ uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
 확인할 사실: 통보의 `quantity`가 취소량이고 내부 수량이 그만큼만 줄어드는지, 상태가
 `SUBMITTED`/`PARTIALLY_FILLED`로 유지되는지, `broker_order_id`가 원주문번호로 남는지.
 
+## 재시작 복구 실측 (2026-08-24)
+
+정책 §6의 "서버 재시작 → 항상 `DISABLED`"가 기본 구성에서 성립하지 않았다.
+
+### 고치기 전 (결함 확인)
+
+| 단계 | 결과 |
+|---|---|
+| `automation`을 `running`으로 올림 | `running` (`USER_COMMAND`) |
+| `docker compose restart api worker` | **`running` 그대로** — 되돌아가지 않았다 |
+| `GET /api/trading/automation` | `state=running`, `stale_reason_code=null` |
+
+원인: 리셋을 구현한 곳이 체결통보 리스너 하나뿐이고, 그 리스너는 기본 Compose에 없다
+(`compose.fill-notifications.yaml` 전용). 노출은 제한적이었다 — 제출은 사람이 CLI로만 하고 리스너
+부착·주문 시간 조건이 별도로 걸린다. 그래도 정책의 '항상'이 한 경로에만 구현된 형태다.
+
+### 고친 뒤 (같은 절차)
+
+| 단계 | 결과 |
+|---|---|
+| `automation`을 `running`으로 올림 | `running` (`USER_COMMAND`) |
+| `docker compose restart api` | **`disabled` (`PROCESS_START`)** |
+| 감사 기록 | `state_change running → disabled`, 사유 `PROCESS_START` |
+| 이미 `disabled`인 상태에서 재시작 | 새 이벤트 없음 — 사람이 껐다는 사유를 덮지 않는다 |
+| `GET /api/trading/automation` | `state=disabled`, `stored_state=disabled` |
+
+규칙은 `application/trading/startup.py` 하나이고 API 서버와 리스너가 공유한다. 거래일 변경은 저장된
+값에서 계산할 수 있어 순수 규칙(`domain/orders/recovery.py`)으로 판정하지만, 재시작은 계산할 수
+없으므로 기동이 사실을 바꾼다.
+
+주문·포지션 복구의 나머지 절반은 구조적으로 성립한다: 주문 상태는 PostgreSQL에 있고 포지션은 계획
+시점에 증권사에서 다시 읽는다. 재시작 후 미체결이 남아 있으면 리스너 부착이 `NOTIFICATION_GAP`으로
+차단한다(ADR-0009, 별도 검증됨).
+
 ## 남은 범위
 
 - 지정가 정정의 장중 검증(위 "지정가 정정 검증 계획" 절, 다음 거래일)
 - 부분 취소의 장중 검증(위 절, 다음 거래일)
 - 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
-- 서버 재시작 후 상태 복구 시나리오 테스트(현재는 거래일 변경 복귀만 검증)
 - 주문·위험 이벤트 알림(웹·메신저)

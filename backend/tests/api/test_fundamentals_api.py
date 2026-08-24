@@ -25,6 +25,7 @@ from auto_stock_trading.domain.market_data.models import (
 )
 from auto_stock_trading.domain.market_data.share_classes import ShareClass, ShareClassKind
 from auto_stock_trading.settings.runtime import Environment, Settings
+from tests.api.automation_stub import NoAutomationReset
 
 if TYPE_CHECKING:
     from auto_stock_trading.domain.market_data.investor_flows import VersionedInvestorFlow
@@ -196,6 +197,7 @@ class StubSectorSource:
 
 def _client(sector_code: str | None = None) -> TestClient:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,
@@ -541,6 +543,7 @@ class StubShareClassSource:
 
 def _indicator_client() -> TestClient:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,
@@ -1085,6 +1088,7 @@ class StubRestoredReportReader:
 def test_restored_indicator_inputs_expose_how_the_amount_was_obtained() -> None:
     """복원한 값이 표준 태깅된 값처럼 보이면 안 된다(계약 §복원 규칙 마지막 문단)."""
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,

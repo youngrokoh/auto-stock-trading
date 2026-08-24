@@ -287,14 +287,14 @@ def _risk_limits_response(environment: str, state: TradingRiskState) -> RiskLimi
 type Clock = Callable[[], datetime]
 
 
-def _utc_now() -> datetime:
+def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
 def create_trading_router(
     trading: TradingReader,
     environment: str,
-    clock: Clock = _utc_now,
+    clock: Clock = utc_now,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/trading", tags=["trading"])
 

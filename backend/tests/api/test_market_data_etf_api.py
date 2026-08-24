@@ -21,6 +21,7 @@ from auto_stock_trading.domain.market_data.etf import (
     VersionedEtfProfile,
 )
 from auto_stock_trading.settings.runtime import Environment, Settings
+from tests.api.automation_stub import NoAutomationReset
 
 _NOW = datetime(2026, 8, 18, 1, 0, tzinfo=UTC)
 
@@ -151,6 +152,7 @@ class StubCorporateActionReader:
 
 def _client() -> TestClient:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,

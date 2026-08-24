@@ -17,6 +17,7 @@ from auto_stock_trading.domain.market_data.models import (
     VersionedDailyBar,
 )
 from auto_stock_trading.settings.runtime import Environment, Settings
+from tests.api.automation_stub import NoAutomationReset
 
 
 @final
@@ -179,6 +180,7 @@ class StubMarketDataReader:
 
 def _client() -> TestClient:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,

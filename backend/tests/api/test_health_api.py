@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
 from auto_stock_trading.settings.runtime import Environment, Settings
+from tests.api.automation_stub import NoAutomationReset
 
 
 @final
@@ -24,6 +25,7 @@ class StubProbe:
 
 def test_liveness_does_not_depend_on_infrastructure() -> None:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=lambda: StubProbe(healthy=False),
         cache_probe_factory=lambda: StubProbe(healthy=False),
@@ -43,6 +45,7 @@ def test_liveness_does_not_depend_on_infrastructure() -> None:
 
 def test_readiness_reports_each_dependency() -> None:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=lambda: StubProbe(healthy=True),
         cache_probe_factory=lambda: StubProbe(healthy=True),
@@ -66,6 +69,7 @@ def test_readiness_reports_each_dependency() -> None:
 
 def test_readiness_is_degraded_when_a_dependency_is_unavailable() -> None:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=lambda: StubProbe(healthy=True),
         cache_probe_factory=lambda: StubProbe(healthy=False),
@@ -84,6 +88,7 @@ def test_readiness_is_degraded_when_a_dependency_is_unavailable() -> None:
 
 def test_browser_status_reports_degraded_without_an_http_error() -> None:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=lambda: StubProbe(healthy=False),
         cache_probe_factory=lambda: StubProbe(healthy=False),

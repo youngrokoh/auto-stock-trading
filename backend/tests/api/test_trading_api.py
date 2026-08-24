@@ -1,8 +1,10 @@
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import cast, final
+from typing import TYPE_CHECKING, cast, final
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
 from auto_stock_trading.api.app import create_app
@@ -28,6 +30,10 @@ from auto_stock_trading.domain.orders.records import (
 from auto_stock_trading.domain.risk.engine import RiskDecision
 from auto_stock_trading.domain.risk.limits import RiskRule
 from auto_stock_trading.settings.runtime import Environment, Settings
+from tests.api.automation_stub import NoAutomationReset
+
+if TYPE_CHECKING:
+    from auto_stock_trading.application.trading.planning import AutomationTransition
 
 _NOW = datetime(2026, 8, 18, 4, 0, tzinfo=UTC)
 _TRADING_DATE = date(2026, 8, 18)
@@ -254,6 +260,7 @@ def _client(
         return stub
 
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,
@@ -668,3 +675,94 @@ def test_sector_usage_is_reported_once_sector_facts_exist() -> None:
         "usage_ratio": "0.000000",
         "reason": None,
     }
+
+
+@final
+@dataclass
+class StubAutomationReset:
+    """기동 리셋 대상 저장소. API가 기동할 때 정확히 한 번 호출돼야 한다."""
+
+    state: AutomationState = AutomationState.RUNNING
+    transitions: list[AutomationTransition] = field(default_factory=list)
+    closed: bool = False
+
+    async def automation_record(self, environment: str) -> AutomationRecord | None:
+        return AutomationRecord(
+            environment=environment,
+            state=self.state,
+            reason_code="USER_COMMAND",
+            trading_date=_TRADING_DATE,
+            changed_at=_NOW,
+        )
+
+    async def transition_automation(self, transition: AutomationTransition) -> AutomationRecord:
+        self.transitions.append(transition)
+        self.state = transition.requested
+        return AutomationRecord(
+            environment=transition.environment,
+            state=transition.requested,
+            reason_code=transition.reason_code,
+            trading_date=transition.trading_date,
+            changed_at=transition.occurred_at,
+        )
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def test_starting_the_api_returns_automation_to_disabled() -> None:
+    """정책 §6: 서버 재시작은 상태를 되돌린다. 2026-08-24 실측에서 `running`이 살아남았다."""
+    reset = StubAutomationReset()
+
+    app = create_app(
+        settings=Settings(environment=Environment.TEST),
+        database_probe_factory=StubProbe,
+        cache_probe_factory=StubProbe,
+        trading_reader_factory=StubTradingReader,
+        automation_reset_factory=lambda: reset,
+        clock=lambda: _NOW,
+    )
+    with TestClient(app):
+        pass
+
+    (transition,) = reset.transitions
+    assert transition.requested is AutomationState.DISABLED
+    assert transition.reason_code == "PROCESS_START"
+    assert reset.closed is True
+
+
+_UNAVAILABLE = "database unavailable"
+
+
+@final
+class FailingAutomationReset:
+    """DB에 닿지 못하는 기동 리셋."""
+
+    async def automation_record(self, environment: str) -> AutomationRecord | None:
+        _ = environment
+        raise ConnectionError(_UNAVAILABLE)
+
+    async def transition_automation(self, transition: AutomationTransition) -> AutomationRecord:
+        raise AssertionError(transition)
+
+    async def close(self) -> None:
+        return None
+
+
+def test_the_api_refuses_to_start_when_the_automation_reset_fails() -> None:
+    """리셋을 적용하지 못하면 기동하지 않는다.
+
+    돌려보낼 수 없는 상태로 서버를 열면 어제 켠 `running`이 살아 있는 채로 서비스된다. 기동 실패는
+    컨테이너가 재시작을 반복하는 형태로 드러나고, DB가 돌아오면 리셋이 적용된다.
+    """
+    app = create_app(
+        settings=Settings(environment=Environment.TEST),
+        database_probe_factory=StubProbe,
+        cache_probe_factory=StubProbe,
+        trading_reader_factory=StubTradingReader,
+        automation_reset_factory=FailingAutomationReset,
+        clock=lambda: _NOW,
+    )
+
+    with pytest.raises(ConnectionError), TestClient(app):
+        pass

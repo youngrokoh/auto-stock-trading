@@ -16,6 +16,7 @@ from auto_stock_trading.domain.strategies.backtest_metrics import (
 from auto_stock_trading.domain.strategies.ma_rsi import SignalAction, SignalReason
 from auto_stock_trading.domain.strategies.records import BacktestRunRecord, BacktestTradeRecord
 from auto_stock_trading.settings.runtime import Environment, Settings
+from tests.api.automation_stub import NoAutomationReset
 
 _NOW = datetime(2026, 8, 18, 2, 0, tzinfo=UTC)
 _RUN_ID = UUID("00000000-0000-0000-0000-000000000101")
@@ -165,6 +166,7 @@ class StubBacktestReader:
 
 def _client() -> TestClient:
     app = create_app(
+        automation_reset_factory=NoAutomationReset,
         settings=Settings(environment=Environment.TEST),
         database_probe_factory=StubProbe,
         cache_probe_factory=StubProbe,

@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Protocol
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,7 @@ from auto_stock_trading.adapters.database.strategy_backtest_reader import (
     PostgresBacktestReader,
 )
 from auto_stock_trading.adapters.database.trading_reader import PostgresTradingReader
+from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.adapters.health import PostgresHealthProbe, ValkeyHealthProbe
 from auto_stock_trading.api.backtests import create_backtests_router
 from auto_stock_trading.api.fundamentals import create_fundamentals_router
@@ -36,7 +38,7 @@ from auto_stock_trading.api.market_data import create_market_data_router
 from auto_stock_trading.api.market_data_adjusted import create_market_data_adjusted_router
 from auto_stock_trading.api.market_data_etf import create_market_data_etf_router
 from auto_stock_trading.api.trading import create_trading_router
-from auto_stock_trading.api.trading.router import Clock, TradingReader
+from auto_stock_trading.api.trading.router import Clock, TradingReader, utc_now
 from auto_stock_trading.application.adjusted_prices import (
     AdjustedPriceReader,
     CorporateActionReader,
@@ -51,7 +53,14 @@ from auto_stock_trading.application.financial_indicators import (
 from auto_stock_trading.application.financial_statements import FinancialReportReader
 from auto_stock_trading.application.health import HealthProbe, HealthService
 from auto_stock_trading.application.market_data import MarketDataReader
+from auto_stock_trading.application.trading.startup import (
+    AutomationResetStore,
+    reset_automation_on_start,
+)
 from auto_stock_trading.settings.runtime import Settings
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 ProbeFactory = Callable[[], HealthProbe]
 MarketDataReaderFactory = Callable[[], MarketDataReader]
@@ -64,6 +73,39 @@ BacktestReaderFactory = Callable[[], BacktestReader]
 TradingReaderFactory = Callable[[], TradingReader]
 SectorSourceFactory = Callable[[], SectorSource]
 ShareClassSourceFactory = Callable[[], ShareClassSource]
+
+
+class ClosableAutomationReset(AutomationResetStore, Protocol):
+    """기동 리셋 저장소는 앱이 직접 열고 닫는다. 요청 경로에서는 쓰지 않는다."""
+
+    async def close(self) -> None: ...
+
+
+AutomationResetFactory = Callable[[], ClosableAutomationReset]
+
+
+def _resolve[T](factory: Callable[[], T] | None, default: Callable[[], T]) -> T:
+    """주입된 팩토리가 없으면 실제 인프라를 만든다. 테스트가 쓰는 이음새다."""
+    return (factory or default)()
+
+
+def _reset_factory(
+    factory: AutomationResetFactory | None,
+    database_url: str,
+) -> AutomationResetFactory:
+    return factory or (lambda: PostgresTradingStore.from_url(database_url))
+
+
+async def _reset_automation(
+    factory: AutomationResetFactory,
+    environment: str,
+    now: datetime,
+) -> None:
+    store = factory()
+    try:
+        _ = await reset_automation_on_start(store, environment, now)
+    finally:
+        await store.close()
 
 
 def create_app(  # noqa: PLR0913
@@ -81,67 +123,70 @@ def create_app(  # noqa: PLR0913
     trading_reader_factory: TradingReaderFactory | None = None,
     sector_source_factory: SectorSourceFactory | None = None,
     share_class_source_factory: ShareClassSourceFactory | None = None,
+    automation_reset_factory: AutomationResetFactory | None = None,
     clock: Clock | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
-    database_factory = database_probe_factory or (
-        lambda: PostgresHealthProbe.from_url(runtime_settings.database_url.get_secret_value())
+    database_url = runtime_settings.database_url.get_secret_value()
+    health_service = HealthService(
+        database=_resolve(
+            database_probe_factory,
+            lambda: PostgresHealthProbe.from_url(database_url),
+        ),
+        cache=_resolve(
+            cache_probe_factory,
+            lambda: ValkeyHealthProbe.from_url(
+                runtime_settings.valkey_url.get_secret_value(),
+            ),
+        ),
     )
-    cache_factory = cache_probe_factory or (
-        lambda: ValkeyHealthProbe.from_url(runtime_settings.valkey_url.get_secret_value())
+    market_data_reader = _resolve(
+        market_data_reader_factory,
+        lambda: PostgresMarketDataRepository.from_url(database_url),
     )
-    health_service = HealthService(database=database_factory(), cache=cache_factory())
-    reader_factory = market_data_reader_factory or (
-        lambda: PostgresMarketDataRepository.from_url(
-            runtime_settings.database_url.get_secret_value()
-        )
+    corporate_action_reader = _resolve(
+        corporate_action_reader_factory,
+        lambda: PostgresCorporateActionReader.from_url(database_url),
     )
-    market_data_reader = reader_factory()
-    action_reader_factory = corporate_action_reader_factory or (
-        lambda: PostgresCorporateActionReader.from_url(
-            runtime_settings.database_url.get_secret_value()
-        )
+    adjusted_price_reader = _resolve(
+        adjusted_price_reader_factory,
+        lambda: PostgresAdjustedPriceReader.from_url(database_url),
     )
-    corporate_action_reader = action_reader_factory()
-    adjusted_reader_factory = adjusted_price_reader_factory or (
-        lambda: PostgresAdjustedPriceReader.from_url(
-            runtime_settings.database_url.get_secret_value()
-        )
+    financial_report_reader = _resolve(
+        financial_report_reader_factory,
+        lambda: PostgresFinancialReportReader.from_url(database_url),
     )
-    adjusted_price_reader = adjusted_reader_factory()
-    financial_reader_factory = financial_report_reader_factory or (
-        lambda: PostgresFinancialReportReader.from_url(
-            runtime_settings.database_url.get_secret_value()
-        )
+    disclosure_reader = _resolve(
+        disclosure_reader_factory,
+        lambda: PostgresDisclosureReader.from_url(database_url),
     )
-    financial_report_reader = financial_reader_factory()
-    disclosure_factory = disclosure_reader_factory or (
-        lambda: PostgresDisclosureReader.from_url(runtime_settings.database_url.get_secret_value())
+    etf_reader = _resolve(etf_reader_factory, lambda: PostgresEtfReader.from_url(database_url))
+    backtest_reader = _resolve(
+        backtest_reader_factory,
+        lambda: PostgresBacktestReader.from_url(database_url),
     )
-    disclosure_reader = disclosure_factory()
-    etf_factory = etf_reader_factory or (
-        lambda: PostgresEtfReader.from_url(runtime_settings.database_url.get_secret_value())
+    trading_reader = _resolve(
+        trading_reader_factory,
+        lambda: PostgresTradingReader.from_url(database_url),
     )
-    etf_reader = etf_factory()
-    backtest_factory = backtest_reader_factory or (
-        lambda: PostgresBacktestReader.from_url(runtime_settings.database_url.get_secret_value())
+    sector_source = _resolve(
+        sector_source_factory,
+        lambda: PostgresStockStore.from_url(database_url),
     )
-    backtest_reader = backtest_factory()
-    trading_factory = trading_reader_factory or (
-        lambda: PostgresTradingReader.from_url(runtime_settings.database_url.get_secret_value())
+    share_class_source = _resolve(
+        share_class_source_factory,
+        lambda: PostgresShareClassStore.from_url(database_url),
     )
-    trading_reader = trading_factory()
-    sector_factory = sector_source_factory or (
-        lambda: PostgresStockStore.from_url(runtime_settings.database_url.get_secret_value())
-    )
-    sector_source = sector_factory()
-    share_class_factory = share_class_source_factory or (
-        lambda: PostgresShareClassStore.from_url(runtime_settings.database_url.get_secret_value())
-    )
-    share_class_source = share_class_factory()
+    automation_reset = _reset_factory(automation_reset_factory, database_url)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        # 정책 §6: 서버 기동은 상태 머신의 입력이다. 사람이 다시 켜야 주문이 나간다.
+        await _reset_automation(
+            automation_reset,
+            runtime_settings.kis_environment.value,
+            (clock or utc_now)(),
+        )
         try:
             yield
         finally:
