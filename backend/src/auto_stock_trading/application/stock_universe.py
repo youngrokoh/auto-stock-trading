@@ -179,6 +179,8 @@ class UniverseBarBackfill:
     collector: BarCollector
     chunk_days: int = _CHUNK_DAYS
     chunk_timeout_seconds: float = _CHUNK_TIMEOUT_SECONDS
+    # 같은 종목코드로 다른 상품을 조회하지 않도록 호출자가 상품유형을 정한다(ETF 유니버스 재사용).
+    product_type: ProductType = ProductType.STOCK
 
     async def run(self, start_date: date, end_date: date, now: datetime) -> BackfillResult:
         symbols = await self.universe.universe_symbols()
@@ -186,7 +188,7 @@ class UniverseBarBackfill:
         collected = 0
         failed = 0
         for symbol in symbols:
-            target = InstrumentTarget(symbol, ProductType.STOCK)
+            target = InstrumentTarget(symbol, self.product_type)
             for window_start, window_end in windows:
                 try:
                     with anyio.fail_after(self.chunk_timeout_seconds):
@@ -228,6 +230,7 @@ class UniverseBarConfirmation:
 
     universe: UniverseSymbols
     confirmer: BarConfirmer
+    product_type: ProductType = ProductType.STOCK
     chunk_days: int = _CHUNK_DAYS
     chunk_timeout_seconds: float = _CHUNK_TIMEOUT_SECONDS
 
@@ -238,7 +241,7 @@ class UniverseBarConfirmation:
         pending = 0
         failed = 0
         for symbol in symbols:
-            target = InstrumentTarget(symbol, ProductType.STOCK)
+            target = InstrumentTarget(symbol, self.product_type)
             for window_start, window_end in windows:
                 try:
                     with anyio.fail_after(self.chunk_timeout_seconds):

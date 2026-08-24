@@ -1,6 +1,6 @@
 import argparse
 from datetime import UTC, date, datetime, timedelta
-from typing import Final
+from typing import Final, final
 from zoneinfo import ZoneInfo
 
 import anyio
@@ -58,6 +58,10 @@ from auto_stock_trading.domain.market_data.share_classes import (
     ShareClassKind,
     pair_share_classes,
 )
+from auto_stock_trading.domain.strategies.etf_allocation import (
+    ALLOCATION_WINDOW_START,
+    allocation_symbols,
+)
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker import market_calendar
 from auto_stock_trading.worker.broker import broker
@@ -92,6 +96,8 @@ class Arguments(argparse.Namespace):
     collect_preferred_quotes: bool = False
     collect_universe_quotes: bool = False
     collect_universe_bars: bool = False
+    collect_etf_bars: bool = False
+    confirm_etf_bars: bool = False
     confirm_universe_bars: bool = False
 
 
@@ -468,6 +474,77 @@ def _universe_bar_range(
     return start_date, end_date
 
 
+def _etf_bar_range(
+    start_date_text: str | None,
+    end_date_text: str | None,
+) -> tuple[date, date]:
+    """기본 창은 승인된 공통 구간(가장 늦은 상장일)부터다."""
+    end_date = (
+        date.fromisoformat(end_date_text)
+        if end_date_text is not None
+        else datetime.now(_SEOUL).date()
+    )
+    start_date = (
+        date.fromisoformat(start_date_text)
+        if start_date_text is not None
+        else ALLOCATION_WINDOW_START
+    )
+    return start_date, end_date
+
+
+@final
+class _EtfAllocationUniverse:
+    """승인된 ETF 자산배분 유니버스. 코드 상수이므로 DB를 읽지 않는다."""
+
+    async def universe_symbols(self) -> tuple[str, ...]:
+        return allocation_symbols()
+
+
+async def collect_etf_allocation_bars(
+    start_date_text: str | None = None,
+    end_date_text: str | None = None,
+) -> tuple[int, int, int]:
+    """승인된 ETF 자산배분 6종의 일봉을 백필한다(사용자 승인 2026-08-24).
+
+    기본 시작일은 공통 구간의 시작(가장 늦은 상장일)이다. 그 앞 구간을 요청하면 상장 전 호출이
+    실패로 쌓이기만 한다.
+    """
+    settings = Settings()
+    start_date, end_date = _etf_bar_range(start_date_text, end_date_text)
+    source, store = _seed_source_and_store(settings)
+    backfill = UniverseBarBackfill(
+        universe=_EtfAllocationUniverse(),
+        collector=MarketDataCollector(source, store),
+        product_type=ProductType.ETF,
+    )
+    try:
+        result = await backfill.run(start_date, end_date, datetime.now(UTC))
+    finally:
+        await source.close()
+        await store.close()
+    return result.symbols, result.collected_chunks, result.failed_chunks
+
+
+async def confirm_etf_allocation_bars(
+    start_date_text: str | None = None,
+    end_date_text: str | None = None,
+) -> tuple[int, int, int]:
+    settings = Settings()
+    start_date, end_date = _etf_bar_range(start_date_text, end_date_text)
+    source, store = _seed_source_and_store(settings)
+    confirmation = UniverseBarConfirmation(
+        universe=_EtfAllocationUniverse(),
+        confirmer=DailyBarConfirmer(source, store),
+        product_type=ProductType.ETF,
+    )
+    try:
+        result = await confirmation.run(start_date, end_date, datetime.now(UTC))
+    finally:
+        await source.close()
+        await store.close()
+    return result.confirmed, result.pending, result.failed_chunks
+
+
 async def collect_universe_bars(
     start_date_text: str | None = None,
     end_date_text: str | None = None,
@@ -536,6 +613,8 @@ def main() -> None:
     _ = parser.add_argument("--collect-universe-quotes", action="store_true")
     _ = parser.add_argument("--collect-universe-bars", action="store_true")
     _ = parser.add_argument("--confirm-universe-bars", action="store_true")
+    _ = parser.add_argument("--collect-etf-bars", action="store_true")
+    _ = parser.add_argument("--confirm-etf-bars", action="store_true")
     arguments = parser.parse_args(namespace=Arguments())
     _run(arguments)
 
@@ -582,7 +661,30 @@ def _run_universe(arguments: Arguments) -> bool:
     return True
 
 
+def _run_etf_bars(arguments: Arguments) -> bool:
+    """ETF 자산배분 일봉 명령만 처리하고 처리 여부를 돌려준다."""
+    if arguments.collect_etf_bars:
+        symbols, collected, failed = anyio.run(
+            collect_etf_allocation_bars,
+            arguments.start_date,
+            arguments.end_date,
+        )
+        print(f"etf bars symbols={symbols} chunks={collected} failed={failed}")  # noqa: T201
+        return True
+    if arguments.confirm_etf_bars:
+        confirmed, pending, failed = anyio.run(
+            confirm_etf_allocation_bars,
+            arguments.start_date,
+            arguments.end_date,
+        )
+        print(f"etf bars confirmed={confirmed} pending={pending} failed={failed}")  # noqa: T201
+        return True
+    return False
+
+
 def _run(arguments: Arguments) -> None:
+    if _run_etf_bars(arguments):
+        return
     if _run_universe(arguments):
         return
     if arguments.collect_etf_master:
