@@ -7,10 +7,10 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import anyio
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
@@ -80,12 +80,34 @@ async def _purge(connection: AsyncConnection) -> None:
     )
 
 
-async def _instrument(connection: AsyncConnection) -> None:
+async def _ensure_instrument(connection: AsyncConnection) -> UUID:
+    """CI는 갓 마이그레이션한 빈 DB로 돈다. 종목이 있다고 가정하지 않고 직접 만든다."""
     existing = await connection.scalar(
         select(InstrumentRow.id).where(InstrumentRow.symbol == _SYMBOL).limit(1)
     )
-    if existing is None:
-        raise AssertionError(_SYMBOL)
+    if existing is not None:
+        return existing
+    instrument_id = uuid4()
+    _ = await connection.execute(
+        insert(InstrumentRow).values(
+            id=instrument_id,
+            country="KR",
+            exchange="KRX",
+            symbol=_SYMBOL,
+            product_type="stock",
+            currency="KRW",
+            name="알림 아웃박스 통합 테스트 종목",
+            english_name=None,
+            listed_on=None,
+            delisted_on=None,
+            trading_status="active",
+            source="TEST",
+            source_as_of=_TRADING_DATE,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    return instrument_id
 
 
 async def _submitted_order(store: PostgresTradingStore) -> str:
@@ -131,7 +153,7 @@ def test_a_new_order_event_is_projected_once_and_then_not_again() -> None:
         trading: PostgresTradingStore,
         connection: AsyncConnection,
     ) -> None:
-        await _instrument(connection)
+        _ = await _ensure_instrument(connection)
         _ = await _submitted_order(trading)
 
         first = await store.unprojected_events(_ENVIRONMENT, _SINCE)
