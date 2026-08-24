@@ -135,8 +135,11 @@
   같은 경로를 두 번 더 실행해도 `skipped`이며 각 1초였다 — 실제 스윕은 3분 34초다. 수급 원본
   응답은 첫 실행 구간(23:49~23:52)의 200건뿐이고 이후 0건이므로 **증권사 요청이 한 건도 나가지
   않았음**이 확인된다. 하루에 한 번만 실제 수집이 일어난다.
-- 아직 측정하지 않은 것: **동시 실행 중 lease 경합**(두 프로세스가 같은 순간 claim을 시도하는
-  경우)은 이번 검증 범위가 아니다. 스케줄러가 하나인 현재 구성에서는 발생하기 어렵다.
+- 병렬 경합 검증(2026-08-24): 여섯 커넥션이 **같은 순간** 같은 작업 키를 claim해도 lease는
+  정확히 하나만 나가고 행도 하나뿐임을 통합 테스트로 고정했다
+  (`test_scheduled_job_claim_race_integration.py`). 테스트가 실제로 잡는지 확인하려고 구현을
+  조회 후 삽입(check-then-act)으로 일시 교체했을 때 `uq_scheduled_job_execution` 유일 제약
+  위반으로 실패했다 — 원자성이 애플리케이션 호출 순서가 아니라 DB 제약에서 나온다는 증거다.
 - 공시: `DartDisclosureAdapter`가 유형별(pblntf_ty A·B·D·I) 페이지를 수집하고
   `PostgresDisclosureStore`가 접수번호 유일 사실로 저장한다.
   `python -m auto_stock_trading.worker.fundamentals --collect-disclosures`로 최근 1년을
