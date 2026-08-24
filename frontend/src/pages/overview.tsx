@@ -34,7 +34,13 @@ export const Overview = () => {
     queryKey: ["instruments"],
     retry: false,
   });
-  const allInstruments = instrumentsQuery.data?.instruments ?? [];
+  const collected = instrumentsQuery.data?.instruments ?? [];
+  /**
+   * 미리보기는 전략·주문 대상만 보여준다. 우선주는 수집 대상이지만 대상이 아니므로 제외한다
+   * (실측: 우선주 46종목이 들어오며 종목코드 오름차순 상위 10개의 절반을 차지했다).
+   * 판정은 백엔드가 저장 사실로 준 `share_class`를 쓴다 — 단축코드로 추론하지 않는다.
+   */
+  const allInstruments = collected.filter((instrument) => instrument.share_class !== "preferred");
   // 개요는 요약 화면이다. 유니버스 전수는 시장 데이터 화면이 담당한다.
   const instruments = allInstruments.slice(0, OVERVIEW_INSTRUMENT_LIMIT);
   const quoteQueries = useQueries({
@@ -121,8 +127,15 @@ export const Overview = () => {
           <CoordinateCell
             coord="A5"
             label="수집 종목"
-            sub={instrumentsQuery.isError ? "목록 조회 실패" : undefined}
-            value={instrumentsQuery.data === undefined ? "—" : String(allInstruments.length)}
+            sub={
+              instrumentsQuery.isError
+                ? "목록 조회 실패"
+                : collected.length > allInstruments.length
+                  ? `보통주 ${String(allInstruments.length)} · 우선주 ${String(collected.length - allInstruments.length)}`
+                  : undefined
+            }
+            // 라벨이 '수집 종목'이므로 우선주를 포함한 실제 수집 수를 보여준다. 미리보기 표만 보통주로 좁힌다.
+            value={instrumentsQuery.data === undefined ? "—" : String(collected.length)}
           />
           <CoordinateCell coord="A6" label="실전 주문" tone="warn" value="잠금" />
         </KpiGrid>
@@ -217,7 +230,9 @@ export const Overview = () => {
               <div className="card__note">
                 출처 KIS 모의환경 배치 수집 · 실시간 시세가 아니며 수집 시점 값입니다
                 {allInstruments.length > instruments.length &&
-                  ` · 종목코드 오름차순 ${String(instruments.length)}개 표시 (전체 ${String(allInstruments.length)}종목은 시장 데이터 화면)`}
+                  ` · 종목코드 오름차순 ${String(instruments.length)}개 표시 (보통주 ${String(allInstruments.length)}종목)`}
+                {collected.length > allInstruments.length &&
+                  ` · 우선주 ${String(collected.length - allInstruments.length)}종목은 시가총액 계산용이며 여기에 표시하지 않습니다 (전체 ${String(collected.length)}종목은 시장 데이터 화면)`}
               </div>
             </section>
           </div>

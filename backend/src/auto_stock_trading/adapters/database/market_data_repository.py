@@ -40,6 +40,7 @@ from auto_stock_trading.adapters.database.market_data_statements import (
     quote_upsert,
     success_upsert,
 )
+from auto_stock_trading.adapters.database.reference_stock_rows import ShareClassRow
 from auto_stock_trading.domain.market_data.models import (
     BrokerOperation,
     DailyBar,
@@ -52,6 +53,7 @@ from auto_stock_trading.domain.market_data.models import (
     SyncState,
     VersionedDailyBar,
 )
+from auto_stock_trading.domain.market_data.share_classes import ShareClassKind
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -184,11 +186,27 @@ class PostgresMarketDataRepository:
             _ = await session.execute(statement)
 
     async def instruments(self) -> tuple[Instrument, ...]:
+        """종목 목록에 상장 주식종류를 붙여 돌려준다.
+
+        클래스 사실이 없는 종목(ETF 등)은 `None`이다. 화면이 단축코드로 추론하지 않게 하려고
+        조회 쪽에서 사실을 붙인다.
+        """
         async with self._sessions() as session:
             rows = tuple(
                 (await session.scalars(select(InstrumentRow).order_by(InstrumentRow.symbol))).all()
             )
-        return tuple(_instrument(row) for row in rows)
+            classes = dict(
+                (
+                    await session.execute(
+                        select(ShareClassRow.symbol, ShareClassRow.class_kind).where(
+                            ShareClassRow.superseded_at.is_(None)
+                        )
+                    )
+                )
+                .tuples()
+                .all()
+            )
+        return tuple(_instrument(row, classes.get(row.symbol)) for row in rows)
 
     async def instrument(self, symbol: str) -> Instrument | None:
         async with self._sessions() as session:
@@ -261,7 +279,7 @@ class PostgresMarketDataRepository:
             await self._engine.dispose()
 
 
-def _instrument(row: InstrumentRow) -> Instrument:
+def _instrument(row: InstrumentRow, class_kind: str | None = None) -> Instrument:
     return Instrument(
         country=row.country,
         exchange=row.exchange,
@@ -275,6 +293,7 @@ def _instrument(row: InstrumentRow) -> Instrument:
         trading_status=row.trading_status,
         source=row.source,
         source_as_of=row.source_as_of,
+        share_class=None if class_kind is None else ShareClassKind(class_kind),
     )
 
 

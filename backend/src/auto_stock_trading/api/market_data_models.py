@@ -22,6 +22,8 @@ class InstrumentResponse(MarketDataResponse):
     trading_status: str
     source: str
     source_as_of: date
+    # 상장 주식종류. 사실이 없으면 null이며 그때는 클래스를 모른다는 뜻이다.
+    share_class: str | None
 
 
 class InstrumentsResponse(MarketDataResponse):

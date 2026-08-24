@@ -9,8 +9,17 @@
 """
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING, Final
+
+from auto_stock_trading.domain.market_data.models import ShareClassKind
+
+__all__ = [
+    "ShareClass",
+    "ShareClassGroup",
+    "ShareClassKind",
+    "ShareClassPairing",
+    "pair_share_classes",
+]
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -21,11 +30,6 @@ _PREFIX_LENGTH: Final = 5
 _COMMON_SHARE_SUFFIX: Final = "0"
 _NO_COMMON: Final = "no common share for the prefix"
 _MANY_COMMON: Final = "more than one common share for the prefix"
-
-
-class ShareClassKind(StrEnum):
-    COMMON = "common"
-    PREFERRED = "preferred"
 
 
 @dataclass(frozen=True, slots=True)

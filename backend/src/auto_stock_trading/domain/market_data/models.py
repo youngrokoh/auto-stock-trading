@@ -12,6 +12,17 @@ if TYPE_CHECKING:
 InstrumentId = NewType("InstrumentId", UUID)
 
 
+class ShareClassKind(StrEnum):
+    """상장 주식종류. `share_classes`가 짝짓기 규칙을 갖고 이 모듈은 타입만 정의한다.
+
+    최하위 모듈에 두는 이유는 import 순환이다 — `share_classes`는 `stocks`를, `stocks`는 이
+    모듈을 참조한다.
+    """
+
+    COMMON = "common"
+    PREFERRED = "preferred"
+
+
 class ProductType(StrEnum):
     STOCK = "stock"
     ETF = "etf"
@@ -108,6 +119,9 @@ class Instrument:
     trading_status: str
     source: str
     source_as_of: date
+    # 상장 주식종류 사실. 사실이 없으면 `None`이며 그때는 클래스를 모른다는 뜻이다.
+    # 화면이 단축코드로 추론하지 않게 하려고 조회 응답에 담는다.
+    share_class: ShareClassKind | None = None
 
 
 @dataclass(frozen=True, slots=True)

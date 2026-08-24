@@ -207,6 +207,8 @@ def test_instrument_list_exposes_collected_instruments() -> None:
                 "trading_status": "active",
                 "source": "KIS",
                 "source_as_of": "2026-08-14",
+                # 이 fake reader는 클래스 사실을 주지 않는다. 모른다는 뜻의 null이다.
+                "share_class": None,
             }
         ]
     }

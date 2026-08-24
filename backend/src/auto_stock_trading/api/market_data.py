@@ -202,4 +202,5 @@ def _instrument_response(result: Instrument) -> InstrumentResponse:
         trading_status=result.trading_status,
         source=result.source,
         source_as_of=result.source_as_of,
+        share_class=None if result.share_class is None else result.share_class.value,
     )

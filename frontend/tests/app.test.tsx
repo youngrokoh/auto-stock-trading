@@ -46,6 +46,7 @@ const stubApi = () => {
                 listed_on: null,
                 name: "KODEX 200",
                 product_type: "etf",
+                share_class: null,
                 source: "KIS",
                 source_as_of: "2026-08-14",
                 symbol: "069500",

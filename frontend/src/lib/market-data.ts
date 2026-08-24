@@ -14,6 +14,8 @@ const instrumentSchema = z.strictObject({
   listed_on: isoDate.nullable(),
   name: z.string().min(1),
   product_type: z.enum(["stock", "etf"]),
+  /** 상장 주식종류. 사실이 없으면 null이며 그때는 클래스를 모른다는 뜻이다. */
+  share_class: z.enum(["common", "preferred"]).nullable(),
   source: z.string().min(1),
   source_as_of: isoDate,
   symbol: z.string().min(1),

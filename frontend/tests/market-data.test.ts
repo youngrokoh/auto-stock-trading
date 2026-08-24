@@ -18,6 +18,7 @@ const instrumentPayload = {
   listed_on: null,
   name: "KODEX 200",
   product_type: "etf",
+  share_class: null,
   source: "KIS",
   source_as_of: "2026-08-14",
   symbol: "069500",
@@ -180,6 +181,33 @@ describe("investor flows schema", () => {
         symbol: "005930",
         value_unit: "million_krw",
         databaseUrl: "postgresql://x",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("상장 주식종류", () => {
+  it("클래스 사실이 없으면 null을 수용한다", () => {
+    const parsed = parseInstruments({ instruments: [instrumentPayload] });
+
+    expect(parsed.instruments[0]?.share_class).toBeNull();
+  });
+
+  it("보통주·우선주를 구분해 파싱한다", () => {
+    const parsed = parseInstruments({
+      instruments: [
+        { ...instrumentPayload, share_class: "common", symbol: "005930" },
+        { ...instrumentPayload, share_class: "preferred", symbol: "005935" },
+      ],
+    });
+
+    expect(parsed.instruments.map((item) => item.share_class)).toEqual(["common", "preferred"]);
+  });
+
+  it("모르는 클래스는 파싱을 거부한다", () => {
+    expect(() =>
+      parseInstruments({
+        instruments: [{ ...instrumentPayload, share_class: "bond" }],
       }),
     ).toThrow();
   });
