@@ -119,3 +119,49 @@ class BacktestRunInstrumentRow(Base):
     run_id: Mapped[UUID] = mapped_column(ForeignKey("strategy.backtest_run.id"))
     instrument_id: Mapped[UUID] = mapped_column(ForeignKey("reference.instrument.id"))
     symbol: Mapped[str] = mapped_column(String(9))
+
+
+@final
+class LiveSignalRow(Base):
+    """실주문 신호 한 건(ADR-0016). 기준일당 하나이며 덮어쓰지 않는다."""
+
+    __tablename__: str = "live_signal"
+    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+        UniqueConstraint(
+            "environment",
+            "strategy_name",
+            "strategy_version",
+            "basis_date",
+            name="uq_live_signal_basis",
+        ),
+        {"schema": "strategy"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    environment: Mapped[str] = mapped_column(String(8), index=True)
+    strategy_name: Mapped[str] = mapped_column(String(40))
+    strategy_version: Mapped[str] = mapped_column(String(16))
+    parameters_json: Mapped[str] = mapped_column(String(1000))
+    basis_date: Mapped[date] = mapped_column(Date())
+    rebalance_date: Mapped[date] = mapped_column(Date())
+    bar_version_hash: Mapped[str] = mapped_column(String(64))
+    basis_close_json: Mapped[str] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+@final
+class LiveSignalTargetRow(Base):
+    __tablename__: str = "live_signal_target"
+    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+        UniqueConstraint("signal_id", "symbol", name="uq_live_signal_target_symbol"),
+        {"schema": "strategy"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    signal_id: Mapped[UUID] = mapped_column(
+        ForeignKey("strategy.live_signal.id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    symbol: Mapped[str] = mapped_column(String(9))
+    score: Mapped[Decimal] = mapped_column(Numeric(24, 8))

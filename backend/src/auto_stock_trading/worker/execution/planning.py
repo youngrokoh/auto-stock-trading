@@ -16,6 +16,10 @@ from auto_stock_trading.adapters.brokers.kis_http import (
     create_kis_http_client,
 )
 from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAdapter
+from auto_stock_trading.adapters.database.live_signal_store import (
+    PostgresLiveSignalStore,
+    StoredSignal,
+)
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
 )
@@ -29,9 +33,11 @@ from auto_stock_trading.application.trading.planning import (
     OrderPlanner,
     PlanInput,
 )
+from auto_stock_trading.application.trading.signals import STRATEGY_NAME
 from auto_stock_trading.domain.orders.models import AutomationState, OrderSide
 from auto_stock_trading.domain.risk.engine import SignalCandidate
 from auto_stock_trading.domain.risk.limits import seoul_trading_date
+from auto_stock_trading.domain.strategies.live_signal import signal_candidates
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.kis_credentials import (
     load_kis_account,
@@ -58,6 +64,9 @@ class MissingAccountSource:
 
 _STRATEGY_NAME: Final = "ma-rsi"
 _STRATEGY_VERSION: Final = "1"
+# 기본 전략 신원. 신호로 계획할 때는 신호가 가진 신원을 그대로 쓴다(계보가 갈라지면 안 된다).
+_MA_RSI_STRATEGY: Final = (_STRATEGY_NAME, _STRATEGY_VERSION)
+_NO_OFFSET: Final = Decimal(0)
 _MANUAL_REASON: Final = "USER_COMMAND"
 _PERCENT: Final = Decimal(100)
 
@@ -69,6 +78,7 @@ class Arguments(argparse.Namespace):
     parameters: str = '{"long_period":20,"rsi_overbought":"70","rsi_period":14,"short_period":5}'
     automation: str | None = None
     account_snapshot: bool = False
+    from_signal: bool = False
     price_offset_pct: str | None = None
 
 
@@ -135,11 +145,69 @@ async def collect_account_snapshot() -> str:
     )
 
 
-async def plan_orders(arguments: Arguments) -> str:
+async def _signal_candidates(
+    settings: Settings,
+) -> tuple[tuple[SignalCandidate, ...], StoredSignal | None]:
+    """저장된 신호와 **방금 조회한 보유**의 차집합으로 후보를 만든다(ADR-0016 결정 4).
+
+    보유를 저장된 스냅샷에서 읽으면 그 사이 체결이 반영되지 않아 이미 보유한 종목을 다시 살 수 있다.
+    그래서 계좌를 새로 조회한다.
+    """
+    database_url = settings.database_url.get_secret_value()
+    signals = PostgresLiveSignalStore.from_url(database_url)
+    accounts = KisAccountAdapter(_http_client(settings), load_kis_account(settings), paper=True)
+    try:
+        latest = await signals.latest_targets(settings.kis_environment.value, STRATEGY_NAME)
+        if latest is None:
+            return (), None
+        observation = await accounts.fetch_balance()
+    finally:
+        await accounts.close()
+        await signals.close()
+    holdings = tuple(
+        position.symbol for position in observation.snapshot.positions if position.quantity > 0
+    )
+    return signal_candidates(latest.targets, holdings), latest
+
+
+def _signal_note(signal: StoredSignal, candidates: int) -> str:
+    return (
+        f"basis_date={signal.basis_date} rebalance_date={signal.rebalance_date} "
+        f"candidates={candidates}"
+    )
+
+
+async def plan_from_signal() -> str:
+    """저장된 신호를 후보로 바꿔 계획한다. 신호를 여기서 계산하지 않는다."""
     settings = Settings()
     if settings.kis_environment is not KisEnvironment.PAPER:
         message = "order planning is allowed in the paper environment only"
         raise RuntimeError(message)
+    candidates, signal = await _signal_candidates(settings)
+    if signal is None:
+        return "no_signal"
+    if not candidates:
+        return f"no_candidate basis_date={signal.basis_date} targets={len(signal.targets)}"
+    return await _plan_candidates(
+        settings,
+        candidates,
+        _signal_note(signal, len(candidates)),
+        signal.parameters_json,
+        strategy=(signal.strategy_name, signal.strategy_version),
+    )
+
+
+async def _plan_candidates(  # noqa: PLR0913 — 계획 입력을 그대로 노출한다
+    settings: Settings,
+    candidates: tuple[SignalCandidate, ...],
+    note: str,
+    parameters_json: str,
+    *,
+    price_offset: Decimal = _NO_OFFSET,
+    signal_date: date | None = None,
+    strategy: tuple[str, str] = _MA_RSI_STRATEGY,
+) -> str:
+    """후보를 받아 계획한다. 후보를 어디서 얻었는지는 호출자가 정한다."""
     database_url = settings.database_url.get_secret_value()
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     market_data = PostgresMarketDataRepository.from_url(database_url)
@@ -164,20 +232,12 @@ async def plan_orders(arguments: Arguments) -> str:
     now = datetime.now(UTC)
     request = PlanInput(
         environment=settings.kis_environment.value,
-        strategy_name=_STRATEGY_NAME,
-        strategy_version=_STRATEGY_VERSION,
-        parameters_json=arguments.parameters,
-        signal_date=(
-            date.fromisoformat(arguments.signal_date)
-            if arguments.signal_date is not None
-            else seoul_trading_date(now)
-        ),
-        candidates=(SignalCandidate(arguments.symbol, OrderSide(arguments.side)),),
-        price_offset=(
-            Decimal(0)
-            if arguments.price_offset_pct is None
-            else Decimal(arguments.price_offset_pct) / _PERCENT
-        ),
+        strategy_name=strategy[0],
+        strategy_version=strategy[1],
+        parameters_json=parameters_json,
+        signal_date=signal_date if signal_date is not None else seoul_trading_date(now),
+        candidates=candidates,
+        price_offset=price_offset,
     )
     try:
         plan = await planner.plan(request, now)
@@ -189,7 +249,7 @@ async def plan_orders(arguments: Arguments) -> str:
         await sectors.close()
         await store.close()
     if plan.status == "blocked":
-        return f"blocked plan_id={plan.plan_id} block_code={plan.block_code}"
+        return f"blocked plan_id={plan.plan_id} block_code={plan.block_code} {note}".rstrip()
     evaluated = sum(1 for order in plan.orders if order.reject_code is None)
     rejected = tuple(order.reject_code for order in plan.orders if order.reject_code is not None)
     stored = plan.stored_orders if plan.stored_orders is not None else 0
@@ -197,7 +257,28 @@ async def plan_orders(arguments: Arguments) -> str:
     return (
         f"created plan_id={plan.plan_id} stored={stored} evaluated={evaluated} "
         f"duplicates={skipped} rejected={len(rejected)} "
-        f"reasons={','.join(rejected) or '-'} nav={plan.nav_basis}"
+        f"reasons={','.join(rejected) or '-'} nav={plan.nav_basis} {note}"
+    ).rstrip()
+
+
+async def plan_orders(arguments: Arguments) -> str:
+    settings = Settings()
+    if settings.kis_environment is not KisEnvironment.PAPER:
+        message = "order planning is allowed in the paper environment only"
+        raise RuntimeError(message)
+    return await _plan_candidates(
+        settings,
+        (SignalCandidate(arguments.symbol, OrderSide(arguments.side)),),
+        "",
+        arguments.parameters,
+        price_offset=(
+            Decimal(0)
+            if arguments.price_offset_pct is None
+            else Decimal(arguments.price_offset_pct) / _PERCENT
+        ),
+        signal_date=(
+            date.fromisoformat(arguments.signal_date) if arguments.signal_date is not None else None
+        ),
     )
 
 
@@ -212,8 +293,12 @@ def main() -> None:
         choices=tuple(state.value for state in AutomationState),
     )
     _ = parser.add_argument("--account-snapshot", action="store_true")
+    _ = parser.add_argument("--from-signal", action="store_true")
     _ = parser.add_argument("--price-offset-pct")
     arguments = parser.parse_args(namespace=Arguments())
+    if arguments.from_signal:
+        print(anyio.run(plan_from_signal))  # noqa: T201
+        return
     if arguments.account_snapshot:
         print(anyio.run(collect_account_snapshot))  # noqa: T201
         return

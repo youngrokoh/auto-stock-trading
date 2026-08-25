@@ -169,8 +169,8 @@ Taskiq worker ── Valkey
 - [ADR-0012: ML 신호의 전략 경계](decisions/0012-ml-signal-boundary.md)
 - [ADR-0013: 미체결 수량 축소 경계 (부분 취소)](decisions/0013-paper-partial-cancel.md) (승인)
 - [ADR-0014: 주문·위험 이벤트 외부 알림 경계](decisions/0014-outbound-event-notification.md) (승인)
-- [ADR-0015: 자동 스케줄 주문 제출 경계](decisions/0015-scheduled-order-submission.md) (승인, 구현 보류)
-- [ADR-0016: 실주문 신호 원천 경계](decisions/0016-live-signal-source.md) (제안)
+- [ADR-0015: 자동 스케줄 주문 제출 경계](decisions/0015-scheduled-order-submission.md) (승인, 구현 대기)
+- [ADR-0016: 실주문 신호 원천 경계](decisions/0016-live-signal-source.md) (승인)
 
 #### Governance
 

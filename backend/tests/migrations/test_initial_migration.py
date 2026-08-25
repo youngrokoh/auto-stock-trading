@@ -174,6 +174,10 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CREATE INDEX ix_notification_outbox_pending",
         "CREATE TABLE trading.notification_watermark",
         "CONSTRAINT uq_notification_watermark_environment UNIQUE",
+        "CREATE TABLE strategy.live_signal",
+        "CONSTRAINT uq_live_signal_basis UNIQUE",
+        "CREATE TABLE strategy.live_signal_target",
+        "CONSTRAINT uq_live_signal_target_symbol UNIQUE",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql
