@@ -11,6 +11,7 @@ from auto_stock_trading.adapters.database.fundamental_disclosure_reader import (
 from auto_stock_trading.adapters.database.fundamental_statement_reader import (
     PostgresFinancialReportReader,
 )
+from auto_stock_trading.adapters.database.gate_reader import PostgresGateReader
 from auto_stock_trading.adapters.database.market_data_adjustment_reader import (
     PostgresAdjustedPriceReader,
 )
@@ -33,6 +34,7 @@ from auto_stock_trading.adapters.database.trading_store import PostgresTradingSt
 from auto_stock_trading.adapters.health import PostgresHealthProbe, ValkeyHealthProbe
 from auto_stock_trading.api.backtests import create_backtests_router
 from auto_stock_trading.api.fundamentals import create_fundamentals_router
+from auto_stock_trading.api.gate import GateReader, create_gate_router
 from auto_stock_trading.api.health import create_health_router
 from auto_stock_trading.api.market_data import create_market_data_router
 from auto_stock_trading.api.market_data_adjusted import create_market_data_adjusted_router
@@ -57,7 +59,7 @@ from auto_stock_trading.application.trading.startup import (
     AutomationResetStore,
     reset_automation_on_start,
 )
-from auto_stock_trading.settings.runtime import Settings
+from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -82,6 +84,7 @@ class ClosableAutomationReset(AutomationResetStore, Protocol):
 
 
 AutomationResetFactory = Callable[[], ClosableAutomationReset]
+GateReaderFactory = Callable[[], GateReader]
 
 
 def _resolve[T](factory: Callable[[], T] | None, default: Callable[[], T]) -> T:
@@ -124,6 +127,7 @@ def create_app(  # noqa: PLR0913
     sector_source_factory: SectorSourceFactory | None = None,
     share_class_source_factory: ShareClassSourceFactory | None = None,
     automation_reset_factory: AutomationResetFactory | None = None,
+    gate_reader_factory: GateReaderFactory | None = None,
     clock: Clock | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
@@ -177,6 +181,7 @@ def create_app(  # noqa: PLR0913
         share_class_source_factory,
         lambda: PostgresShareClassStore.from_url(database_url),
     )
+    gate_reader = _resolve(gate_reader_factory, lambda: PostgresGateReader.from_url(database_url))
     automation_reset = _reset_factory(automation_reset_factory, database_url)
 
     @asynccontextmanager
@@ -201,6 +206,7 @@ def create_app(  # noqa: PLR0913
             await trading_reader.close()
             await sector_source.close()
             await share_class_source.close()
+            await gate_reader.close()
 
     app = FastAPI(
         title="Auto Stock Trading API",
@@ -234,6 +240,14 @@ def create_app(  # noqa: PLR0913
         )
     )
     app.include_router(create_backtests_router(backtest_reader))
+    app.include_router(
+        create_gate_router(
+            gate_reader,
+            runtime_settings.kis_environment.value,
+            live_enabled=runtime_settings.kis_environment is not KisEnvironment.PAPER,
+            **({"clock": clock} if clock is not None else {}),
+        )
+    )
     app.include_router(
         create_trading_router(
             trading_reader,

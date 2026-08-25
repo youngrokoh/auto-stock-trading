@@ -245,3 +245,23 @@ test("구성요소 갤러리가 승인된 프리미티브 상태를 표시한다
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);
 });
+
+test("실전 전환 게이트가 조건과 판정 불가를 구분해 보여준다", async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto("/gate");
+
+  await expect(page.getByRole("heading", { name: "실전 전환 게이트" })).toBeVisible();
+  await expect(page.getByText("실전 비활성")).toBeVisible();
+  // 판정 불가를 통과로 보이게 하지 않는다는 것이 이 화면의 요지다.
+  await expect(page.getByText("판정 불가는 통과가 아닙니다")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /전환 조건/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /최초 실전 한도/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /이중 확인/ })).toBeVisible();
+  // 한도는 정책 숫자를 그대로 보여준다. 빈 DB에서도 나온다.
+  await expect(page.getByText("총 투자 비중")).toBeVisible();
+  await expect(page.getByText("완화 불가")).toBeVisible();
+
+  await expectNoSecretsAndNoOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});

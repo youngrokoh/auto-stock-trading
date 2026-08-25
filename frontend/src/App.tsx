@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 
 import { Analysis } from "./pages/analysis";
 import { Etf } from "./pages/etf";
+import { Gate } from "./pages/gate";
 import { Market } from "./pages/market";
 import { Overview } from "./pages/overview";
 import { Showcase } from "./pages/showcase";
@@ -25,6 +26,9 @@ const screenFor = (pathname: string) => {
   }
   if (pathname === "/strategy") {
     return <Strategy />;
+  }
+  if (pathname === "/gate") {
+    return <Gate />;
   }
   if (pathname === "/trading") {
     return <Trading />;
