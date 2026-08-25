@@ -68,6 +68,10 @@ _WARNING_AUTOMATION_STATES: Final = frozenset(
     {AutomationState.PAUSED.value, AutomationState.EMERGENCY_STOP.value}
 )
 _BLOCKED: Final = "blocked"
+# 상태가 바뀌지 않아도 알리는 주문 사유(ADR-0019 결정 2). **좁게 지정한다** — 요청 이벤트를 전부
+# 알리면 사람이 방금 한 행동이 푸시로 되돌아오고 실제 소식이 그 사이에 묻힌다. 새 실패 코드가 생기면
+# 하나씩 더한다.
+_NOTIFIABLE_ORDER_REASONS: Final = frozenset({"cancel_failed"})
 
 
 class EventSource(StrEnum):
@@ -124,6 +128,8 @@ class NotificationMessage:
 def is_notifiable(candidate: NotificationCandidate) -> bool:
     """사람이 행동할 수 있는 이벤트인지 판정한다."""
     if candidate.source is EventSource.ORDER_EVENT:
+        if candidate.reason_code in _NOTIFIABLE_ORDER_REASONS:
+            return True
         return candidate.previous_state != candidate.state
     if candidate.source is EventSource.AUTOMATION_EVENT:
         return candidate.event_type in _NOTIFIABLE_AUTOMATION_TYPES
@@ -149,6 +155,9 @@ def _kind(candidate: NotificationCandidate) -> NotificationKind:
 
 def _severity(candidate: NotificationCandidate, kind: NotificationKind) -> NotificationSeverity:
     if kind is NotificationKind.RISK_BLOCK:
+        return NotificationSeverity.WARNING
+    if candidate.reason_code in _NOTIFIABLE_ORDER_REASONS:
+        # 노출을 줄이려 했는데 줄지 않았다. 상태 전이 알림과 같은 정보로 두면 묻힌다.
         return NotificationSeverity.WARNING
     if candidate.event_type in _WARNING_AUTOMATION_TYPES:
         return NotificationSeverity.WARNING

@@ -389,13 +389,37 @@ class OrderSubmitter:
                 problems.append((order.broker_order_id or order.client_order_id, outcome.problem))
         return tuple(expired), tuple(problems)
 
+    async def _warn_unobservable(
+        self,
+        environment: str,
+        broker_order_id: str,
+        now: datetime,
+    ) -> None:
+        """확인을 받을 수 없다는 사실을 **요청 전에** 남긴다(ADR-0019 결정 3).
+
+        요청 뒤에 기록하면 그 사이에 프로세스가 죽었을 때 아무 기록도 남지 않는다.
+        기록 없는 요청보다 요청 없는 기록이 안전하다.
+        """
+        if await self.listener.attached(environment, now):
+            return
+        await self.store.record_reconcile_problem(
+            environment,
+            broker_order_id,
+            ReconcileProblem.CONFIRMATION_UNOBSERVABLE,
+            now,
+        )
+
     async def cancel_open_orders(
         self,
         environment: str,
         now: datetime,
         reason_code: str,
     ) -> CancelSummary:
-        """미체결 주문 취소를 시도한다. 보유 종목은 청산하지 않는다."""
+        """미체결 주문 취소를 시도한다. 보유 종목은 청산하지 않는다.
+
+        리스너가 없어도 **막지 않는다**(ADR-0019 결정 4) — 비상정지는 사람의 마지막 통제 수단이고,
+        리스너가 죽어 있는 것이 바로 비상정지가 필요한 이유일 수 있다. 막는 대신 남긴다.
+        """
         trading_date = now.astimezone(_SEOUL).date()
         orders = await self.store.open_orders(environment, trading_date)
         requested: list[str] = []
@@ -406,6 +430,7 @@ class OrderSubmitter:
             remaining = order.quantity - order.filled_quantity
             if remaining <= 0:
                 continue
+            await self._warn_unobservable(environment, order.broker_order_id, now)
             acknowledgement = await self._cancel_one(
                 environment,
                 CancelRequest(
@@ -446,6 +471,7 @@ class OrderSubmitter:
         위험검사와 리스너 부착은 요구하지 않는다(결정 3) — 노출을 줄이는 동작은 정책 §3·§4의
         어떤 한도도 새로 위반할 수 없고, 통보가 끊긴 상황에서 위험을 줄일 수단을 막으면 안 된다.
         자동매매 상태도 보지 않는다. 비상정지가 리스너 조건 없이 전량 취소하는 것과 같은 논리다.
+        다만 리스너가 없으면 그 확인이 영구히 오지 않으므로 그 사실을 남긴다(ADR-0019 결정 3).
 
         수량은 요청만으로 줄이지 않는다(결정 4·6). 증권사 체결통보가 실제 취소 수량을 실어 올 때
         `apply_notification` 경로가 줄인다 — 취소 요청과 체결이 경합할 수 있기 때문이다.
@@ -470,6 +496,7 @@ class OrderSubmitter:
                 reason_code=refusal,
                 cancel_order_id=None,
             )
+        await self._warn_unobservable(environment, broker_order_id, now)
         acknowledgement = await self._cancel_one(
             environment,
             CancelRequest(

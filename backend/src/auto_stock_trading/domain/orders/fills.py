@@ -30,6 +30,9 @@ class ReconcileProblem(StrEnum):
     DAILY_TOTALS_MISMATCH = "DAILY_TOTALS_MISMATCH"
     # 집계 자체가 없어 대조할 근거가 없다. 어긋난 것과 다른 사건이다.
     DAILY_TOTALS_UNAVAILABLE = "DAILY_TOTALS_UNAVAILABLE"
+    # 리스너가 없는 동안 노출 축소 요청이 나갔다(ADR-0019). 통보는 재생되지 않으므로 그 확인은
+    # 영구히 오지 않는다 — 요청이 실패한 것과 다른 사건이다.
+    CONFIRMATION_UNOBSERVABLE = "CONFIRMATION_UNOBSERVABLE"
 
 
 @dataclass(frozen=True, slots=True)

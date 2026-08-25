@@ -1004,3 +1004,83 @@ def test_an_unavailable_aggregate_never_expires_and_records_a_problem() -> None:
         assert summary.paused is True
 
     anyio.run(scenario)
+
+
+def test_cancelling_without_a_listener_records_that_confirmation_cannot_arrive() -> None:
+    """통보는 재생되지 않는다(ADR-0019 결정 3). 확인을 받을 수 없다는 사실을 요청 전에 남긴다."""
+
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    broker_order_id="0000009931",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker()
+
+        summary = await _submitter(store, broker, listener_attached=False).cancel_open_orders(
+            _ENVIRONMENT,
+            _NOW,
+            "EMERGENCY_STOP",
+        )
+
+        assert store.problems == [("0000009931", ReconcileProblem.CONFIRMATION_UNOBSERVABLE)]
+        # 막지 않는다. 비상정지는 사람의 마지막 통제 수단이다(ADR-0019 결정 4).
+        assert summary.requested == ("a" * 32,)
+        assert len(broker.cancels) == 1
+
+    anyio.run(scenario)
+
+
+def test_cancelling_with_a_listener_records_nothing_extra() -> None:
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    broker_order_id="0000009931",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker()
+
+        _ = await _submitter(store, broker).cancel_open_orders(
+            _ENVIRONMENT,
+            _NOW,
+            "EMERGENCY_STOP",
+        )
+
+        assert store.problems == []
+
+    anyio.run(scenario)
+
+
+def test_reducing_without_a_listener_records_the_same_problem() -> None:
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(
+                _tracked(
+                    state=OrderState.SUBMITTED,
+                    quantity=3,
+                    broker_order_id="0000009931",
+                    broker_org_no="00950",
+                ),
+            )
+        )
+        broker = FakeBroker()
+
+        result = await _submitter(store, broker, listener_attached=False).reduce_open_quantity(
+            _ENVIRONMENT,
+            "0000009931",
+            1,
+            _NOW,
+        )
+
+        assert result.accepted is True
+        assert store.problems == [("0000009931", ReconcileProblem.CONFIRMATION_UNOBSERVABLE)]
+
+    anyio.run(scenario)

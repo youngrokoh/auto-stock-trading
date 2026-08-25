@@ -26,18 +26,23 @@
 | 원천 | 대상 | 알림 종류 |
 |---|---|---|
 | `trading.order_event` | `previous_state != state`인 행 | `order_state` |
+| `trading.order_event` | 사유가 `cancel_failed`인 행(상태 무변화여도) | `order_state` |
 | `trading.automation_event` | `event_type = 'state_change'` | `automation_state` |
 | `trading.automation_event` | `event_type = 'reconcile_problem'` | `reconcile_problem` |
 | `trading.automation_event` | `event_type = 'api_failure'` | `api_failure` |
 | `trading.automation_event` | `event_type = 'attestation'` | `attestation` |
 | `trading.automation_event` | `event_type = 'schedule_blocked'` | `schedule_blocked` |
+| `trading.automation_event` | `event_type = 'reconcile_resolved'` | `reconcile_resolved` |
 | `trading.risk_decision` | 차단 판정(통과하지 않은 행) | `risk_block` |
 
-제외: `listener_state`(부착·해제 반복), 상태가 바뀌지 않는 주문 이벤트(부분 취소 요청·취소 실패 등
-정보성 행), 통과한 위험 판정.
+제외: `listener_state`(부착·해제 반복), 상태가 바뀌지 않는 주문 이벤트(취소 요청·부분 취소 요청·정정 —
+사람이 방금 실행한 행동이라 소식이 아니다), 통과한 위험 판정. **`cancel_failed`는 이 제외의 예외다**
+(ADR-0019 결정 2) — 노출을 줄이려 했는데 줄지 않았다는 사실이므로 사람이 다른 수단을 써야 한다. 예외는
+사유 코드로 좁게 지정하며 "실패는 전부"로 넓히지 않는다.
 
 **심각도**는 두 단계다. `warning`: `reconcile_problem`, `api_failure`, `risk_block`,
-`schedule_blocked`, `automation_state`가 `paused`·`emergency_stop`으로 갈 때. `info`: 나머지.
+`schedule_blocked`, `cancel_failed`, `automation_state`가 `paused`·`emergency_stop`으로 갈 때.
+`info`: 나머지(`reconcile_resolved` 포함 — 해소는 나쁜 소식이 아니다).
 
 `schedule_blocked`는 자동 스케줄 제출이 차단된 사실이다(ADR-0015 결정 6). `listener_state`는 사람이
 있을 때 정상 흐름이라 제외하지만, **그 때문에 자동 제출이 멈춘 사실은 알려야 한다** — 주문이 없는 것과
@@ -179,12 +184,23 @@ uv run python -m auto_stock_trading.worker.notifications --status     # 발신 �
 4. 폴 상한 **초과** 시 요약 대체와 생략 건수 표시. 이날 후보가 정확히 20으로 상한과 같아 "초과"가
    아니었고 요약 경로는 발동하지 않았다. 후보 21건 이상이 필요하다.
 
-## 결정이 필요한 관찰
+## 상태가 바뀌지 않는 주문 이벤트 (ADR-0019로 해소)
 
-상태가 바뀌지 않는 주문 이벤트는 알림에서 빠진다(`is_notifiable`이 `previous_state != state`를
-요구한다). 취소 요청·정정·부분취소 요청이 여기 해당한다. 사람이 CLI로 직접 실행한 행동이라 본인은
-알고 있지만, **부분취소 요청이 확인 알림 없이 끝나면 푸시로는 전혀 보이지 않는다.** 상태 변화만
-알리는 것이 의도인지, 요청 자체도 알려야 하는지는 결정 사항이다.
+`is_notifiable`은 주문 이벤트에 `previous_state != state`를 요구하므로 취소 요청·정정·부분취소 요청은
+알림에서 빠진다. 이것이 의도인지 결정이 필요했고, 실측 후
+[ADR-0019](../decisions/0019-unobservable-confirmation-notification.md)로 확정했다.
+
+**요청은 알리지 않는다** — 사람이 방금 CLI로 실행한 행동은 소식이 아니고, 요청 전부를 알리면 실제
+소식이 그 사이에 묻힌다(실측: 요청 16건 대 알릴 가치가 있는 3건).
+
+두 가지만 예외다.
+
+- `cancel_failed`: 상태가 바뀌지 않아도 알린다. 노출을 줄이려 했는데 줄지 않았다는 사실이며 사람이
+  다른 수단을 써야 한다. 심각도는 경고다. 예외는 `_NOTIFIABLE_ORDER_REASONS`에 **사유 코드로 좁게**
+  지정하며 "실패는 전부"로 넓히지 않는다.
+- `CONFIRMATION_UNOBSERVABLE`: 리스너가 없는 동안 노출 축소 요청이 나가면 그 확인은 재생되지 않아
+  영구히 오지 않는다. 요청 **전에** 재조정 문제로 기록하고 경고로 알린다. 요청은 막지 않는다 —
+  비상정지는 사람의 마지막 통제 수단이고, 리스너가 죽어 있는 것이 바로 그 이유일 수 있다.
 
 ## 완료 조건
 

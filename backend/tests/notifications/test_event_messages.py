@@ -360,3 +360,46 @@ def test_a_resolved_reconciliation_is_notified_as_information() -> None:
     assert message.severity is NotificationSeverity.INFO
     assert message.kind is NotificationKind.RECONCILE_RESOLVED
     assert "HUMAN_RESOLVED" in message.body
+
+
+def _order_event(reason_code: str, *, state: str = "submitted") -> NotificationCandidate:
+    return NotificationCandidate(
+        source=EventSource.ORDER_EVENT,
+        source_id=_ID,
+        occurred_at=_AT,
+        previous_state="submitted",
+        state=state,
+        reason_code=reason_code,
+        symbol="005930",
+        symbol_name="삼성전자",
+        side=OrderSide.BUY,
+        quantity=2,
+        limit_price=Decimal(249_000),
+        broker_order_id="0000008637",
+        event_type=None,
+        rule_code=None,
+    )
+
+
+def test_a_refused_cancel_is_notified_even_though_the_state_did_not_change() -> None:
+    """노출을 줄이려 했는데 줄지 않았다는 사실이다(ADR-0019 결정 2)."""
+    candidate = _order_event("cancel_failed")
+
+    assert is_notifiable(candidate) is True
+    message = build_message(candidate)
+    assert message.severity is NotificationSeverity.WARNING
+    assert "cancel_failed" in message.body
+
+
+def test_a_cancel_request_is_still_not_notified() -> None:
+    """사람이 방금 CLI로 한 행동은 소식이 아니다. 예외는 실패에만 둔다."""
+    assert is_notifiable(_order_event("cancel_requested")) is False
+    assert is_notifiable(_order_event("partial_cancel_requested")) is False
+    assert is_notifiable(_order_event("order_revised")) is False
+
+
+def test_a_state_changing_order_event_stays_information() -> None:
+    """예외가 일반 주문 알림의 심각도를 바꾸지 않는다."""
+    message = build_message(_order_event("FILL_NOTIFICATION", state="filled"))
+
+    assert message.severity is NotificationSeverity.INFO
