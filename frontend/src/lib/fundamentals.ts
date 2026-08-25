@@ -204,3 +204,14 @@ export const parseFinancialReportDetail = (input: unknown): FinancialReportDetai
 export const parseFinancialIndicators = (input: unknown): FinancialIndicators =>
   financialIndicatorsSchema.parse(input);
 export const parseDisclosures = (input: unknown): Disclosures => disclosuresSchema.parse(input);
+
+/** 공시 유형 코드의 표시 이름. 두 화면이 같은 말을 쓰도록 여기 하나만 둔다. */
+const DISCLOSURE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  A: "정기",
+  B: "주요사항",
+  D: "지분",
+  I: "거래소",
+};
+
+export const disclosureTypeLabel = (disclosureType: string): string =>
+  DISCLOSURE_TYPE_LABELS[disclosureType] ?? disclosureType;

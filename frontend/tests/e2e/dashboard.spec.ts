@@ -76,6 +76,9 @@ test("시장 데이터 화면이 실데이터 시세·차트·표를 제공한�
     await expect(page.getByText("시세 확인 전")).toBeVisible();
   }
 
+  // 1c(종목 상세)를 대신하는 화면이므로 공시까지 한 화면에서 확인된다.
+  await expect(page.getByRole("heading", { name: /공시/ })).toBeVisible();
+
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);
 });

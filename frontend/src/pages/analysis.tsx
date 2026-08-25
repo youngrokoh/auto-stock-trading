@@ -27,6 +27,7 @@ import type {
   ShareClassEntry,
   ValuationItem,
 } from "../lib/fundamentals";
+import { disclosureTypeLabel } from "../lib/fundamentals";
 
 type FsDiv = "CFS" | "OFS";
 
@@ -49,13 +50,6 @@ const CATEGORY_LABEL: Readonly<Record<FinancialIndicator["category"], string>> =
   growth: "성장성",
   profitability: "수익성",
   stability: "안정성",
-};
-
-const DISCLOSURE_TYPE_LABEL: Readonly<Record<string, string>> = {
-  A: "정기",
-  B: "주요사항",
-  D: "지분",
-  I: "거래소",
 };
 
 const netTone = (value: number): string | undefined => {
@@ -744,7 +738,7 @@ export const Analysis = () => {
                     {disclosureItems.map((entry) => (
                       <li key={entry.rcept_no}>
                         <span className="disclosure-list__meta">
-                          {entry.rcept_dt} · {DISCLOSURE_TYPE_LABEL[entry.disclosure_type]} ·{" "}
+                          {entry.rcept_dt} · {disclosureTypeLabel(entry.disclosure_type)} ·{" "}
                           {entry.flr_nm}
                         </span>
                         <a

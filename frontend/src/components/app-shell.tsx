@@ -26,7 +26,6 @@ type NavEntry = Readonly<{
   icon: LucideIcon;
   key?: ScreenKey;
   label: string;
-  note?: string;
 }>;
 
 const primaryNav: readonly NavEntry[] = [
@@ -38,10 +37,6 @@ const primaryNav: readonly NavEntry[] = [
   { href: "/trading", icon: ScrollText, key: "trading", label: "모의매매 콘솔" },
   { href: "/gate", icon: ShieldCheck, key: "gate", label: "실전 전환 게이트" },
   { href: "/settings", icon: SlidersHorizontal, key: "settings", label: "설정과 감사" },
-] as const;
-
-const upcomingNav: readonly NavEntry[] = [
-  { icon: CandlestickChart, label: "종목 상세", note: "이후" },
 ] as const;
 
 const tabNav: readonly NavEntry[] = [
@@ -89,13 +84,6 @@ export const AppShell = ({ active, children, headerMeta, title }: AppShellProps)
         >
           {entry.label}
         </a>
-      ))}
-      <span className="nav__label">준비 중 단계</span>
-      {upcomingNav.map((entry) => (
-        <span aria-disabled="true" className="nav__item" key={entry.label}>
-          {entry.label}
-          <small>{entry.note}</small>
-        </span>
       ))}
       <div className="nav__footer">
         <ShieldCheck aria-hidden="true" size={12} strokeWidth={1.8} /> 실전 주문 비활성

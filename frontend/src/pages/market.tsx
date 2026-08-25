@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-
+import { fetchDisclosures } from "../api/fundamentals";
 import {
   fetchCorporateActions,
   fetchDailyBars,
@@ -21,6 +21,7 @@ import {
   formatSignedPercent,
   marketDirection,
 } from "../lib/format";
+import { disclosureTypeLabel } from "../lib/fundamentals";
 import type { DailyBar } from "../lib/market-data";
 
 const RANGES = [
@@ -32,6 +33,7 @@ const RANGES = [
 
 type RangeKey = (typeof RANGES)[number]["key"];
 
+const DISCLOSURE_ROWS = 8;
 const OHLCV_ROWS = 12;
 
 const actionTypeLabel: Readonly<Record<string, string>> = {
@@ -90,7 +92,15 @@ export const Market = () => {
     retry: false,
   });
 
+  const disclosuresQuery = useQuery({
+    enabled: activeSymbol !== null,
+    queryFn: () => fetchDisclosures(activeSymbol ?? "", DISCLOSURE_ROWS),
+    queryKey: ["disclosures", activeSymbol, DISCLOSURE_ROWS],
+    retry: false,
+  });
+
   const quote = quoteQuery.data;
+  const disclosureItems = disclosuresQuery.data?.disclosures ?? [];
   const bars = barsQuery.data?.bars ?? [];
   const chartBars = bars.map(toChartBar);
   const recentBars = bars.slice(-OHLCV_ROWS).reverse();
@@ -385,6 +395,47 @@ export const Market = () => {
               <div className="card__body">
                 투자자별 수급은 기업 분석 화면에서 제공합니다. 전략 신호는 아직 만들지 않았으며
                 6단계에서 제공됩니다.
+              </div>
+            </section>
+
+            <section className={disclosureItems.length === 0 ? "card card--empty" : "card"}>
+              <div className="card__head">
+                <h2>
+                  <span className="card__coord">D4</span> 공시
+                </h2>
+                {disclosureItems.length > 0 && (
+                  <StatusBadge kind="neutral" label={`최근 ${String(disclosureItems.length)}건`} />
+                )}
+              </div>
+              <div className="card__body">
+                {disclosureItems.length === 0 ? (
+                  disclosuresQuery.isError ? (
+                    "공시 목록을 불러오지 못했습니다."
+                  ) : (
+                    "수집된 공시가 없습니다."
+                  )
+                ) : (
+                  <ul className="disclosure-list">
+                    {disclosureItems.map((entry) => (
+                      <li key={entry.rcept_no}>
+                        <span className="disclosure-list__meta">
+                          {entry.rcept_dt} · {disclosureTypeLabel(entry.disclosure_type)} ·{" "}
+                          {entry.flr_nm}
+                        </span>
+                        <a
+                          href={`https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${entry.rcept_no}`}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          {entry.report_nm}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="card__note">
+                출처 DART 최근 1년 목록 · 제목을 누르면 DART 원문으로 이동합니다
               </div>
             </section>
           </div>
