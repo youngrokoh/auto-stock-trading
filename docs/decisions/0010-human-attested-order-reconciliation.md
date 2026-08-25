@@ -7,6 +7,8 @@
 - 관련 정책: [거래 안전 정책](../spec/trading-safety-policy.md), [모의투자·실전투자 전환 게이트](../spec/paper-to-live-gate.md)
 - 관련 계약: [주문 제출·체결 동기화 계약](../data/order-submission-contract.md), [실시간 체결통보 계약](../data/realtime-fill-notification-contract.md)
 
+- 개정: 2026-08-25 사용자 승인으로 허용 목표 상태에 `expired`를 더했다([ADR-0017](0017-post-close-reconciliation-and-session-end.md)이 그 상태를 만들었다). 장이 끝나 체결되지 않은 주문을 `canceled`로 적으면 우리가 취소했다고 적는 것이므로 사실이 아니다. 전량 체결 수량으로 만료를 주장하면 `QUANTITY_NOT_PARTIAL`로 거부한다. **리스너 커버 제한은 그대로다** — 이 확장은 리스너가 존재하기 전에 제출된 주문에만 적용된다
+
 ## 배경
 
 2026-08-19 마감 후 확인에서 일별주문체결조회(`VTTC8001R`)가 **모의환경에서는 시각·파라미터와

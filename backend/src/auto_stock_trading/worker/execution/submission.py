@@ -337,6 +337,7 @@ def main() -> None:
             OrderState.FILLED.value,
             OrderState.PARTIALLY_FILLED.value,
             OrderState.CANCELED.value,
+            OrderState.EXPIRED.value,
         ),
     )
     _ = parser.add_argument("--quantity", type=int)

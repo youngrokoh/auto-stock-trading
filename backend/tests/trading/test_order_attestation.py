@@ -198,3 +198,40 @@ def test_partially_filled_cannot_be_attested_as_rejected() -> None:
 
     assert isinstance(outcome, AttestationRejection)
     assert outcome.reason.value == "STATE_NOT_ALLOWED"
+
+
+def test_session_end_expiry_can_be_attested() -> None:
+    """장이 끝나 체결되지 않은 주문을 사실대로 적는다(ADR-0017 승인 뒤 ADR-0010 확장).
+
+    `canceled`로 적으면 우리가 취소했다고 적는 것이므로 사실이 아니다.
+    """
+    outcome = attest_order(
+        _order(quantity=1, filled_quantity=0),
+        _request(state=OrderState.EXPIRED, quantity=0, price=None),
+    )
+
+    assert not isinstance(outcome, AttestationRejection)
+    assert outcome.state is OrderState.EXPIRED
+    assert outcome.filled_quantity == 0
+
+
+def test_expiry_after_a_partial_fill_keeps_the_filled_quantity() -> None:
+    outcome = attest_order(
+        _order(quantity=4, filled_quantity=1, state=OrderState.PARTIALLY_FILLED),
+        _request(state=OrderState.EXPIRED, quantity=1, price=Decimal(248750)),
+    )
+
+    assert not isinstance(outcome, AttestationRejection)
+    assert outcome.state is OrderState.EXPIRED
+    assert outcome.filled_quantity == 1
+
+
+def test_a_fully_filled_quantity_cannot_be_attested_as_expired() -> None:
+    """전량이 체결됐다면 만료가 아니다. 모순된 조합을 받아들이지 않는다."""
+    outcome = attest_order(
+        _order(quantity=2, filled_quantity=0),
+        _request(state=OrderState.EXPIRED, quantity=2, price=Decimal(249000)),
+    )
+
+    assert isinstance(outcome, AttestationRejection)
+    assert outcome.reason.value == "QUANTITY_NOT_PARTIAL"

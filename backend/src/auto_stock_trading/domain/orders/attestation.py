@@ -20,8 +20,15 @@ if TYPE_CHECKING:
 
 _OPEN_STATES: Final = frozenset({OrderState.SUBMITTED, OrderState.PARTIALLY_FILLED})
 # ADR-0010 결정 2의 허용 목표 상태. 거절은 제출 응답으로 이미 기록되므로 제외한다.
+# `expired`는 ADR-0017이 상태를 만든 뒤 더했다 — 장이 끝나 체결되지 않은 주문을 `canceled`로 적으면
+# 우리가 취소했다고 적는 것이므로 사실이 아니다. 사람 확인 경로도 사실대로 적을 수 있어야 한다.
 _ALLOWED_STATES: Final = frozenset(
-    {OrderState.FILLED, OrderState.PARTIALLY_FILLED, OrderState.CANCELED}
+    {
+        OrderState.FILLED,
+        OrderState.PARTIALLY_FILLED,
+        OrderState.CANCELED,
+        OrderState.EXPIRED,
+    }
 )
 
 
@@ -70,6 +77,19 @@ class AttestationRejection:
     reason: AttestationReason
 
 
+def _not_partial(order: OrderSnapshot, request: AttestationRequest) -> bool:
+    """전량이 아닌 상태의 수량 규칙. 부분체결은 0 초과, 만료는 전량 미달이어야 한다.
+
+    전량이 체결됐다면 만료가 아니다 — 모순된 조합을 사실로 받아들이지 않는다.
+    """
+    quantity = request.filled_quantity
+    if request.state is OrderState.PARTIALLY_FILLED:
+        return not 0 < quantity < order.quantity
+    if request.state is OrderState.EXPIRED:
+        return quantity >= order.quantity
+    return False
+
+
 def _quantity_reason(
     order: OrderSnapshot,
     request: AttestationRequest,
@@ -81,7 +101,7 @@ def _quantity_reason(
         return AttestationReason.QUANTITY_DECREASED
     if request.state is OrderState.FILLED and quantity != order.quantity:
         return AttestationReason.QUANTITY_NOT_COMPLETE
-    if request.state is OrderState.PARTIALLY_FILLED and not 0 < quantity < order.quantity:
+    if _not_partial(order, request):
         return AttestationReason.QUANTITY_NOT_PARTIAL
     price = request.average_fill_price
     if quantity > 0 and (price is None or price <= 0):
