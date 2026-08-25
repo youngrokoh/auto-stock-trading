@@ -215,5 +215,7 @@ ADR-0011은 정정에 전수 위험검사를 요구했다. 그 이유는 정정�
 | 5. 취소 주문번호는 이벤트에만 | `partial_cancel_requested` 이벤트 detail(`cancel_order_id=`), `broker_order_id` 유지 |
 | 7. 거절·전송 실패 fail-closed | `partial_cancel_failed` 이벤트 / `record_api_failure("order_cancel:...")` |
 
-대상 선택은 `--broker-order-id`다(정정 CLI와 같은 식별자). 실제 장중 검증은 다음 세션으로 남아 있다 —
-[7단계 QA](../qa/phase-7-order-planning-verification.md) §부분 취소 실측 참조.
+대상 선택은 `--broker-order-id`다(정정 CLI와 같은 식별자). **장중 검증을 2026-08-25에 마쳤다** —
+한온시스템 152주 중 50주 취소 후 잔여 102주 확인, 원주문번호 유지, 잔여 초과 거부, 그리고 비상정지가
+잔여 102주를 정확히 취소(§선행 조건 결함의 회귀 확인). 상세는
+[7단계 QA](../qa/phase-7-order-planning-verification.md) §부분 취소 장중 실측에 있다.

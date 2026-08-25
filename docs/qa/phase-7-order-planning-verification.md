@@ -486,7 +486,47 @@ uv run python -m auto_stock_trading.worker.execution.planning --automation runni
 - 매도 검증 주문의 수량·금액(계획기 산출값을 실행 전에 보고한다)
 - 3단계의 미체결 유도 주문을 낼지 여부
 
-## 지정가 정정 검증 계획 (다음 거래일)
+## 지정가 정정 장중 실측 (2026-08-25, 완료)
+
+[ADR-0011](../decisions/0011-paper-order-revision.md)의 지정가 정정을 실제 모의계좌에서 검증했다.
+아래 §절차 그대로 수행했고 §확인 항목을 모두 충족했다.
+
+| 항목 | 기대 | 실측 |
+|---|---|---|
+| CLI 출력 | `revised price=... decisions=...` | `revised price=249000 decisions=9` |
+| `order.broker_order_id` | 새 번호로 갱신 | `0000009924` → **`0000009999`** |
+| `limit_price` | 새 지정가 | 246,000 → **249,000** |
+| `revision_count` | `1` | `1` |
+| `quantity` | 변하지 않음 | 2 유지 |
+| `order_event` | `order_revised`, `previous_broker_order_id` 포함 | `attempt=2 price=249000 previous_broker_order_id=0000009924 broker_order_id=0000009999 msg_cd=40620000` |
+| `risk_decision` | `attempt=1`(계획)·`attempt=2`(정정) 공존 | 각 9규칙 전수 통과 |
+| **정정 후 체결 통보** | **새 주문번호로 대조되어 상태 전이** | `submitted → partially_filled → filled` (2주 전량) |
+| 한도 초과 정정(+2%) | 증권사 호출 없이 규칙 코드로 거절 | `refused reason=RISK_ORDER_PRICE_BAND decisions=0` |
+| 리스너 미부착 정정 | 증권사 호출 없이 거절 | `refused reason=LISTENER_NOT_ATTACHED decisions=0` |
+
+**핵심은 정정 후 체결이다.** 증권사가 준 새 주문번호로 내부 식별자를 갱신하지 않으면 이후 체결 통보가
+영원히 대조되지 않는다. 이번 실측에서 정정한 주문이 새 번호로 체결 통보를 받아 `filled`까지 전이했다.
+
+### 운영 순서 실수 (기록)
+
+리스너 미부착 테스트를 **정리 전에** 수행해, 그 뒤 비상정지가 보낸 취소의 확인 통보를 받을 리스너가
+없었다. 증권사는 취소를 접수했지만(`cancel_requested=1`, 실패 0) 내부 주문 하나(`0000009931`,
+삼성전자 1주)가 `submitted`로 남았다.
+
+**설계된 동작이며 결함이 아니다** — 통보는 재전송되지 않고(ADR-0009 결정 3), 그 공백을 메우는 것이
+마감 후 일별주문체결 재대조다. 다만 장중에는 그 조회가 빈 `output1`을 주므로 즉시 해소할 수 없다.
+
+해소 방법(마감 15:40 KST 이후):
+
+```bash
+cd backend
+uv run python -m auto_stock_trading.worker.execution.submission --sync
+```
+
+**다음부터는 정리(비상정지·상태 복귀)를 마친 뒤에 리스너 미부착 항목을 확인한다.** 미부착 테스트는
+증권사 호출이 없는 거절 확인이므로 순서를 바꿔도 검증 가치가 같다.
+
+## 지정가 정정 검증 계획 (참고, 완료됨)
 
 [ADR-0011](../decisions/0011-paper-order-revision.md)의 지정가 정정은 구현·자동검증이 끝났고
 실환경 검증만 남았다. 사용자 결정으로 **다음 거래일 장중**에 수행한다.
@@ -663,7 +703,44 @@ ADR-0013 승인 후 **부분 취소 구현보다 먼저** 고쳤다: 취소 확�
 - 주문당 상한(NAV 5%)이 수량을 정하므로, 부분 취소를 시험하려면 **가격이 낮은 종목**이 필요하다.
   삼성전자(281,500원)는 1주뿐이라 부분 취소를 만들 수 없다.
 
-## 부분 취소 장중 검증 계획 (다음 거래일)
+## 부분 취소 장중 실측 (2026-08-25, 완료)
+
+승인된 부분 취소 경로(ADR-0013)를 실제 모의계좌에서 검증했다. 리스너를 먼저 붙이고 자동매매를
+`running`으로 올린 뒤 진행했다.
+
+| 단계 | 결과 |
+|---|---|
+| 한온시스템 `018880` 미체결 유도(기준가 −3%) | 152주 @ 3,290 2건 접수 (`0000007832`, `0000007834`) |
+| `0000007832`에 50주 부분 취소 | `cancel_order_id=0000008172`, 수량 152 → **102**, 상태 `submitted` 유지 |
+| 원주문번호 | **갱신되지 않음** — `broker_order_id`는 `0000007832` 그대로 |
+| 체결통보 | `quantity=50`, `RCTF_CLS=2`, `ACPT_YN=2`, `OODER_NO=0000007832` |
+| 잔여 초과 요청(103주) | **거부** `QUANTITY_EXCEEDS_OUTSTANDING` — 증권사 호출 없음 |
+| 없는 주문번호 요청 | **거부** `ORDER_NOT_FOUND` |
+| **비상정지(회귀 확인)** | `cancel_requested=2` — 부분 취소된 주문의 **잔여 102주까지 취소**, 통보 수량도 102 |
+| 정리 | 미체결 0건, 자동매매 `disabled`, 리스너 중지 |
+
+**회귀 확인이 이번 실측의 핵심이다.** 2026-08-24에는 부분 취소가 주문 전체를 `canceled`로 만들어
+비상정지가 그 주문을 건너뛰었고 증권사에 9주가 남았다. 이번에는 통보된 수량만 반영돼 잔여가 남았고,
+비상정지가 그 잔여를 정확히 취소했다.
+
+### 이 측정이 드러낸 결함 (수정 완료)
+
+수량 축소 이벤트의 detail이 `quantity 102 -> 102`로 남아 **변경 전 값이 사라졌다.**
+`reduce_order_quantity`가 `UPDATE` **뒤에** `current.quantity`를 읽어 SQLAlchemy가 갱신된 값을
+돌려줬기 때문이다. 감사 기록은 바뀐 값을 보여야 성립하므로 변경 전 수량을 먼저 붙잡도록 고치고
+통합 테스트로 고정했다(`quantity 4 -> 3`).
+
+주문 이벤트 이력(실측):
+
+```text
+planned
+planned   -> submitted           40600000
+submitted -> submitted           partial_cancel_requested  quantity=50 outstanding=152 cancel_order_id=0000008172
+submitted -> submitted           FILL_NOTIFICATION         quantity 152 -> 102   (수정 전에는 102 -> 102)
+submitted -> canceled            FILL_NOTIFICATION
+```
+
+## 부분 취소 장중 검증 계획 (참고, 완료됨)
 
 구현은 끝났고 실측만 남았다. 09:05-15:15 KST 안에서 실행한다.
 
@@ -778,7 +855,5 @@ uv run python -m auto_stock_trading.worker.notifications --dispatch
 
 ## 남은 범위
 
-- 지정가 정정의 장중 검증(위 "지정가 정정 검증 계획" 절, 다음 거래일)
-- 부분 취소의 장중 검증(위 절, 다음 거래일)
 - 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
 - 외부 알림의 실제 전송 실측과 콘솔 배너 브라우저 QA(위 절, 봇 토큰 확보 후)

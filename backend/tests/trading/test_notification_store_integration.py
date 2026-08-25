@@ -254,6 +254,7 @@ def test_a_partial_cancel_notification_reduces_the_stored_quantity_without_a_tra
                         OrderEventRow.previous_state,
                         OrderEventRow.state,
                         OrderEventRow.reason_code,
+                        OrderEventRow.detail,
                     )
                     .where(OrderEventRow.order_id == order_id)
                     .order_by(OrderEventRow.sequence)
@@ -262,10 +263,13 @@ def test_a_partial_cancel_notification_reduces_the_stored_quantity_without_a_tra
             .tuples()
             .all()
         )
-        previous, state, reason = events[-1]
+        previous, state, reason, detail = events[-1]
         assert previous == OrderState.SUBMITTED.value
         assert state == OrderState.SUBMITTED.value
         assert reason is not None
+        # 감사 기록은 바뀐 값을 보여야 한다. 2026-08-25 장중 실측에서 `102 -> 102`로 남아
+        # 변경 전 수량이 사라졌다 — UPDATE 뒤에 읽으면 이미 갱신된 값이 나온다.
+        assert detail == "quantity 4 -> 3"
 
     anyio.run(_run_scenario, scenario)
 

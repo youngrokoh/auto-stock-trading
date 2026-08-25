@@ -156,6 +156,9 @@ async def reduce_order_quantity(
     """
     current = await lock_order(session, order_id)
     state = OrderState(current.state)
+    # UPDATE 뒤에 읽으면 SQLAlchemy가 갱신된 값을 돌려줘 감사 기록이 `102 -> 102`가 된다.
+    # 바뀐 값을 보여야 감사가 성립하므로 변경 전 수량을 먼저 붙잡는다(2026-08-25 장중 실측).
+    previous_quantity = current.quantity
     _ = await session.execute(
         update(OrderRow)
         .where(OrderRow.id == order_id)
@@ -169,7 +172,7 @@ async def reduce_order_quantity(
             previous_state=state.value,
             state=state.value,
             reason_code=reason_code,
-            detail=f"quantity {current.quantity} -> {quantity}",
+            detail=f"quantity {previous_quantity} -> {quantity}",
             occurred_at=occurred_at,
         )
     )
