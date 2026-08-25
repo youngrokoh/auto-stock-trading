@@ -301,3 +301,32 @@ def test_a_broker_order_id_is_not_mistaken_for_an_account_reference() -> None:
 
     assert message.rejected_reason is None
     assert "0000117057" in message.body
+
+
+def test_a_scheduled_block_is_a_notifiable_warning() -> None:
+    """ADR-0015 결정 6: 사람이 없는 경로에서 조용한 실패가 가장 위험하다.
+
+    `listener_state`는 알림에서 제외하지만(사람이 있을 때는 정상 흐름), 예약 제출이 그 때문에
+    차단된 사실은 알려야 한다 — '아무 주문도 나가지 않은 것'과 구분되지 않으면 감시가 무의미하다.
+    """
+    candidate = NotificationCandidate(
+        source=EventSource.AUTOMATION_EVENT,
+        source_id=_ID,
+        occurred_at=_AT,
+        previous_state=None,
+        state=None,
+        reason_code="LISTENER_NOT_ATTACHED",
+        symbol=None,
+        symbol_name=None,
+        side=None,
+        quantity=None,
+        limit_price=None,
+        broker_order_id=None,
+        event_type="schedule_blocked",
+        rule_code=None,
+    )
+
+    assert is_notifiable(candidate) is True
+    message = build_message(candidate)
+    assert message.severity is NotificationSeverity.WARNING
+    assert "LISTENER_NOT_ATTACHED" in message.body

@@ -35,6 +35,7 @@ from auto_stock_trading.application.trading.revision import OrderReviser, Revisi
 from auto_stock_trading.application.trading.submission import (
     OrderSubmitter,
     SubmissionInput,
+    SubmissionResult,
 )
 from auto_stock_trading.domain.orders.models import AutomationState, OrderState
 from auto_stock_trading.domain.risk.limits import seoul_trading_date
@@ -133,18 +134,22 @@ def _collaborators(settings: Settings) -> _Collaborators:
     )
 
 
-async def submit_orders(arguments: Arguments) -> str:
+async def submit_plan(plan_id: str | None) -> SubmissionResult:
+    """계획 하나를 제출하고 **결과 객체**를 돌려준다. 예약 작업이 문자열을 파싱하지 않게 한다."""
     settings = _paper_settings()
     collaborators = _collaborators(settings)
-    submitter = collaborators.submitter
     request = SubmissionInput(
         environment=settings.kis_environment.value,
-        plan_id=None if arguments.plan_id is None else UUID(arguments.plan_id),
+        plan_id=None if plan_id is None else UUID(plan_id),
     )
     try:
-        result = await submitter.submit(request, datetime.now(UTC))
+        return await collaborators.submitter.submit(request, datetime.now(UTC))
     finally:
         await collaborators.close()
+
+
+async def submit_orders(arguments: Arguments) -> str:
+    result = await submit_plan(arguments.plan_id)
     if result.block_code is not None:
         return f"blocked block_code={result.block_code} submitted=0"
     rejected = ",".join(f"{order}:{code}" for order, code in result.rejected)

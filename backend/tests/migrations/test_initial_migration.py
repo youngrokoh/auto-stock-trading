@@ -178,6 +178,7 @@ def test_initial_migration_renders_reproducible_postgres_sql(
         "CONSTRAINT uq_live_signal_basis UNIQUE",
         "CREATE TABLE strategy.live_signal_target",
         "CONSTRAINT uq_live_signal_target_symbol UNIQUE",
+        "'schedule_blocked'",
     )
     for snippet in expected_snippets:
         assert snippet in migration_sql

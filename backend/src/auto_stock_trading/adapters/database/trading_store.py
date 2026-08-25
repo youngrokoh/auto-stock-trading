@@ -71,6 +71,7 @@ _SOURCE: Final = "KIS"
 _OPERATION: Final = "account_balance"
 _STATE_CHANGE: Final = "state_change"
 _API_FAILURE: Final = "api_failure"
+_SCHEDULE_BLOCKED: Final = "schedule_blocked"
 _RECONCILE_PROBLEM: Final = "reconcile_problem"
 _FILL_SYNC: Final = "FILL_SYNC"
 _FIRST_ATTEMPT: Final = 1
@@ -176,6 +177,31 @@ class PostgresTradingStore:
             trading_date=transition.trading_date,
             changed_at=transition.occurred_at,
         )
+
+    async def record_schedule_block(
+        self,
+        environment: str,
+        block_code: str,
+        occurred_at: datetime,
+    ) -> None:
+        """예약 제출이 차단된 사실(ADR-0015 결정 6).
+
+        사람이 없는 경로에서는 차단이 저장되지 않으면 '아무 주문도 없던 날'과 구분되지 않는다.
+        사유는 `reason_code`에 남겨 알림 선별이 그대로 읽는다.
+        """
+        async with self._sessions.begin() as session:
+            session.add(
+                AutomationEventRow(
+                    id=uuid4(),
+                    environment=environment,
+                    event_type=_SCHEDULE_BLOCKED,
+                    previous_state=None,
+                    state=None,
+                    reason_code=block_code[:40],
+                    detail=None,
+                    occurred_at=occurred_at,
+                )
+            )
 
     async def record_api_failure(
         self,

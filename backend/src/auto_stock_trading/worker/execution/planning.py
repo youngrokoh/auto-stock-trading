@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final, final
@@ -46,6 +47,7 @@ from auto_stock_trading.worker.kis_credentials import (
 
 if TYPE_CHECKING:
     from auto_stock_trading.domain.orders.account import AccountSnapshotObservation
+    from auto_stock_trading.domain.orders.records import OrderPlanRecord
 
 
 @final
@@ -177,7 +179,17 @@ def _signal_note(signal: StoredSignal, candidates: int) -> str:
     )
 
 
-async def plan_from_signal() -> str:
+@dataclass(frozen=True, slots=True)
+class SignalPlanOutcome:
+    """신호 기반 계획의 결과. 예약 작업과 CLI가 같은 값을 본다."""
+
+    plan: OrderPlanRecord | None
+    signal: StoredSignal | None
+    candidates: int
+    note: str
+
+
+async def plan_from_signal_record() -> SignalPlanOutcome:
     """저장된 신호를 후보로 바꿔 계획한다. 신호를 여기서 계산하지 않는다."""
     settings = Settings()
     if settings.kis_environment is not KisEnvironment.PAPER:
@@ -185,29 +197,49 @@ async def plan_from_signal() -> str:
         raise RuntimeError(message)
     candidates, signal = await _signal_candidates(settings)
     if signal is None:
-        return "no_signal"
+        return SignalPlanOutcome(plan=None, signal=None, candidates=0, note="no_signal")
     if not candidates:
-        return f"no_candidate basis_date={signal.basis_date} targets={len(signal.targets)}"
-    return await _plan_candidates(
+        return SignalPlanOutcome(
+            plan=None,
+            signal=signal,
+            candidates=0,
+            note=f"no_candidate basis_date={signal.basis_date} targets={len(signal.targets)}",
+        )
+    note = _signal_note(signal, len(candidates))
+    plan = await _plan_candidates(
         settings,
         candidates,
-        _signal_note(signal, len(candidates)),
         signal.parameters_json,
         strategy=(signal.strategy_name, signal.strategy_version),
     )
+    return SignalPlanOutcome(
+        plan=plan,
+        signal=signal,
+        candidates=len(candidates),
+        note=note,
+    )
+
+
+async def plan_from_signal() -> str:
+    outcome = await plan_from_signal_record()
+    if outcome.plan is None:
+        return outcome.note
+    return format_plan(outcome.plan, outcome.note)
 
 
 async def _plan_candidates(  # noqa: PLR0913 — 계획 입력을 그대로 노출한다
     settings: Settings,
     candidates: tuple[SignalCandidate, ...],
-    note: str,
     parameters_json: str,
     *,
     price_offset: Decimal = _NO_OFFSET,
     signal_date: date | None = None,
     strategy: tuple[str, str] = _MA_RSI_STRATEGY,
-) -> str:
-    """후보를 받아 계획한다. 후보를 어디서 얻었는지는 호출자가 정한다."""
+) -> OrderPlanRecord:
+    """후보를 받아 계획한다. 후보를 어디서 얻었는지는 호출자가 정한다.
+
+    문자열이 아니라 기록을 돌려준다 — 예약 작업이 결과를 문자열로 파싱하게 두면 안 된다.
+    """
     database_url = settings.database_url.get_secret_value()
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     market_data = PostgresMarketDataRepository.from_url(database_url)
@@ -248,6 +280,10 @@ async def _plan_candidates(  # noqa: PLR0913 — 계획 입력을 그대로 노�
         await market_data.close()
         await sectors.close()
         await store.close()
+    return plan
+
+
+def format_plan(plan: OrderPlanRecord, note: str) -> str:
     if plan.status == "blocked":
         return f"blocked plan_id={plan.plan_id} block_code={plan.block_code} {note}".rstrip()
     evaluated = sum(1 for order in plan.orders if order.reject_code is None)
@@ -266,10 +302,9 @@ async def plan_orders(arguments: Arguments) -> str:
     if settings.kis_environment is not KisEnvironment.PAPER:
         message = "order planning is allowed in the paper environment only"
         raise RuntimeError(message)
-    return await _plan_candidates(
+    plan = await _plan_candidates(
         settings,
         (SignalCandidate(arguments.symbol, OrderSide(arguments.side)),),
-        "",
         arguments.parameters,
         price_offset=(
             Decimal(0)
@@ -280,6 +315,7 @@ async def plan_orders(arguments: Arguments) -> str:
             date.fromisoformat(arguments.signal_date) if arguments.signal_date is not None else None
         ),
     )
+    return format_plan(plan, "")
 
 
 def main() -> None:

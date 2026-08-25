@@ -1,0 +1,73 @@
+services:
+  # 자동 스케줄 주문 제출(ADR-0015). 기본 Compose에는 없고 이 오버라이드를 명시할 때만 뜬다.
+  #
+  # 두 프로세스로 나눈다(ADR-0006 규칙): scheduler는 예약 메시지만 발행하고 **주문 자격증명을 갖지
+  # 않는다.** 증권사 호출은 worker에서만 일어난다.
+  #
+  # 자동매매를 켜는 것은 사람이다. 이 서비스는 상태를 올리지 않으므로, 사람이 그날 `running`으로
+  # 올리지 않으면 슬롯이 돌아도 `AUTOMATION_NOT_RUNNING`으로 차단되고 그 사실이 기록된다.
+  order-submission-scheduler:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "scheduler",
+        "auto_stock_trading.worker.execution.submission_schedule:scheduler",
+      ]
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      AUTO_STOCK_KIS_ENVIRONMENT: paper
+      AUTO_STOCK_ORDER_SUBMISSION_SCHEDULE_ENABLED: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+  # 예약 메시지를 실제로 수행하는 worker. 여기에만 주문 자격증명이 들어간다.
+  order-submission-worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "worker",
+        "auto_stock_trading.worker.execution.submission_schedule:broker",
+      ]
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      AUTO_STOCK_KIS_ENVIRONMENT: paper
+      AUTO_STOCK_ORDER_SUBMISSION_SCHEDULE_ENABLED: "true"
+      AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_paper_app_key
+      AUTO_STOCK_KIS_APP_SECRET_FILE: /run/secrets/kis_paper_app_secret
+      AUTO_STOCK_KIS_ACCOUNT_NUMBER_FILE: /run/secrets/kis_paper_account_number
+      AUTO_STOCK_KIS_ACCOUNT_PRODUCT_CODE_FILE: /run/secrets/kis_paper_account_product_code
+    secrets:
+      - kis_paper_app_key
+      - kis_paper_app_secret
+      - kis_paper_account_number
+      - kis_paper_account_product_code
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+secrets:
+  kis_paper_app_key:
+    file: ${KIS_PAPER_APP_KEY_FILE:-../.secrets/kis-paper-app-key}
+  kis_paper_app_secret:
+    file: ${KIS_PAPER_APP_SECRET_FILE:-../.secrets/kis-paper-app-secret}
+  kis_paper_account_number:
+    file: ${KIS_PAPER_ACCOUNT_NUMBER_FILE:-../.secrets/kis-paper-account-number}
+  kis_paper_account_product_code:
+    file: ${KIS_PAPER_ACCOUNT_PRODUCT_CODE_FILE:-../.secrets/kis-paper-account-product}

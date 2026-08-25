@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     kis_calendar_schedule_enabled: bool = False
     # 유니버스 수급 일일 예약. 기본은 꺼져 있고 Compose 오버라이드에서만 켠다.
     investor_flow_schedule_enabled: bool = False
+    # 자동 스케줄 주문 제출(ADR-0015). 기본은 꺼져 있고 Compose 오버라이드에서만 켠다.
+    order_submission_schedule_enabled: bool = False
 
     @property
     def kis_base_url(self) -> str:

@@ -48,9 +48,14 @@ _AUTOMATION_EVENT: Final = "automation_event"
 _RISK_DECISION: Final = "risk_decision"
 
 _NOTIFIABLE_AUTOMATION_TYPES: Final = frozenset(
-    {"state_change", "reconcile_problem", "api_failure", "attestation"}
+    {"state_change", "reconcile_problem", "api_failure", "attestation", "schedule_blocked"}
 )
-_WARNING_AUTOMATION_TYPES: Final = frozenset({"reconcile_problem", "api_failure"})
+# 예약 제출 차단은 경고다(ADR-0015 결정 6). `listener_state`는 사람이 있을 때 정상 흐름이라
+# 제외하지만, 그 때문에 자동 제출이 멈춘 사실은 알려야 한다 — 주문이 없는 것과 구분되지 않으면
+# 감시가 없다.
+_WARNING_AUTOMATION_TYPES: Final = frozenset(
+    {"reconcile_problem", "api_failure", "schedule_blocked"}
+)
 _WARNING_AUTOMATION_STATES: Final = frozenset(
     {AutomationState.PAUSED.value, AutomationState.EMERGENCY_STOP.value}
 )
@@ -70,6 +75,7 @@ class NotificationKind(StrEnum):
     API_FAILURE = "api_failure"
     ATTESTATION = "attestation"
     RISK_BLOCK = "risk_block"
+    SCHEDULE_BLOCKED = "schedule_blocked"
 
 
 class NotificationSeverity(StrEnum):
@@ -115,18 +121,20 @@ def is_notifiable(candidate: NotificationCandidate) -> bool:
     return candidate.state == _BLOCKED
 
 
+_AUTOMATION_KINDS: Final = {
+    "reconcile_problem": NotificationKind.RECONCILE_PROBLEM,
+    "api_failure": NotificationKind.API_FAILURE,
+    "attestation": NotificationKind.ATTESTATION,
+    "schedule_blocked": NotificationKind.SCHEDULE_BLOCKED,
+}
+
+
 def _kind(candidate: NotificationCandidate) -> NotificationKind:
     if candidate.source is EventSource.ORDER_EVENT:
         return NotificationKind.ORDER_STATE
     if candidate.source is EventSource.RISK_DECISION:
         return NotificationKind.RISK_BLOCK
-    if candidate.event_type == "reconcile_problem":
-        return NotificationKind.RECONCILE_PROBLEM
-    if candidate.event_type == "api_failure":
-        return NotificationKind.API_FAILURE
-    if candidate.event_type == "attestation":
-        return NotificationKind.ATTESTATION
-    return NotificationKind.AUTOMATION_STATE
+    return _AUTOMATION_KINDS.get(candidate.event_type or "", NotificationKind.AUTOMATION_STATE)
 
 
 def _severity(candidate: NotificationCandidate, kind: NotificationKind) -> NotificationSeverity:

@@ -30,13 +30,18 @@
 | `trading.automation_event` | `event_type = 'reconcile_problem'` | `reconcile_problem` |
 | `trading.automation_event` | `event_type = 'api_failure'` | `api_failure` |
 | `trading.automation_event` | `event_type = 'attestation'` | `attestation` |
+| `trading.automation_event` | `event_type = 'schedule_blocked'` | `schedule_blocked` |
 | `trading.risk_decision` | 차단 판정(통과하지 않은 행) | `risk_block` |
 
 제외: `listener_state`(부착·해제 반복), 상태가 바뀌지 않는 주문 이벤트(부분 취소 요청·취소 실패 등
 정보성 행), 통과한 위험 판정.
 
 **심각도**는 두 단계다. `warning`: `reconcile_problem`, `api_failure`, `risk_block`,
-`automation_state`가 `paused`·`emergency_stop`으로 갈 때. `info`: 나머지.
+`schedule_blocked`, `automation_state`가 `paused`·`emergency_stop`으로 갈 때. `info`: 나머지.
+
+`schedule_blocked`는 자동 스케줄 제출이 차단된 사실이다(ADR-0015 결정 6). `listener_state`는 사람이
+있을 때 정상 흐름이라 제외하지만, **그 때문에 자동 제출이 멈춘 사실은 알려야 한다** — 주문이 없는 것과
+구분되지 않으면 감시가 성립하지 않는다.
 
 ## 공개 범위 (ADR-0014 결정 3)
 
