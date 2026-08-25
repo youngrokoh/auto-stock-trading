@@ -823,29 +823,60 @@ curl -s localhost:8000/api/trading/notifications
 
 금지 필드가 응답에 없음을 테스트로 고정했다(`nav`·`account` 문자열 부재).
 
-### 실제 전송 (대기 — 봇 토큰 필요)
+### 실제 전송 (2026-08-25 실측 완료)
 
-봇 토큰이 없어 실제 호출을 하지 못했다. 준비 절차와 확인 항목:
+사용자가 봇을 발급하고 secret 파일을 넣은 뒤 실제로 전송했다.
 
 ```bash
-# 1. @BotFather에서 /newbot → 토큰 발급, 봇과 대화 시작
-# 2. chat_id 확인 (토큰은 화면·기록에 남기지 않는다)
-#    GET https://api.telegram.org/bot<token>/getUpdates → result[].message.chat.id
-# 3. secret 파일에 넣는다
-#    .secrets/telegram-bot-token, .secrets/telegram-chat-id
-# 4. 폴러 실행
+# secret 파일: .secrets/telegram-bot-token, .secrets/telegram-chat-id
 cd backend
-uv run python -m auto_stock_trading.worker.notifications --status    # credentials=yes 확인
+AUTO_STOCK_TELEGRAM_BOT_TOKEN_FILE=../.secrets/telegram-bot-token \
+AUTO_STOCK_TELEGRAM_CHAT_ID_FILE=../.secrets/telegram-chat-id \
+  uv run python -m auto_stock_trading.worker.notifications --status
+# pending=0 failed=0 sent=0 oldest_pending=- credentials=yes
+
+# 1차
 uv run python -m auto_stock_trading.worker.notifications --dispatch
+# projected=20 sent=20 failed=0 summarized=False
+
+# 2차 (같은 이벤트 재투영 여부)
+uv run python -m auto_stock_trading.worker.notifications --dispatch
+# projected=0 sent=0 failed=0 summarized=False
 ```
 
-확인할 것 (계약 §미실측을 이 결과로 교체한다):
+측정된 것:
 
-1. `429` 응답이 `parameters.retry_after`를 **항상** 싣는가.
-2. `text` 길이 상한이 4096자인가(구현은 3900자에서 자르고 `…(잘렸음)`을 붙인다).
-3. 전송 후 응답 유실 시 재시도가 중복 메시지를 만드는가(at-least-once의 실제 결과).
-4. 한글 메시지의 인코딩·줄바꿈이 그대로 도착하는가.
-5. 폴 상한 초과 시 요약 한 건으로 대체되고 생략 건수가 보이는가.
+1. **한글 인코딩과 줄바꿈이 그대로 도착한다.** 20건 전부 수신 확인(수신 화면 육안 확인).
+   `[주문] 005930 삼성전자 매수 2주 249,000원 / planned → submitted · 40600000 / 증권사 주문
+   0000009999 / 09:31:33 KST` 형태로 세 줄이 유지됐다.
+2. **단일 대화에 20건 연속 전송이 실패 없이 통과한다.** 텔레그램 FAQ의 1건/초 제한에 걸리지 않았고
+   `failed=0`이었다. 20건은 같은 분(4:37 PM)에 도착했다.
+3. **중복 투영이 없다.** 2차 실행 `projected=0` — `(environment, source, source_id)` 유일 제약이
+   실제로 동작한다.
+4. **금지 필드가 실제 발신 문구에도 없다.** 저장된 20건 본문을 검사해 종목·수량·가격·상태 전이·사유
+   코드·증권사 주문번호만 있고 계좌 참조·NAV·현금·비중은 없음을 확인했다.
+
+선별 규칙의 실제 결과 — 이날 원천 이벤트는 주문 18건·자동매매 12건이었고 발신은 20건이다. 제외된
+10건의 근거는 전부 코드의 순수 함수다.
+
+- 자동매매 4건: `listener_state`(심각도 필터 제외).
+- 주문 6건: `is_notifiable`이 주문 이벤트에 `previous_state != state`를 요구한다. 상태가 바뀌지 않은
+  취소 요청 3건·정정 1건·부분취소 요청 1건·상태 무변화 체결알림 1건이 여기 걸렸다.
+
+**상한과 우연히 같았다.** 선별 후 후보가 정확히 20이고 `notification_poll_cap`도 20이라, 요약 경로는
+"초과"가 아니어서 발동하지 않았다(`summarized=False`). 상한이 자른 건수는 0이다 — 2차 실행의
+`projected=0`이 이를 뒷받침한다.
+
+여전히 미실측(이번 표본으로 관찰할 수 없었던 것):
+
+1. `429` 응답과 `parameters.retry_after` — 20건 연속에서 발생하지 않았다.
+2. `text` 길이 상한 3900자 절단 — 실제 문구는 세 줄로 짧다.
+3. 전송 후 응답 유실 시 재시도의 중복 여부(at-least-once의 실제 결과).
+4. 폴 상한 **초과** 시 요약 한 건 대체와 생략 건수 표시 — 후보 21건 이상이 필요하다.
+
+판단이 필요한 관찰: 취소 요청·정정·부분취소 요청이 알림에서 빠진다. 사람이 CLI로 직접 실행한
+행동이라 본인은 알고 있지만, **부분취소 요청이 확인 알림 없이 끝나면 푸시로는 전혀 보이지 않는다.**
+상태 변화만 알리는 것이 의도인지, 요청 자체도 알려야 하는지는 결정 사항이다.
 
 ### 콘솔 적체 배너 (대기 — 실제 미발신 건 필요)
 
@@ -853,7 +884,46 @@ uv run python -m auto_stock_trading.worker.notifications --dispatch
 없고, **감사 테이블에 가짜 행을 넣어 화면을 만들지 않는다.** 실제 알림이 쌓인 뒤 390/768/1360px에서
 확인한다.
 
+## 마감 후 재조정 실측 (2026-08-25 15:41 KST) — 문서 전제와 어긋남
+
+미체결로 남은 주문 `0000009931`을 정리하려고 마감(15:30) 뒤에 `--sync`를 돌렸다.
+
+```bash
+uv run python -m auto_stock_trading.worker.execution.submission --sync
+# updated=0 problems=0 paused=False states=- reasons=-
+```
+
+저장된 원문(`operations.raw_api_response`, `operation='order_fills'`):
+
+```
+rt_cd=0  msg_cd=70070000  msg1="모의투자 조회할 내역(자료)이 없습니다."  output1=0건
+```
+
+**일별주문체결조회 `VTTC8001R`은 모의투자에서 장 마감 후에도 빈 응답이다.** 이날은 실제로 2주가
+체결된 날인데도 0건이다. 2026-08-19 15:42에도 같은 결과였으므로 독립 측정 2회다. 즉 장중 공백만이
+아니라 **이 TR로는 어느 시점에도 체결을 확인할 수 없다.**
+
+주문 자체는 미체결이 맞다. 마감 후 `--account-snapshot`이 `holdings=005930:3`으로 09:32 스냅샷과
+같았다. 주문가능현금이 예수금보다 498,070원 적은 것은 당일 체결 2주(×249,035)의 D+2 결제 지연이며
+미체결 주문의 증거금이 아니다.
+
+이 측정이 드러낸 것:
+
+1. **문서 전제 위반.** ADR-0009와 실시간 체결 알림 계약은 일별주문체결조회를 "장 마감 후 재조정 확인
+   수단"으로 적어두었다. 모의투자에서 그 수단은 존재하지 않는다. 승인된 결정이므로 이 문서에는 측정만
+   기록하고 ADR은 고치지 않는다 — 개정 여부는 사람의 결정 사항이다.
+2. **세션 종료 시 열린 주문을 처리하는 규칙이 없다.** `--sync`는 빈 응답을 `problems=0`으로 보고한다.
+3. **이 잔재는 이후 어떤 검사에도 걸리지 않는다.** `open_orders`는 `plan.trading_date == 해당일`로
+   한정되므로(`trading_order_writes.py`) 다음 거래일에 리스너를 붙여도 `NOTIFICATION_GAP`이 뜨지
+   않고, 게이트의 `UNRECONCILED_ITEMS`는 `reconcile_problem` 이벤트를 세므로 0으로 남는다.
+
+장중 체결 확인(실시간 알림)은 같은 날 `0000009999` 2주를 정상 처리했다. 없는 것은 마감 후 이중
+확인뿐이다.
+
 ## 남은 범위
 
 - 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
-- 외부 알림의 실제 전송 실측과 콘솔 배너 브라우저 QA(위 절, 봇 토큰 확보 후)
+- 콘솔 적체 배너 브라우저 QA(위 절 — 아웃박스에 실제 미발신 건이 쌓인 뒤)
+- 외부 알림의 요약 경로·`429`·길이 절단 실측(후보 21건 이상 또는 대량 표본 필요)
+- 마감 후 재조정 수단의 부재에 대한 결정(ADR-0009 개정과 세션 종료 규칙 신설 여부)
+- 미조정으로 남은 `0000009931`의 처리(ADR-0010 사람 확인 경로 `--attest`)
