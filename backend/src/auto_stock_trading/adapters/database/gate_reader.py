@@ -31,6 +31,12 @@ if TYPE_CHECKING:
 
 _FILLED_STATES = (OrderState.FILLED.value, OrderState.PARTIALLY_FILLED.value)
 _OPEN_STATES = (OrderState.SUBMITTED.value, OrderState.PARTIALLY_FILLED.value)
+_SETTLED_STATES = (
+    OrderState.FILLED.value,
+    OrderState.REJECTED.value,
+    OrderState.CANCELED.value,
+    OrderState.EXPIRED.value,
+)
 _INCIDENT_TYPES = ("api_failure", "reconcile_problem")
 _RECONCILE_PROBLEM = "reconcile_problem"
 # 정책 §4의 '최근 20거래일'. 거래일 달력 없이 세면 휴장일이 섞이므로 계획이 있던 거래일로 센다.
@@ -77,12 +83,26 @@ class PostgresGateReader:
                 OrderRow.state.in_(_FILLED_STATES),
             )
         )
+        # 정책은 "미조정 **건**이 0건"이라고 쓴다 — 발생 이력이 아니라 지금 미조정인 건수다. 참조한
+        # 주문이 종결됐다면 그 발산은 닫혔다. 이력을 전부 세면 한 번 문제가 생긴 뒤 이 조건은 다시
+        # 충족될 수 없고, 정책이 요구하지 않은 영구 차단이 된다.
+        settled = (
+            select(OrderRow.id)
+            .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+            .where(
+                OrderPlanRow.environment == environment,
+                OrderRow.broker_order_id == AutomationEventRow.detail,
+                OrderRow.state.in_(_SETTLED_STATES),
+            )
+        )
         unreconciled = (
             select(func.count())
             .select_from(AutomationEventRow)
             .where(
                 AutomationEventRow.environment == environment,
                 AutomationEventRow.event_type == _RECONCILE_PROBLEM,
+                # 확인할 주문이 없으면 해소로 보지 않는다. 증권사만 아는 주문은 지금도 미조정이다.
+                ~settled.exists(),
             )
         )
         # 거래일 경계를 넘어 남은 미종결 주문. 당일 열린 주문은 정상이므로 세지 않는다.
