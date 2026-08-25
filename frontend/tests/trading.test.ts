@@ -290,3 +290,13 @@ describe("외부 알림 발신 현황", () => {
     ).toThrow();
   });
 });
+
+describe("예약 제출 차단 이벤트", () => {
+  it("코드가 아니라 사람이 읽는 이름으로 보인다", () => {
+    expect(eventTypeLabel("schedule_blocked")).toBe("예약 제출 차단");
+  });
+
+  it("주의가 필요한 이벤트로 분류된다", () => {
+    expect(isAlertEvent("schedule_blocked", "LISTENER_NOT_ATTACHED")).toBe(true);
+  });
+});

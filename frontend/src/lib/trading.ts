@@ -226,6 +226,7 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   attestation: "사람 확인 종결",
   listener_state: "체결통보 연결",
   reconcile_problem: "대조 불일치",
+  schedule_blocked: "예약 제출 차단",
   state_change: "상태 전이",
 };
 

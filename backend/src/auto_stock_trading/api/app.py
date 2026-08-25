@@ -39,6 +39,7 @@ from auto_stock_trading.api.health import create_health_router
 from auto_stock_trading.api.market_data import create_market_data_router
 from auto_stock_trading.api.market_data_adjusted import create_market_data_adjusted_router
 from auto_stock_trading.api.market_data_etf import create_market_data_etf_router
+from auto_stock_trading.api.settings_api import create_settings_router
 from auto_stock_trading.api.trading import create_trading_router
 from auto_stock_trading.api.trading.router import Clock, TradingReader, utc_now
 from auto_stock_trading.application.adjusted_prices import (
@@ -240,6 +241,7 @@ def create_app(  # noqa: PLR0913
         )
     )
     app.include_router(create_backtests_router(backtest_reader))
+    app.include_router(create_settings_router(**({"clock": clock} if clock is not None else {})))
     app.include_router(
         create_gate_router(
             gate_reader,

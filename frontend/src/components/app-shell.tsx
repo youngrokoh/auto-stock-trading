@@ -11,7 +11,15 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-type ScreenKey = "overview" | "market" | "analysis" | "etf" | "strategy" | "trading" | "gate";
+type ScreenKey =
+  | "overview"
+  | "market"
+  | "analysis"
+  | "etf"
+  | "strategy"
+  | "trading"
+  | "gate"
+  | "settings";
 
 type NavEntry = Readonly<{
   href?: string;
@@ -29,10 +37,11 @@ const primaryNav: readonly NavEntry[] = [
   { href: "/strategy", icon: FlaskConical, key: "strategy", label: "전략 연구" },
   { href: "/trading", icon: ScrollText, key: "trading", label: "모의매매 콘솔" },
   { href: "/gate", icon: ShieldCheck, key: "gate", label: "실전 전환 게이트" },
+  { href: "/settings", icon: SlidersHorizontal, key: "settings", label: "설정과 감사" },
 ] as const;
 
 const upcomingNav: readonly NavEntry[] = [
-  { icon: SlidersHorizontal, label: "설정과 감사", note: "이후" },
+  { icon: CandlestickChart, label: "종목 상세", note: "이후" },
 ] as const;
 
 const tabNav: readonly NavEntry[] = [

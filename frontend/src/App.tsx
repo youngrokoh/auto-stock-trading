@@ -6,6 +6,7 @@ import { Etf } from "./pages/etf";
 import { Gate } from "./pages/gate";
 import { Market } from "./pages/market";
 import { Overview } from "./pages/overview";
+import { SettingsAndAudit } from "./pages/settings";
 import { Showcase } from "./pages/showcase";
 import { Strategy } from "./pages/strategy";
 import { Trading } from "./pages/trading";
@@ -26,6 +27,9 @@ const screenFor = (pathname: string) => {
   }
   if (pathname === "/strategy") {
     return <Strategy />;
+  }
+  if (pathname === "/settings") {
+    return <SettingsAndAudit />;
   }
   if (pathname === "/gate") {
     return <Gate />;

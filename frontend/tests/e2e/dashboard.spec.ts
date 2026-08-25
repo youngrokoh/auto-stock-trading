@@ -265,3 +265,22 @@ test("실전 전환 게이트가 조건과 판정 불가를 구분해 보여준�
   await expectNoSecretsAndNoOverflow(page);
   expect(consoleErrors).toEqual([]);
 });
+
+test("설정과 감사 화면이 조회 전용으로 정책과 기록을 보여준다", async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto("/settings");
+
+  await expect(page.getByRole("heading", { name: "설정과 감사" })).toBeVisible();
+  // 값을 바꿀 수 없다는 것이 이 화면의 경계다.
+  await expect(page.getByText("조회 전용 · 값 변경 경로 없음")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /상태 전이와 감사 기록/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /거래비용 규칙/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /위험 한도/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /변경 절차/ })).toBeVisible();
+  // 비용 규칙은 코드 상수라 빈 DB에서도 나온다. 연구 가정과 공식 고시를 구분해 표시한다.
+  await expect(page.getByText("연구 가정").first()).toBeVisible();
+
+  await expectNoSecretsAndNoOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});
