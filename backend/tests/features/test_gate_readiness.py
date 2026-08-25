@@ -27,6 +27,7 @@ def _measurements(**overrides: int) -> GateMeasurements:
         "duplicate_orders": 0,
         "unreconciled_events": 2,
         "severe_incidents_20d": 1,
+        "stale_open_orders": 0,
     }
     base.update(overrides)
     return GateMeasurements(
@@ -36,6 +37,7 @@ def _measurements(**overrides: int) -> GateMeasurements:
         duplicate_orders=base["duplicate_orders"],
         unreconciled_events=base["unreconciled_events"],
         severe_incidents_20d=base["severe_incidents_20d"],
+        stale_open_orders=base["stale_open_orders"],
     )
 
 
@@ -128,3 +130,26 @@ def test_initial_live_limits_are_the_policy_numbers() -> None:
 
 def _state(result: GateReadiness, code: str) -> GateConditionState:
     return next(item.state for item in result.conditions if item.code == code)
+
+
+def test_a_stale_open_order_blocks_the_reconciliation_condition() -> None:
+    """거래일이 지난 미종결 주문도 미조정이다(ADR-0017 결정 6).
+
+    문제 이벤트만 세면 세션 종료 잔재가 남아 있는데도 '미조정 0건'이 거짓으로 통과한다.
+    """
+    result = evaluate_gate(
+        _measurements(unreconciled_events=0, stale_open_orders=1),
+        _NOW,
+    )
+
+    assert _state(result, "UNRECONCILED_ITEMS") is GateConditionState.NOT_MET
+    assert "UNRECONCILED_ITEMS" in result.blocking_codes
+
+
+def test_no_events_and_no_stale_orders_meets_the_condition() -> None:
+    result = evaluate_gate(
+        _measurements(unreconciled_events=0, stale_open_orders=0),
+        _NOW,
+    )
+
+    assert _state(result, "UNRECONCILED_ITEMS") is GateConditionState.MET

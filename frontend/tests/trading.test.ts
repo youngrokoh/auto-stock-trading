@@ -162,6 +162,12 @@ describe("상태 이름", () => {
     expect(orderStateLabel("partially_filled")).toBe("부분체결");
     expect(orderStateLabel("rejected")).toBe("거절");
   });
+
+  it("세션 종료 종결을 취소와 구분해 표시한다", () => {
+    // 우리가 취소한 것이 아니다(ADR-0017). 라벨이 없으면 코드가 그대로 노출된다.
+    expect(orderStateLabel("expired")).toBe("기간만료");
+    expect(orderStateLabel("canceled")).toBe("취소");
+  });
 });
 
 describe("이벤트와 체결 정보", () => {

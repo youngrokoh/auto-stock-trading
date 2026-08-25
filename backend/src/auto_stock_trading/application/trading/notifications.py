@@ -86,6 +86,8 @@ class NotificationOrders(Protocol):
         trading_date: date,
     ) -> tuple[TrackedOrder, ...]: ...
 
+    async def unsettled_orders(self, environment: str) -> tuple[TrackedOrder, ...]: ...
+
     async def record_reconcile_problem(
         self,
         environment: str,
@@ -279,7 +281,9 @@ class FillNotificationListener:
             transaction_id,
             now,
         )
-        open_orders = await self.orders.open_orders(self.environment, now.astimezone(_SEOUL).date())
+        # 거래일 경계를 넘어 남은 주문도 통보 공백이다(ADR-0017 결정 5). 당일만 보면 어제 남은
+        # 주문의 체결 통보를 놓친 채로 붙는다.
+        open_orders = await self.orders.unsettled_orders(self.environment)
         if not open_orders:
             return AttachResult(session_id=session_id, blocked=False)
         for order in open_orders:

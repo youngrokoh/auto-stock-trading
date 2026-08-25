@@ -23,6 +23,11 @@ from auto_stock_trading.domain.market_data.models import BrokerOperation, RawBro
 from auto_stock_trading.domain.orders.fills import BrokerFill, ReconcileProblem
 from auto_stock_trading.domain.orders.models import AutomationState, OrderSide, OrderState
 from auto_stock_trading.domain.orders.records import AutomationRecord
+from auto_stock_trading.domain.orders.session_close import (
+    AggregateVerdict,
+    BrokerDailyTotals,
+    InternalDailyTotals,
+)
 from auto_stock_trading.domain.risk.limits import BlockCode
 from tests.trading.calendar_fixture import trading_day_record
 
@@ -96,6 +101,7 @@ class FakeBroker:
         raw=_RAW,
     )
     fills: tuple[BrokerFill, ...] = ()
+    totals: BrokerDailyTotals | None = None
     submissions: list[OrderSubmission] = field(default_factory=list)
     cancels: list[CancelRequest] = field(default_factory=list)
     fill_queries: list[date] = field(default_factory=list)
@@ -117,12 +123,14 @@ class FakeBroker:
         if self.failure is not None:
             raise self.failure
         self.fill_queries.append(trading_date)
-        return DailyFillsObservation(fills=self.fills, raw=_RAW)
+        return DailyFillsObservation(fills=self.fills, raw=_RAW, totals=self.totals)
 
 
 @dataclass
 class FakeStore:
     automation: AutomationState = AutomationState.RUNNING
+    daily_fill_totals_value: InternalDailyTotals | None = None
+    expired_orders: list[tuple[UUID, str]] = field(default_factory=list)
     automation_trading_date: date = _TRADING_DATE
     pending: tuple[TrackedOrder, ...] = ()
     open_orders_rows: tuple[TrackedOrder, ...] = ()
@@ -235,6 +243,14 @@ class FakeStore:
     ) -> None:
         _ = (environment, occurred_at)
         self.api_failures.append(detail)
+
+    async def expire_order(self, order_id: UUID, evidence: str, occurred_at: datetime) -> None:
+        _ = occurred_at
+        self.expired_orders.append((order_id, evidence))
+
+    async def daily_fill_totals(self, environment: str, trading_date: date) -> InternalDailyTotals:
+        _ = (environment, trading_date)
+        return self.daily_fill_totals_value or InternalDailyTotals(0, Decimal(0))
 
     async def save_broker_response(self, raw: RawBrokerResponse) -> None:
         self.raw_responses.append(raw.request_fingerprint)
@@ -527,11 +543,14 @@ def test_synchronize_pauses_automation_on_reconcile_problems() -> None:
 
 
 def test_synchronize_outside_the_order_window_still_reads_broker_facts() -> None:
+    """조회는 주문 허용시간 밖에서도 수행한다. 마감 후 재대조가 그 시간대에 일어난다."""
+
     async def scenario() -> None:
         store = FakeStore(
-            open_orders_rows=(_tracked(state=OrderState.SUBMITTED, broker_order_id="0000117057"),)
+            open_orders_rows=(_tracked(state=OrderState.SUBMITTED, broker_order_id="0000117057"),),
+            daily_fill_totals_value=InternalDailyTotals(0, Decimal(0)),
         )
-        broker = FakeBroker()
+        broker = FakeBroker(totals=BrokerDailyTotals(0, Decimal(0)))
 
         summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _AFTER_HOURS)
 
@@ -888,5 +907,100 @@ def test_partial_cancel_requires_a_positive_quantity() -> None:
         assert result.accepted is False
         assert result.reason_code == "INVALID_QUANTITY"
         assert broker.cancels == []
+
+    anyio.run(scenario)
+
+
+def test_synchronize_reports_that_nothing_could_be_reconciled() -> None:
+    """빈 응답은 성공이 아니다(ADR-0017 결정 3). 무작동을 '이상 없음'으로 보고하지 않는다."""
+
+    async def scenario() -> None:
+        store = FakeStore()
+        broker = FakeBroker()
+
+        summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _AFTER_HOURS)
+
+        assert summary.verdict is AggregateVerdict.UNAVAILABLE
+
+    anyio.run(scenario)
+
+
+def test_synchronize_matches_the_broker_aggregate() -> None:
+    async def scenario() -> None:
+        store = FakeStore(daily_fill_totals_value=InternalDailyTotals(2, Decimal(498000)))
+        broker = FakeBroker(totals=BrokerDailyTotals(2, Decimal(498000)))
+
+        summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _AFTER_HOURS)
+
+        assert summary.verdict is AggregateVerdict.MATCHED
+        assert summary.paused is False
+
+    anyio.run(scenario)
+
+
+def test_a_mismatched_aggregate_pauses_automation() -> None:
+    async def scenario() -> None:
+        store = FakeStore(daily_fill_totals_value=InternalDailyTotals(2, Decimal(498000)))
+        broker = FakeBroker(totals=BrokerDailyTotals(3, Decimal(747000)))
+
+        summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _AFTER_HOURS)
+
+        assert summary.verdict is AggregateVerdict.MISMATCHED
+        assert summary.paused is True
+        assert store.transitions == [
+            (AutomationState.PAUSED, BlockCode.ACCOUNT_NOT_RECONCILED.value)
+        ]
+
+    anyio.run(scenario)
+
+
+def test_a_matching_aggregate_expires_the_open_order_after_the_close() -> None:
+    """집계 일치가 '미체결이 사실'이라는 관측 근거다(ADR-0017 결정 4)."""
+
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(_tracked(state=OrderState.SUBMITTED, broker_order_id="0000009931"),),
+            daily_fill_totals_value=InternalDailyTotals(0, Decimal(0)),
+        )
+        broker = FakeBroker(totals=BrokerDailyTotals(0, Decimal(0)))
+
+        summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _AFTER_HOURS)
+
+        assert summary.expired == ("a" * 32,)
+        assert store.expired_orders == [(_ORDER_ID, "당일 체결 합계 수량 0 금액 0")]
+
+    anyio.run(scenario)
+
+
+def test_an_open_order_is_not_expired_during_the_session() -> None:
+    """장중에는 아직 체결될 수 있다. 종결 판단을 하지 않는다."""
+
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(_tracked(state=OrderState.SUBMITTED, broker_order_id="0000009931"),),
+            daily_fill_totals_value=InternalDailyTotals(0, Decimal(0)),
+        )
+        broker = FakeBroker(totals=BrokerDailyTotals(0, Decimal(0)))
+
+        summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _NOW)
+
+        assert summary.expired == ()
+        assert store.expired_orders == []
+
+    anyio.run(scenario)
+
+
+def test_an_unavailable_aggregate_never_expires_and_records_a_problem() -> None:
+    async def scenario() -> None:
+        store = FakeStore(
+            open_orders_rows=(_tracked(state=OrderState.SUBMITTED, broker_order_id="0000009931"),),
+        )
+        broker = FakeBroker()
+
+        summary = await _submitter(store, broker).synchronize(_ENVIRONMENT, _AFTER_HOURS)
+
+        assert summary.expired == ()
+        assert store.problems == [("0000009931", ReconcileProblem.DAILY_TOTALS_UNAVAILABLE)]
+        assert summary.paused is True
 
     anyio.run(scenario)

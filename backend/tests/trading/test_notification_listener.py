@@ -88,6 +88,7 @@ def _order(
 class FakeOrders:
     state: AutomationState = AutomationState.RUNNING
     open_orders_result: tuple[TrackedOrder, ...] = ()
+    unsettled_orders_result: tuple[TrackedOrder, ...] = ()
     transitions: list[AutomationTransition] = field(default_factory=list)
     problems: list[tuple[str, ReconcileProblem]] = field(default_factory=list)
 
@@ -119,6 +120,10 @@ class FakeOrders:
         assert environment == _ENVIRONMENT
         assert trading_date is not None
         return self.open_orders_result
+
+    async def unsettled_orders(self, environment: str) -> tuple[TrackedOrder, ...]:
+        assert environment == _ENVIRONMENT
+        return self.unsettled_orders_result
 
     async def record_reconcile_problem(
         self,
@@ -438,8 +443,10 @@ def test_attach_closes_previous_sessions_and_starts_a_new_one() -> None:
 
 
 def test_attach_with_open_orders_blocks_because_notifications_may_be_missing() -> None:
+    """미종결 주문은 거래일과 무관하게 본다(ADR-0017 결정 5). 당일만 보면 어제 잔재를 놓친다."""
+
     async def run() -> None:
-        orders = FakeOrders(open_orders_result=(_order(),))
+        orders = FakeOrders(unsettled_orders_result=(_order(),))
         notifications = FakeNotifications()
 
         result = await _listener(orders, notifications).attach(_TRANSACTION_ID, _NOW)

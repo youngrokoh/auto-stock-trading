@@ -27,6 +27,13 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+# 미종결 상태. 종결 상태 4개(체결·거절·취소·기간만료)를 뺀 나머지다.
+_UNSETTLED_STATES = (
+    OrderState.PLANNED.value,
+    OrderState.SUBMITTED.value,
+    OrderState.PARTIALLY_FILLED.value,
+)
+
 
 def tracked_orders_query(
     environment: str,
@@ -41,6 +48,22 @@ def tracked_orders_query(
             OrderPlanRow.trading_date == trading_date,
         )
         .order_by(OrderRow.created_at, OrderRow.sequence)
+    )
+
+
+def unsettled_orders_query(
+    environment: str,
+) -> Select[tuple[OrderRow, str, UUID]]:
+    """거래일과 무관하게 미종결인 주문(ADR-0017 결정 5). 당일 한정 조회는 한도 계산에만 남긴다."""
+    return (
+        select(OrderRow, InstrumentRow.symbol, OrderPlanRow.id)
+        .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+        .join(InstrumentRow, OrderRow.instrument_id == InstrumentRow.id)
+        .where(
+            OrderPlanRow.environment == environment,
+            OrderRow.state.in_(_UNSETTLED_STATES),
+        )
+        .order_by(OrderPlanRow.trading_date, OrderRow.created_at, OrderRow.sequence)
     )
 
 

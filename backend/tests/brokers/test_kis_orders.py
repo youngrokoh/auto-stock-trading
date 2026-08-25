@@ -176,6 +176,57 @@ def test_empty_daily_fills_are_not_an_error() -> None:
     anyio.run(scenario)
 
 
+def test_daily_totals_are_read_even_when_no_rows_come_back() -> None:
+    """모의환경은 `output1`을 주지 않지만 `output2` 집계는 준다(ADR-0017)."""
+
+    async def scenario() -> None:
+        client, _ = create_fixture_handler_client(fills_filename="daily_fills_empty.json")
+        adapter = KisOrderAdapter(client, _ACCOUNT, paper=True)
+        try:
+            observation = await adapter.fetch_daily_fills(_TRADING_DATE)
+        finally:
+            await adapter.close()
+
+        assert observation.fills == ()
+        assert observation.totals is not None
+        assert observation.totals.filled_quantity == 0
+        assert observation.totals.filled_amount == Decimal(0)
+
+    anyio.run(scenario)
+
+
+def test_daily_totals_carry_the_broker_aggregate() -> None:
+    async def scenario() -> None:
+        client, _ = create_fixture_handler_client()
+        adapter = KisOrderAdapter(client, _ACCOUNT, paper=True)
+        try:
+            observation = await adapter.fetch_daily_fills(_TRADING_DATE)
+        finally:
+            await adapter.close()
+
+        assert observation.totals is not None
+        assert observation.totals.filled_quantity == 1
+        assert observation.totals.filled_amount == Decimal(71800)
+
+    anyio.run(scenario)
+
+
+def test_missing_daily_totals_are_none_not_zero() -> None:
+    """집계가 없는 것과 0인 것은 다르다. 없으면 대조 불가이고 0은 대조 결과다."""
+
+    async def scenario() -> None:
+        client, _ = create_fixture_handler_client(fills_filename="daily_fills_no_totals.json")
+        adapter = KisOrderAdapter(client, _ACCOUNT, paper=True)
+        try:
+            observation = await adapter.fetch_daily_fills(_TRADING_DATE)
+        finally:
+            await adapter.close()
+
+        assert observation.totals is None
+
+    anyio.run(scenario)
+
+
 def test_live_environment_uses_live_transaction_ids() -> None:
     async def scenario() -> None:
         client, handler = create_fixture_handler_client()

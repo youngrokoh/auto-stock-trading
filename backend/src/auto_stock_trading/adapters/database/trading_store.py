@@ -23,6 +23,7 @@ from auto_stock_trading.adapters.database.trading_order_writes import (
     tracked_order,
     tracked_orders_query,
     transition_order,
+    unsettled_orders_query,
 )
 from auto_stock_trading.adapters.database.trading_queries import (
     buy_amount_query,
@@ -41,6 +42,10 @@ from auto_stock_trading.adapters.database.trading_rows import (
     OrderPlanRow,
     OrderRow,
     RiskDecisionRow,
+)
+from auto_stock_trading.adapters.database.trading_session_writes import (
+    expire_order,
+    read_daily_fill_totals,
 )
 from auto_stock_trading.domain.orders.models import (
     AutomationState,
@@ -66,6 +71,7 @@ if TYPE_CHECKING:
     from auto_stock_trading.domain.orders.account import AccountSnapshotObservation
     from auto_stock_trading.domain.orders.fills import ReconcileProblem
     from auto_stock_trading.domain.orders.records import OrderPlanRecord, OrderRecord
+    from auto_stock_trading.domain.orders.session_close import InternalDailyTotals
 
 _SOURCE: Final = "KIS"
 _OPERATION: Final = "account_balance"
@@ -420,6 +426,30 @@ class PostgresTradingStore:
                     },
                 ),
             )
+
+    async def unsettled_orders(self, environment: str) -> tuple[TrackedOrder, ...]:
+        """거래일과 무관하게 미종결인 주문. 리스너 부착 검사와 잔재 판정이 쓴다(ADR-0017 결정 5)."""
+        statement = unsettled_orders_query(environment)
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(tracked_order(row, symbol, plan) for row, symbol, plan in rows)
+
+    async def expire_order(
+        self,
+        order_id: UUID,
+        evidence: str,
+        occurred_at: datetime,
+    ) -> None:
+        async with self._sessions.begin() as session:
+            await expire_order(session, order_id, evidence, occurred_at)
+
+    async def daily_fill_totals(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> InternalDailyTotals:
+        async with self._sessions() as session:
+            return await read_daily_fill_totals(session, environment, trading_date)
 
     async def record_order_event(
         self,

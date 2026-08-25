@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import final
+from typing import TYPE_CHECKING, final
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import (
@@ -26,7 +26,11 @@ from auto_stock_trading.adapters.database.trading_rows import (
 from auto_stock_trading.domain.gate.readiness import GateMeasurements
 from auto_stock_trading.domain.orders.models import OrderState
 
+if TYPE_CHECKING:
+    from datetime import date
+
 _FILLED_STATES = (OrderState.FILLED.value, OrderState.PARTIALLY_FILLED.value)
+_OPEN_STATES = (OrderState.SUBMITTED.value, OrderState.PARTIALLY_FILLED.value)
 _INCIDENT_TYPES = ("api_failure", "reconcile_problem")
 _RECONCILE_PROBLEM = "reconcile_problem"
 # 정책 §4의 '최근 20거래일'. 거래일 달력 없이 세면 휴장일이 섞이므로 계획이 있던 거래일로 센다.
@@ -57,7 +61,7 @@ class PostgresGateReader:
         )
         return cls(None, sessions)
 
-    async def measurements(self, environment: str) -> GateMeasurements:
+    async def measurements(self, environment: str, as_of: date) -> GateMeasurements:
         trading_days = select(func.count(func.distinct(OrderPlanRow.trading_date))).where(
             OrderPlanRow.environment == environment
         )
@@ -79,6 +83,17 @@ class PostgresGateReader:
             .where(
                 AutomationEventRow.environment == environment,
                 AutomationEventRow.event_type == _RECONCILE_PROBLEM,
+            )
+        )
+        # 거래일 경계를 넘어 남은 미종결 주문. 당일 열린 주문은 정상이므로 세지 않는다.
+        stale = (
+            select(func.count())
+            .select_from(OrderRow)
+            .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+            .where(
+                OrderPlanRow.environment == environment,
+                OrderRow.state.in_(_OPEN_STATES),
+                OrderPlanRow.trading_date < as_of,
             )
         )
         async with self._sessions() as session:
@@ -113,6 +128,7 @@ class PostgresGateReader:
                 duplicate_orders=0,
                 unreconciled_events=await session.scalar(unreconciled) or 0,
                 severe_incidents_20d=incidents,
+                stale_open_orders=await session.scalar(stale) or 0,
             )
 
     async def close(self) -> None:

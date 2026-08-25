@@ -282,7 +282,8 @@ async def synchronize_fills() -> str:
     problems = ",".join(f"{order}:{problem.value}" for order, problem in summary.problems)
     return (
         f"updated={len(summary.updated)} problems={len(summary.problems)} "
-        f"paused={summary.paused} states={updated or '-'} reasons={problems or '-'}"
+        f"paused={summary.paused} reconciled={summary.verdict.value} "
+        f"expired={len(summary.expired)} states={updated or '-'} reasons={problems or '-'}"
     )
 
 

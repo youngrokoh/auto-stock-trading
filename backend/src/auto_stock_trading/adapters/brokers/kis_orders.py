@@ -11,6 +11,7 @@ from auto_stock_trading.adapters.brokers.kis_mapping import KisContractError, ra
 from auto_stock_trading.domain.market_data.models import BrokerOperation
 from auto_stock_trading.domain.orders.fills import BrokerFill
 from auto_stock_trading.domain.orders.models import OrderSide
+from auto_stock_trading.domain.orders.session_close import BrokerDailyTotals
 
 if TYPE_CHECKING:
     from datetime import date
@@ -64,11 +65,20 @@ class KisFillRow(KisContract):
     avg_prvs: str
 
 
+class KisDailyTotalsRow(KisContract):
+    """`output2` 계좌 단위 당일 집계. 모의환경에서 `output1`이 비어도 이쪽은 온다(ADR-0017)."""
+
+    tot_ccld_qty: str
+    tot_ccld_amt: str
+
+
 class KisDailyFillsResponse(KisContract):
     rt_cd: str
     msg_cd: str
     msg1: str
     output1: tuple[KisFillRow, ...] = ()
+    # 없을 수도 있다. 없는 것과 0인 것은 다른 사건이므로 기본값을 0으로 두지 않는다.
+    output2: KisDailyTotalsRow | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,10 +131,21 @@ class BrokerAcknowledgement:
 class DailyFillsObservation:
     fills: tuple[BrokerFill, ...]
     raw: RawBrokerResponse
+    # 계좌 단위 재대조 원천. `None`은 대조 불가이며 0과 구분한다.
+    totals: BrokerDailyTotals | None = None
 
 
 def _int(value: str) -> int:
     return int(value or "0")
+
+
+def _daily_totals(row: KisDailyTotalsRow | None) -> BrokerDailyTotals | None:
+    if row is None:
+        return None
+    return BrokerDailyTotals(
+        filled_quantity=_int(row.tot_ccld_qty),
+        filled_amount=Decimal(row.tot_ccld_amt or "0"),
+    )
 
 
 def _price(value: str) -> Decimal | None:
@@ -280,6 +301,7 @@ class KisOrderAdapter:
         return DailyFillsObservation(
             fills=tuple(_fill(row) for row in response.output1),
             raw=raw_from(BrokerOperation.ORDER_FILLS, raw_response),
+            totals=_daily_totals(response.output2),
         )
 
     async def close(self) -> None:

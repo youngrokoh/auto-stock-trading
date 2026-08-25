@@ -26,6 +26,12 @@ from auto_stock_trading.domain.orders.recovery import (
     STALE_TRADING_DAY_REASON,
     is_stale_trading_day,
 )
+from auto_stock_trading.domain.orders.session_close import (
+    AggregateVerdict,
+    close_session_orders,
+    compare_daily_totals,
+    session_ended,
+)
 from auto_stock_trading.domain.risk.limits import (
     PAPER_RISK_LIMITS,
     BlockCode,
@@ -33,6 +39,7 @@ from auto_stock_trading.domain.risk.limits import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import date, datetime
     from decimal import Decimal
     from uuid import UUID
@@ -44,6 +51,7 @@ if TYPE_CHECKING:
     from auto_stock_trading.domain.market_data.calendar import MarketCalendarRecord
     from auto_stock_trading.domain.market_data.models import RawBrokerResponse
     from auto_stock_trading.domain.orders.records import AutomationRecord
+    from auto_stock_trading.domain.orders.session_close import InternalDailyTotals
     from auto_stock_trading.domain.risk.limits import RiskLimits
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
@@ -97,6 +105,10 @@ class SyncSummary:
     updated: tuple[tuple[str, OrderState], ...]
     problems: tuple[tuple[str, ReconcileProblem], ...]
     paused: bool
+    # 계좌 단위 재대조 결과(ADR-0017 결정 3). 조회 성공과 대조 수행은 다른 사건이다.
+    verdict: AggregateVerdict = AggregateVerdict.UNAVAILABLE
+    # 세션 종료로 종결한 주문. 집계가 일치할 때만 채워진다.
+    expired: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +213,19 @@ class SubmissionStore(Protocol):
         occurred_at: datetime,
     ) -> None: ...
 
+    async def daily_fill_totals(
+        self,
+        environment: str,
+        trading_date: date,
+    ) -> InternalDailyTotals: ...
+
+    async def expire_order(
+        self,
+        order_id: UUID,
+        evidence: str,
+        occurred_at: datetime,
+    ) -> None: ...
+
     async def save_broker_response(self, raw: RawBrokerResponse) -> None: ...
 
 
@@ -217,6 +242,11 @@ def _reduction_refusal(order: TrackedOrder | None, quantity: int) -> str | None:
 
 def _session_key(trading_date: date) -> CalendarSessionKey:
     return CalendarSessionKey(_COUNTRY, _EXCHANGE, trading_date, MarketSessionType.REGULAR)
+
+
+def _evidence(internal: InternalDailyTotals) -> str:
+    """종결 근거를 감사 기록에 남긴다. 이 문자열은 외부 알림 본문에 들어가지 않는다."""
+    return f"당일 체결 합계 수량 {internal.filled_quantity} 금액 {internal.filled_amount}"
 
 
 def _snapshot(order: TrackedOrder) -> OrderSnapshot:
@@ -303,10 +333,19 @@ class OrderSubmitter:
                 now,
             )
             updated.append((outcome.client_order_id, outcome.state))
-        for broker_order_id, problem in result.problems:
+        internal = await self.store.daily_fill_totals(environment, trading_date)
+        verdict = compare_daily_totals(internal, observation.totals)
+        expired, closure_problems = await self._close_session(
+            by_client_order_id,
+            verdict,
+            _evidence(internal),
+            now,
+        )
+        problems = result.problems + closure_problems
+        for broker_order_id, problem in problems:
             await self.store.record_reconcile_problem(environment, broker_order_id, problem, now)
         paused = False
-        if result.problems:
+        if problems or verdict is AggregateVerdict.MISMATCHED:
             _ = await self.store.transition_automation(
                 AutomationTransition(
                     environment=environment,
@@ -319,9 +358,36 @@ class OrderSubmitter:
             paused = True
         return SyncSummary(
             updated=tuple(updated),
-            problems=result.problems,
+            problems=problems,
             paused=paused,
+            verdict=verdict,
+            expired=expired,
         )
+
+    async def _close_session(
+        self,
+        orders: Mapping[str, TrackedOrder],
+        verdict: AggregateVerdict,
+        evidence: str,
+        now: datetime,
+    ) -> tuple[tuple[str, ...], tuple[tuple[str, ReconcileProblem], ...]]:
+        """정규장이 끝난 뒤에만 종결을 판단한다. 장중 미체결은 아직 체결될 수 있다."""
+        if not session_ended(now):
+            return (), ()
+        outcomes = close_session_orders(
+            tuple(_snapshot(order) for order in orders.values()),
+            verdict,
+        )
+        expired: list[str] = []
+        problems: list[tuple[str, ReconcileProblem]] = []
+        for outcome in outcomes:
+            order = orders[outcome.client_order_id]
+            if outcome.closed:
+                await self.store.expire_order(order.order_id, evidence, now)
+                expired.append(outcome.client_order_id)
+            if outcome.problem is not None:
+                problems.append((order.broker_order_id or order.client_order_id, outcome.problem))
+        return tuple(expired), tuple(problems)
 
     async def cancel_open_orders(
         self,

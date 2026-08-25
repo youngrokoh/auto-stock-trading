@@ -13,9 +13,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
 from auto_stock_trading.domain.gate.readiness import evaluate_gate, initial_live_limits
+from auto_stock_trading.domain.risk.limits import seoul_trading_date
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import date
 
     from auto_stock_trading.domain.gate.readiness import GateMeasurements
 
@@ -23,7 +25,7 @@ type Clock = Callable[[], datetime]
 
 
 class GateReader(Protocol):
-    async def measurements(self, environment: str) -> GateMeasurements: ...
+    async def measurements(self, environment: str, as_of: date) -> GateMeasurements: ...
 
     async def close(self) -> None: ...
 
@@ -72,8 +74,9 @@ def create_gate_router(
     router = APIRouter(prefix="/api/gate", tags=["gate"])
 
     async def readiness() -> GateReadinessResponse:
-        measurements = await reader.measurements(environment)
-        result = evaluate_gate(measurements, clock())
+        now = clock()
+        measurements = await reader.measurements(environment, seoul_trading_date(now))
+        result = evaluate_gate(measurements, now)
         return GateReadinessResponse(
             environment=environment,
             live_enabled=live_enabled,

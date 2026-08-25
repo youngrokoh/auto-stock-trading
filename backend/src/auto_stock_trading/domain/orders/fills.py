@@ -10,7 +10,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from decimal import Decimal
 
-_TERMINAL_STATES: Final = frozenset({OrderState.FILLED, OrderState.REJECTED, OrderState.CANCELED})
+_TERMINAL_STATES: Final = frozenset(
+    {OrderState.FILLED, OrderState.REJECTED, OrderState.CANCELED, OrderState.EXPIRED}
+)
 
 
 class ReconcileProblem(StrEnum):
@@ -24,6 +26,10 @@ class ReconcileProblem(StrEnum):
     ORDER_QUANTITY_MISMATCH = "ORDER_QUANTITY_MISMATCH"
     NOTIFICATION_UNPARSABLE = "NOTIFICATION_UNPARSABLE"
     NOTIFICATION_GAP = "NOTIFICATION_GAP"
+    # 계좌 단위 당일 집계가 우리 합계와 어긋난다(ADR-0017). 증권사가 다르게 아는 상태다.
+    DAILY_TOTALS_MISMATCH = "DAILY_TOTALS_MISMATCH"
+    # 집계 자체가 없어 대조할 근거가 없다. 어긋난 것과 다른 사건이다.
+    DAILY_TOTALS_UNAVAILABLE = "DAILY_TOTALS_UNAVAILABLE"
 
 
 @dataclass(frozen=True, slots=True)

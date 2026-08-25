@@ -749,3 +749,51 @@ async def _ensure_instrument(connection: AsyncConnection, symbol: str) -> UUID:
         )
     )
     return instrument_id
+
+
+def test_unsettled_orders_cross_the_trading_day_boundary() -> None:
+    """어제 남은 미종결 주문이 오늘 조회에 잡혀야 한다(ADR-0017 결정 5).
+
+    당일 한정 조회만 있으면 세션 종료 잔재가 어떤 검사에도 걸리지 않는다.
+    """
+
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = reader
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        yesterday = replace(
+            _plan(orders=(_order(),)), trading_date=_TRADING_DATE - timedelta(days=1)
+        )
+        await store.save_plan(yesterday)
+
+        same_day = await store.open_orders(_ENVIRONMENT, _TRADING_DATE)
+        unsettled = await store.unsettled_orders(_ENVIRONMENT)
+
+        assert same_day == ()
+        assert [order.client_order_id for order in unsettled] == ["a" * 32]
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_expired_orders_leave_the_unsettled_list_with_their_own_reason() -> None:
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(orders=(_order(),))
+        await store.save_plan(plan)
+        (order,) = await store.unsettled_orders(_ENVIRONMENT)
+        await store.record_submission(order.order_id, _acknowledgement(), _NOW)
+
+        await store.expire_order(order.order_id, "당일 체결 합계 수량 0 금액 0", _NOW)
+
+        assert await store.unsettled_orders(_ENVIRONMENT) == ()
+        (entry,) = await reader.orders(_ENVIRONMENT, 10)
+        assert entry.state is OrderState.EXPIRED
+
+    anyio.run(_run_scenario, scenario)

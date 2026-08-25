@@ -42,7 +42,7 @@
 | [ADR-0014: 주문·위험 이벤트 외부 알림 경계](../decisions/0014-outbound-event-notification.md) | `docs/decisions/0014-outbound-event-notification.md` | 승인 |
 | [ADR-0015: 자동 스케줄 주문 제출 경계](../decisions/0015-scheduled-order-submission.md) | `docs/decisions/0015-scheduled-order-submission.md` | 승인 (2026-08-25 구현) |
 | [ADR-0016: 실주문 신호 원천 경계](../decisions/0016-live-signal-source.md) | `docs/decisions/0016-live-signal-source.md` | 승인 |
-| [ADR-0017: 마감 후 재대조와 세션 종료 주문 처리 경계](../decisions/0017-post-close-reconciliation-and-session-end.md) | `docs/decisions/0017-post-close-reconciliation-and-session-end.md` | 초안 |
+| [ADR-0017: 마감 후 재대조와 세션 종료 주문 처리 경계](../decisions/0017-post-close-reconciliation-and-session-end.md) | `docs/decisions/0017-post-close-reconciliation-and-session-end.md` | 승인 (2026-08-25 구현) |
 | [화면 구현 요청 안내](../design/claude-design/README.md) | `docs/design/claude-design/README.md` | 승인된 디자인 구현 안내 |
 | [화면 디자인 사양](../design/claude-design/screen-design-spec.md) | `docs/design/claude-design/screen-design-spec.md` | 승인 |
 | [자동매매 웹 디자인 방향 제안](../design/design-direction-proposals.md) | `docs/design/design-direction-proposals.md` | 승인 |

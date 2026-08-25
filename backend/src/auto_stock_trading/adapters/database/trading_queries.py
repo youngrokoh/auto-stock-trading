@@ -43,6 +43,35 @@ def order_attempts_query(environment: str, trading_date: date) -> Select[tuple[i
     return _orders_of(environment).where(OrderPlanRow.trading_date == trading_date)
 
 
+def _filled_orders_of(environment: str, trading_date: date) -> Select[tuple[int]]:
+    """그 거래일의 체결분. 증권사 `output2` 집계도 체결분만 세므로 취소·거절은 자연히 빠진다."""
+    return (
+        select(func.coalesce(func.sum(OrderRow.filled_quantity), 0))
+        .select_from(OrderRow)
+        .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
+        .where(
+            OrderPlanRow.environment == environment,
+            OrderPlanRow.trading_date == trading_date,
+            OrderRow.filled_quantity > 0,
+        )
+    )
+
+
+def daily_filled_quantity_query(environment: str, trading_date: date) -> Select[tuple[int]]:
+    """내부 체결 수량 합계. 증권사 `tot_ccld_qty`와 대조한다(ADR-0017 결정 1)."""
+    return _filled_orders_of(environment, trading_date)
+
+
+def daily_filled_amount_query(environment: str, trading_date: date) -> Select[tuple[int]]:
+    """내부 체결 금액 합계(체결 수량 × 평균 체결가). 증권사 `tot_ccld_amt`와 대조한다."""
+    return _filled_orders_of(environment, trading_date).with_only_columns(
+        func.coalesce(
+            func.sum(OrderRow.filled_quantity * OrderRow.average_fill_price),
+            Decimal(0),
+        )
+    )
+
+
 def buy_amount_query(environment: str, trading_date: date) -> Select[tuple[int]]:
     """합계는 numeric이라 실행 결과는 Decimal이다. 호출자가 Decimal로 변환한다."""
     return (

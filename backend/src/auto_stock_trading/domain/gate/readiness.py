@@ -50,6 +50,9 @@ class GateMeasurements:
     duplicate_orders: int
     unreconciled_events: int
     severe_incidents_20d: int
+    # 거래일이 지난 미종결 주문(ADR-0017 결정 6). 문제 이벤트만 세면 세션 종료 잔재가 남아 있는데도
+    # '미조정 0건'이 거짓으로 통과한다.
+    stale_open_orders: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,8 +152,8 @@ def evaluate_gate(measurements: GateMeasurements, evaluated_at: datetime) -> Gat
         _zero("DUPLICATE_ORDERS", "중복 주문 0건", measurements.duplicate_orders),
         _zero(
             "UNRECONCILED_ITEMS",
-            "내부와 증권사 상태의 미조정 0건",
-            measurements.unreconciled_events,
+            "내부와 증권사 상태의 미조정 0건(문제 이벤트 + 거래일 지난 미종결 주문)",
+            measurements.unreconciled_events + measurements.stale_open_orders,
         ),
         _zero(
             "SEVERE_INCIDENTS",

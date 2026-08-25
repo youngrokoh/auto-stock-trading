@@ -208,6 +208,8 @@ export const automationLabel = (state: string): string => AUTOMATION_LABELS[stat
 
 const ORDER_STATE_LABELS: Readonly<Record<string, string>> = {
   canceled: "취소",
+  // 세션 종료로 더 체결될 수 없음이 확인된 주문(ADR-0017). 우리가 취소한 것이 아니다.
+  expired: "기간만료",
   filled: "체결",
   partially_filled: "부분체결",
   planned: "계획",

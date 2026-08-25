@@ -27,6 +27,9 @@ class OrderState(StrEnum):
     FILLED = "filled"
     REJECTED = "rejected"
     CANCELED = "canceled"
+    # 세션 종료로 더 체결될 수 없음이 집계로 확인된 주문(ADR-0017). 우리가 취소한 것이 아니므로
+    # canceled와 구분한다.
+    EXPIRED = "expired"
 
 
 class AutomationState(StrEnum):
@@ -57,14 +60,21 @@ _ORDER_TRANSITIONS: Final[dict[OrderState, frozenset[OrderState]]] = {
             OrderState.FILLED,
             OrderState.REJECTED,
             OrderState.CANCELED,
+            OrderState.EXPIRED,
         }
     ),
     OrderState.PARTIALLY_FILLED: frozenset(
-        {OrderState.PARTIALLY_FILLED, OrderState.FILLED, OrderState.CANCELED}
+        {
+            OrderState.PARTIALLY_FILLED,
+            OrderState.FILLED,
+            OrderState.CANCELED,
+            OrderState.EXPIRED,
+        }
     ),
     OrderState.FILLED: frozenset(),
     OrderState.REJECTED: frozenset(),
     OrderState.CANCELED: frozenset(),
+    OrderState.EXPIRED: frozenset(),
 }
 
 # 거래 안전 정책 §6. 재시작·거래일 변경·자격증명 변경은 어떤 상태에서든 DISABLED 복귀다.
