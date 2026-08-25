@@ -86,7 +86,7 @@ def test_a_listener_state_event_is_not_notifiable() -> None:
 
 @pytest.mark.parametrize(
     "event_type",
-    ["state_change", "reconcile_problem", "api_failure", "attestation"],
+    ["state_change", "reconcile_problem", "api_failure", "attestation", "reconcile_resolved"],
 )
 def test_the_selected_automation_event_types_are_notifiable(event_type: str) -> None:
     candidate = NotificationCandidate(
@@ -330,3 +330,33 @@ def test_a_scheduled_block_is_a_notifiable_warning() -> None:
     message = build_message(candidate)
     assert message.severity is NotificationSeverity.WARNING
     assert "LISTENER_NOT_ATTACHED" in message.body
+
+
+def test_a_resolved_reconciliation_is_notified_as_information() -> None:
+    """문제는 경고로 나갔다. 해소를 보내지 않으면 푸시만 보는 사람은 계속 열려 있다고 읽는다.
+
+    해소 자체는 나쁜 소식이 아니므로 심각도는 정보다(ADR-0018 승인 질문 3).
+    """
+    message = build_message(
+        NotificationCandidate(
+            source=EventSource.AUTOMATION_EVENT,
+            source_id=_ID,
+            occurred_at=_AT,
+            previous_state=None,
+            state=None,
+            reason_code="HUMAN_RESOLVED",
+            symbol=None,
+            symbol_name=None,
+            side=None,
+            quantity=None,
+            limit_price=None,
+            broker_order_id=None,
+            event_type="reconcile_resolved",
+            rule_code=None,
+        )
+    )
+
+    assert message.rejected_reason is None
+    assert message.severity is NotificationSeverity.INFO
+    assert message.kind is NotificationKind.RECONCILE_RESOLVED
+    assert "HUMAN_RESOLVED" in message.body

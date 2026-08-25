@@ -249,3 +249,26 @@ class RiskDecisionRow(Base):
     limit_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     projected_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     passed: Mapped[bool] = mapped_column(Boolean)
+
+
+@final
+class ReconcileResolutionRow(Base):
+    """사람이 설명한 발산 하나(ADR-0018). 주문번호 단위이며 유일 제약이 중복 해소를 막는다."""
+
+    __tablename__: str = "reconcile_resolution"
+    __table_args__: tuple[UniqueConstraint, dict[str, str]] = (
+        UniqueConstraint(
+            "environment",
+            "broker_order_id",
+            name="uq_reconcile_resolution_order",
+        ),
+        {"schema": "trading"},
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    environment: Mapped[str] = mapped_column(String(16))
+    broker_order_id: Mapped[str] = mapped_column(String(40))
+    operator: Mapped[str] = mapped_column(String(64))
+    evidence: Mapped[str] = mapped_column(String(500))
+    problem_count: Mapped[int] = mapped_column(Integer())
+    resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

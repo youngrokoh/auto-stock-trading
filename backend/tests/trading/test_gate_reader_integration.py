@@ -17,14 +17,22 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from auto_stock_trading.adapters.database.gate_reader import PostgresGateReader
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
+from auto_stock_trading.adapters.database.trading_reconcile_store import PostgresReconcileStore
 from auto_stock_trading.adapters.database.trading_rows import (
     AutomationEventRow,
     AutomationStateRow,
     OrderPlanRow,
     OrderRow,
+    ReconcileResolutionRow,
 )
 from auto_stock_trading.domain.orders.fills import ReconcileProblem
 from auto_stock_trading.domain.orders.models import OrderSide, OrderState, OrderType
+from auto_stock_trading.domain.orders.reconciliation import (
+    ResolutionReason,
+    ResolutionRejection,
+    ResolutionRequest,
+    resolve_problems,
+)
 from auto_stock_trading.settings.runtime import Settings
 
 if TYPE_CHECKING:
@@ -47,7 +55,12 @@ async def _run_scenario(scenario: GateScenario) -> None:
     engine = create_async_engine(settings.database_url.get_secret_value())
     async with engine.connect() as connection:
         transaction = await connection.begin()
-        for table in (OrderPlanRow, AutomationEventRow, AutomationStateRow):
+        for table in (
+            OrderPlanRow,
+            AutomationEventRow,
+            AutomationStateRow,
+            ReconcileResolutionRow,
+        ):
             _ = await connection.execute(delete(table).where(table.environment == _ENVIRONMENT))
         reader = PostgresGateReader.from_connection(connection)
         try:
@@ -135,6 +148,20 @@ async def _order(
     )
 
 
+async def _resolution(connection: AsyncConnection, broker_order_id: str) -> None:
+    _ = await connection.execute(
+        insert(ReconcileResolutionRow).values(
+            id=uuid4(),
+            environment=_ENVIRONMENT,
+            broker_order_id=broker_order_id,
+            operator="사람",
+            evidence="시스템 밖에서 낸 수동 주문",
+            problem_count=1,
+            resolved_at=_NOW,
+        )
+    )
+
+
 async def _problem(connection: AsyncConnection, detail: str) -> None:
     _ = await connection.execute(
         insert(AutomationEventRow).values(
@@ -209,5 +236,122 @@ def test_stale_open_orders_are_counted_separately_from_problems() -> None:
 
         assert measurements.stale_open_orders == 1
         assert measurements.unreconciled_events == 0
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_a_resolved_broker_order_no_longer_counts() -> None:
+    """사람이 설명한 발산은 미조정이 아니다(ADR-0018 결정 7)."""
+
+    async def scenario(reader: PostgresGateReader, connection: AsyncConnection) -> None:
+        await _problem(connection, "0000999999")
+        await _resolution(connection, "0000999999")
+
+        measurements = await reader.measurements(_ENVIRONMENT, _TRADING_DATE)
+
+        assert measurements.unreconciled_events == 0
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_one_resolution_covers_repeated_observations_of_the_same_number() -> None:
+    async def scenario(reader: PostgresGateReader, connection: AsyncConnection) -> None:
+        await _problem(connection, "0000999999")
+        await _problem(connection, "0000999999")
+        await _resolution(connection, "0000999999")
+
+        measurements = await reader.measurements(_ENVIRONMENT, _TRADING_DATE)
+
+        assert measurements.unreconciled_events == 0
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_a_resolution_for_another_number_does_not_clear_this_one() -> None:
+    async def scenario(reader: PostgresGateReader, connection: AsyncConnection) -> None:
+        await _problem(connection, "0000999999")
+        await _resolution(connection, "0000888888")
+
+        measurements = await reader.measurements(_ENVIRONMENT, _TRADING_DATE)
+
+        assert measurements.unreconciled_events == 1
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_the_store_reads_the_facts_the_decision_needs() -> None:
+    """판정에 필요한 사실만 읽는다 — 문제 건수, 우리 기록의 주문 상태, 이미 해소했는지."""
+
+    async def scenario(reader: PostgresGateReader, connection: AsyncConnection) -> None:
+        _ = reader
+        await _problem(connection, "0000999999")
+        await _problem(connection, "0000999999")
+        store = PostgresReconcileStore.from_connection(connection)
+        try:
+            target = await store.target(_ENVIRONMENT, "0000999999")
+        finally:
+            await store.close()
+
+        assert target.problem_count == 2
+        assert target.order_state is None
+        assert target.resolved is False
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_saving_a_resolution_writes_the_fact_and_an_audit_event() -> None:
+    async def scenario(reader: PostgresGateReader, connection: AsyncConnection) -> None:
+        await _problem(connection, "0000999999")
+        store = PostgresReconcileStore.from_connection(connection)
+        try:
+            outcome = resolve_problems(
+                await store.target(_ENVIRONMENT, "0000999999"),
+                ResolutionRequest(
+                    broker_order_id="0000999999",
+                    operator="youngrokoh",
+                    evidence="시스템 밖에서 낸 수동 주문",
+                ),
+            )
+            assert not isinstance(outcome, ResolutionRejection)
+            await store.save(_ENVIRONMENT, outcome, _NOW)
+        finally:
+            await store.close()
+
+        measurements = await reader.measurements(_ENVIRONMENT, _TRADING_DATE)
+        assert measurements.unreconciled_events == 0
+        event = await connection.scalar(
+            select(AutomationEventRow.detail).where(
+                AutomationEventRow.event_type == "reconcile_resolved"
+            )
+        )
+        assert event == "operator=youngrokoh evidence=시스템 밖에서 낸 수동 주문"
+
+    anyio.run(_run_scenario, scenario)
+
+
+def test_the_same_number_cannot_be_resolved_twice() -> None:
+    """유일 제약이 중복 해소를 DB에서 막는다. 읽기 시점 검사에만 기대지 않는다."""
+
+    async def scenario(reader: PostgresGateReader, connection: AsyncConnection) -> None:
+        _ = reader
+        await _problem(connection, "0000999999")
+        await _resolution(connection, "0000999999")
+        store = PostgresReconcileStore.from_connection(connection)
+        try:
+            target = await store.target(_ENVIRONMENT, "0000999999")
+        finally:
+            await store.close()
+
+        assert target.resolved is True
+        outcome = resolve_problems(
+            target,
+            ResolutionRequest(
+                broker_order_id="0000999999",
+                operator="youngrokoh",
+                evidence="두 번째 시도",
+            ),
+        )
+        assert isinstance(outcome, ResolutionRejection)
+        assert outcome.reason is ResolutionReason.ALREADY_RESOLVED
 
     anyio.run(_run_scenario, scenario)

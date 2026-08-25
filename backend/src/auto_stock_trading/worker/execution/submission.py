@@ -24,6 +24,7 @@ from auto_stock_trading.adapters.database.trading_attestation_store import (
 from auto_stock_trading.adapters.database.trading_notification_store import (
     PostgresNotificationStore,
 )
+from auto_stock_trading.adapters.database.trading_reconcile_store import PostgresReconcileStore
 from auto_stock_trading.adapters.database.trading_revision_store import PostgresRevisionStore
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.attestation import (
@@ -38,6 +39,11 @@ from auto_stock_trading.application.trading.submission import (
     SubmissionResult,
 )
 from auto_stock_trading.domain.orders.models import AutomationState, OrderState
+from auto_stock_trading.domain.orders.reconciliation import (
+    ResolutionRejection,
+    ResolutionRequest,
+    resolve_problems,
+)
 from auto_stock_trading.domain.risk.limits import seoul_trading_date
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker.execution.collaborators import planner_bundle
@@ -50,8 +56,10 @@ _WITHDRAW_NEEDS_PLAN: Final = "--withdraw requires --plan-id"
 _ATTEST_NEEDS: Final = "--attest requires {}"
 _REVISE_NEEDS: Final = "--revise requires --broker-order-id and --price-offset-pct"
 _REDUCE_NEEDS: Final = "--reduce requires --broker-order-id and --quantity"
+_RESOLVE_NEEDS: Final = "--resolve requires {}"
 _ACTION_REQUIRED: Final = (
-    "--submit, --sync, --withdraw, --attest, --revise, --reduce, --emergency-stop 중 하나 필요"
+    "--submit, --sync, --withdraw, --attest, --resolve, --revise, --reduce,"
+    " --emergency-stop 중 하나 필요"
 )
 _PERCENT: Final = Decimal(100)
 
@@ -65,6 +73,7 @@ class Arguments(argparse.Namespace):
     attest: bool = False
     revise: bool = False
     reduce: bool = False
+    resolve: bool = False
     price_offset_pct: str | None = None
     broker_order_id: str | None = None
     state: str | None = None
@@ -268,6 +277,43 @@ async def reduce_open_quantity(arguments: Arguments) -> str:
     )
 
 
+async def resolve_reconcile_problem(arguments: Arguments) -> str:
+    """사람이 설명한 발산을 해소로 남긴다(ADR-0018). 증권사 호출은 없다.
+
+    대상은 우리 기록에 없는 증권사 주문번호뿐이다. 열린 주문이나 이미 종결된 주문의 문제는 거부한다.
+    """
+    settings = _paper_settings()
+    missing = [
+        name
+        for name, value in (
+            ("--broker-order-id", arguments.broker_order_id),
+            ("--operator", arguments.operator),
+            ("--evidence", arguments.evidence),
+        )
+        if value is None
+    ]
+    if missing:
+        raise RuntimeError(_RESOLVE_NEEDS.format(", ".join(missing)))
+    environment = settings.kis_environment.value
+    broker_order_id = arguments.broker_order_id or ""
+    store = PostgresReconcileStore.from_url(settings.database_url.get_secret_value())
+    try:
+        outcome = resolve_problems(
+            await store.target(environment, broker_order_id),
+            ResolutionRequest(
+                broker_order_id=broker_order_id,
+                operator=arguments.operator or "",
+                evidence=arguments.evidence or "",
+            ),
+        )
+        if isinstance(outcome, ResolutionRejection):
+            return f"refused reason={outcome.reason.value}"
+        await store.save(environment, outcome, datetime.now(UTC))
+    finally:
+        await store.close()
+    return f"resolved order={outcome.broker_order_id} problems={outcome.problem_count}"
+
+
 async def synchronize_fills() -> str:
     settings = _paper_settings()
     collaborators = _collaborators(settings)
@@ -329,6 +375,7 @@ def main() -> None:
     _ = parser.add_argument("--attest", action="store_true")
     _ = parser.add_argument("--revise", action="store_true")
     _ = parser.add_argument("--reduce", action="store_true")
+    _ = parser.add_argument("--resolve", action="store_true")
     _ = parser.add_argument("--price-offset-pct")
     _ = parser.add_argument("--broker-order-id")
     _ = parser.add_argument(
@@ -353,6 +400,9 @@ def main() -> None:
         return
     if arguments.reduce:
         print(anyio.run(reduce_open_quantity, arguments))  # noqa: T201
+        return
+    if arguments.resolve:
+        print(anyio.run(resolve_reconcile_problem, arguments))  # noqa: T201
         return
     if arguments.emergency_stop:
         print(anyio.run(emergency_stop))  # noqa: T201

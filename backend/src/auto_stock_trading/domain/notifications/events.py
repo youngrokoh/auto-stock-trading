@@ -48,7 +48,15 @@ _AUTOMATION_EVENT: Final = "automation_event"
 _RISK_DECISION: Final = "risk_decision"
 
 _NOTIFIABLE_AUTOMATION_TYPES: Final = frozenset(
-    {"state_change", "reconcile_problem", "api_failure", "attestation", "schedule_blocked"}
+    {
+        "state_change",
+        "reconcile_problem",
+        "api_failure",
+        "attestation",
+        "schedule_blocked",
+        # 해소를 보내지 않으면 푸시만 보는 사람은 문제가 계속 열려 있다고 읽는다(ADR-0018).
+        "reconcile_resolved",
+    }
 )
 # 예약 제출 차단은 경고다(ADR-0015 결정 6). `listener_state`는 사람이 있을 때 정상 흐름이라
 # 제외하지만, 그 때문에 자동 제출이 멈춘 사실은 알려야 한다 — 주문이 없는 것과 구분되지 않으면
@@ -76,6 +84,7 @@ class NotificationKind(StrEnum):
     ATTESTATION = "attestation"
     RISK_BLOCK = "risk_block"
     SCHEDULE_BLOCKED = "schedule_blocked"
+    RECONCILE_RESOLVED = "reconcile_resolved"
 
 
 class NotificationSeverity(StrEnum):
@@ -126,6 +135,7 @@ _AUTOMATION_KINDS: Final = {
     "api_failure": NotificationKind.API_FAILURE,
     "attestation": NotificationKind.ATTESTATION,
     "schedule_blocked": NotificationKind.SCHEDULE_BLOCKED,
+    "reconcile_resolved": NotificationKind.RECONCILE_RESOLVED,
 }
 
 

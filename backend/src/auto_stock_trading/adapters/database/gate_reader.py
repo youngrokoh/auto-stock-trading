@@ -22,6 +22,7 @@ from auto_stock_trading.adapters.database.trading_rows import (
     AutomationEventRow,
     OrderPlanRow,
     OrderRow,
+    ReconcileResolutionRow,
 )
 from auto_stock_trading.domain.gate.readiness import GateMeasurements
 from auto_stock_trading.domain.orders.models import OrderState
@@ -95,6 +96,11 @@ class PostgresGateReader:
                 OrderRow.state.in_(_SETTLED_STATES),
             )
         )
+        # 사람이 설명한 발산(ADR-0018). 주문번호 단위이므로 같은 번호의 관측 여러 건을 덮는다.
+        resolved = select(ReconcileResolutionRow.id).where(
+            ReconcileResolutionRow.environment == environment,
+            ReconcileResolutionRow.broker_order_id == AutomationEventRow.detail,
+        )
         unreconciled = (
             select(func.count())
             .select_from(AutomationEventRow)
@@ -103,6 +109,7 @@ class PostgresGateReader:
                 AutomationEventRow.event_type == _RECONCILE_PROBLEM,
                 # 확인할 주문이 없으면 해소로 보지 않는다. 증권사만 아는 주문은 지금도 미조정이다.
                 ~settled.exists(),
+                ~resolved.exists(),
             )
         )
         # 거래일 경계를 넘어 남은 미종결 주문. 당일 열린 주문은 정상이므로 세지 않는다.

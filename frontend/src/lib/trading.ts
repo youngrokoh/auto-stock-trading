@@ -228,6 +228,8 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   attestation: "사람 확인 종결",
   listener_state: "체결통보 연결",
   reconcile_problem: "대조 불일치",
+  // 사람이 설명한 발산(ADR-0018). 게이트의 미조정 조건을 사람이 해제한 사실이다.
+  reconcile_resolved: "사람 확인 해소",
   schedule_blocked: "예약 제출 차단",
   state_change: "상태 전이",
 };

@@ -172,7 +172,7 @@ Taskiq worker ── Valkey
 - [ADR-0015: 자동 스케줄 주문 제출 경계](decisions/0015-scheduled-order-submission.md) (승인, 구현)
 - [ADR-0016: 실주문 신호 원천 경계](decisions/0016-live-signal-source.md) (승인)
 - [ADR-0017: 마감 후 재대조와 세션 종료 주문 처리 경계](decisions/0017-post-close-reconciliation-and-session-end.md) (승인)
-- [ADR-0018: 사람이 확인한 재조정 문제 해소 경계](decisions/0018-human-resolved-reconciliation-records.md) (초안)
+- [ADR-0018: 사람이 확인한 재조정 문제 해소 경계](decisions/0018-human-resolved-reconciliation-records.md) (승인)
 
 #### Governance
 

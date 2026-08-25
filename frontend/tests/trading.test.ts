@@ -190,6 +190,12 @@ describe("이벤트와 체결 정보", () => {
     expect(isAlertEvent("attestation", "HUMAN_ATTESTED")).toBe(true);
   });
 
+  it("사람 확인 해소도 사람이 단언한 사실이므로 주의로 표시한다", () => {
+    // 알림 심각도는 정보지만(나쁜 소식이 아니다) 감사 표에서는 사람의 단언이 드러나야 한다.
+    expect(eventTypeLabel("reconcile_resolved")).toBe("사람 확인 해소");
+    expect(isAlertEvent("reconcile_resolved", "HUMAN_RESOLVED")).toBe(true);
+  });
+
   it("체결통보 리스너 이벤트는 부착만 정상으로 본다", () => {
     expect(isAlertEvent("listener_state", "LISTENER_ATTACHED")).toBe(false);
     expect(isAlertEvent("listener_state", "LISTENER_DETACHED")).toBe(true);
