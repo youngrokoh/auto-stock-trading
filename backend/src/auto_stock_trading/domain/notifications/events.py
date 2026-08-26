@@ -136,6 +136,16 @@ def is_notifiable(candidate: NotificationCandidate) -> bool:
     return candidate.state == _BLOCKED
 
 
+# 머리말은 사람이 읽는 말이다. 코드 이름이 그대로 나가면 화면 라벨 누락과 같은 문제가 된다.
+_KIND_HEADINGS: Final = {
+    NotificationKind.RECONCILE_PROBLEM: "대조 불일치",
+    NotificationKind.RECONCILE_RESOLVED: "사람 확인 해소",
+    NotificationKind.API_FAILURE: "API 실패",
+    NotificationKind.ATTESTATION: "사람 확인 종결",
+    NotificationKind.SCHEDULE_BLOCKED: "예약 제출 차단",
+}
+
+
 _AUTOMATION_KINDS: Final = {
     "reconcile_problem": NotificationKind.RECONCILE_PROBLEM,
     "api_failure": NotificationKind.API_FAILURE,
@@ -204,7 +214,7 @@ def _body(candidate: NotificationCandidate, kind: NotificationKind) -> str:
         lines.append(f"[자동매매] {_transition(candidate)}")
         lines.append(f"사유 {candidate.reason_code or '-'}")
     else:
-        lines.append(f"[{kind.value}] {candidate.reason_code or '-'}")
+        lines.append(f"[{_KIND_HEADINGS.get(kind, kind.value)}] {candidate.reason_code or '-'}")
     if candidate.broker_order_id is not None:
         lines.append(f"증권사 주문 {candidate.broker_order_id}")
     lines.append(f"{at} KST")

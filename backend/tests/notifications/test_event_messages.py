@@ -403,3 +403,56 @@ def test_a_state_changing_order_event_stays_information() -> None:
     message = build_message(_order_event("FILL_NOTIFICATION", state="filled"))
 
     assert message.severity is NotificationSeverity.INFO
+
+
+def test_a_reconcile_problem_names_the_order_it_is_about() -> None:
+    """어느 주문인지 없으면 사람이 행동할 수 없다(2026-08-26 실측 결함).
+
+    문제 이벤트의 상세는 구조상 증권사 주문번호다. 계약의 공개 범위도 주문번호를 보내는 필드로 둔다.
+    """
+    message = build_message(
+        NotificationCandidate(
+            source=EventSource.AUTOMATION_EVENT,
+            source_id=_ID,
+            occurred_at=_AT,
+            previous_state=None,
+            state=None,
+            reason_code="CONFIRMATION_UNOBSERVABLE",
+            symbol=None,
+            symbol_name=None,
+            side=None,
+            quantity=None,
+            limit_price=None,
+            broker_order_id="0000006251",
+            event_type="reconcile_problem",
+            rule_code=None,
+        )
+    )
+
+    assert "0000006251" in message.body
+    assert "대조 불일치" in message.body
+    assert "CONFIRMATION_UNOBSERVABLE" in message.body
+
+
+def test_every_kind_has_a_korean_heading() -> None:
+    """머리말에 코드 이름이 그대로 나가면 화면 라벨 누락과 같은 문제다."""
+    for event_type in ("reconcile_problem", "api_failure", "attestation", "schedule_blocked"):
+        message = build_message(
+            NotificationCandidate(
+                source=EventSource.AUTOMATION_EVENT,
+                source_id=_ID,
+                occurred_at=_AT,
+                previous_state=None,
+                state=None,
+                reason_code="X",
+                symbol=None,
+                symbol_name=None,
+                side=None,
+                quantity=None,
+                limit_price=None,
+                broker_order_id=None,
+                event_type=event_type,
+                rule_code=None,
+            )
+        )
+        assert event_type not in message.body

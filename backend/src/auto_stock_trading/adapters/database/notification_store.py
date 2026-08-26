@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, Final, final
 from uuid import uuid4
 
 from sqlalchemy import ColumnElement, case, func, select, update
@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 
 # 재시도 상한(ADR-0014 결정 8). 상한이 없으면 도달 불가능한 알림이 매 폴마다 한도를 쓴다.
 # 상한에 닿은 행은 `failed`로 남고 다음 폴의 대상이 아니지만, 사라지지 않고 실패 건수로 보인다.
+_RECONCILE_PROBLEM: Final = "reconcile_problem"
 MAX_DELIVERY_ATTEMPTS = 5
 
 _BLOCKED = "blocked"
@@ -196,7 +197,10 @@ class PostgresNotificationOutboxStore:
                 side=None,
                 quantity=None,
                 limit_price=None,
-                broker_order_id=None,
+                # 재조정 문제의 상세는 구조상 주문 참조다. 이걸 버리면 "어느 주문인지 없는 경고"가
+                # 나가고 사람이 행동할 수 없다(2026-08-26 실측 결함). 다른 유형의 상세는 자유 문구라
+                # 본문에 넣지 않는다.
+                broker_order_id=row.detail if row.event_type == _RECONCILE_PROBLEM else None,
                 event_type=row.event_type,
                 rule_code=None,
             )

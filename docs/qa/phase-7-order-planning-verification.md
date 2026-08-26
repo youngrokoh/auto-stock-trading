@@ -1055,9 +1055,41 @@ updated=0 problems=0 paused=False reconciled=matched expired=1
 - 모의환경에서 정규장 종료 후 증권사가 미체결 주문을 어떻게 처리하는지(자동 취소·익일 이월). 관측
   수단이 없어 결정 4는 이 사실에 의존하지 않도록 설계했다.
 
+## 확인 불가 요청 장중 실측 (2026-08-26 09:06~09:13 KST)
+
+ADR-0019가 구현한 경로를 실계좌로 확인했다. 절차와 결과는 ADR의 §실데이터 검증에 있고, 여기에는 재현
+절차만 남긴다.
+
+```bash
+# 1. 달력 확인 (승인된 실전 읽기 전용 경로)
+AUTO_STOCK_KIS_ENVIRONMENT=live AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-live-app-key \
+AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-live-app-secret \
+  uv run python -c "import anyio; from auto_stock_trading.worker.market_calendar import \
+  confirm_today_market_calendar; print(anyio.run(confirm_today_market_calendar))"
+
+# 2. 리스너 부착 → 자동매매 켜기 → 체결되지 않는 주문 제출
+uv run python -m auto_stock_trading.worker.execution.notifications --listen   # 백그라운드
+uv run python -m auto_stock_trading.worker.execution.planning --automation armed
+uv run python -m auto_stock_trading.worker.execution.planning --automation running
+uv run python -m auto_stock_trading.worker.execution.planning --symbol 015760 --side buy \
+  --price-offset-pct -3        # 매수는 밴드 상한만 검사하므로 아래로 벌린 지정가가 통과한다
+uv run python -m auto_stock_trading.worker.execution.submission --submit --plan-id <id>
+
+# 3. 리스너 중지 후 비상정지
+uv run python -m auto_stock_trading.worker.execution.notifications --status   # attached=False 확인
+uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
+```
+
+주의할 것:
+
+- **보유가 있는 종목은 쓸 수 없다.** 삼성전자로 먼저 시도했을 때 전날 보유 3주 때문에
+  `RISK_SYMBOL_EXPOSURE`로 거절됐다 — 한도가 의도대로 동작한 것이므로 보유가 없는 종목을 고른다.
+- 제출은 리스너를 요구하므로 **붙인 상태로 제출하고 그 뒤에 끊어야** 한다.
+- 남은 미체결 주문은 마감 후 `--sync`가 ADR-0017 규칙으로 종결한다.
+
 ## 남은 범위
 
 - 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
 - 콘솔 적체 배너 브라우저 QA(위 절 — 아웃박스에 실제 미발신 건이 쌓인 뒤)
 - 외부 알림의 요약 경로·`429`·길이 절단 실측(후보 21건 이상 또는 대량 표본 필요)
-- 해소 이벤트(`reconcile_resolved`)의 외부 알림 실제 도착 확인. 발신 표본이 아직 없다
+- 해소 이벤트(`reconcile_resolved`)와 `cancel_failed`의 외부 알림 실제 도착 확인. 발신 표본이 아직 없다
