@@ -53,6 +53,36 @@ DB를 올려 두면 데이터베이스는 새 리비전에 있지만 컨테이�
 `migrate`가 `Can't locate revision identified by '<revision>'`으로 실패하고 스택 전체가 뜨지
 않는다(2026-08-24 실측). 이미지를 다시 빌드하면 해소된다.
 
+**더 위험한 것은 조용한 쪽이다.** 위 실패는 시끄럽지만, 마이그레이션을 건드리지 않은 코드 변경은
+아무것도 깨뜨리지 않고 **컨테이너가 낡은 코드로 계속 돈다.** 2026-08-26에 API가 21시간 전 이미지로
+떠 있어 게이트 조회가 미조정 27건을 보고하는 동안 같은 코드를 로컬에서 부르면 9건이 나왔다 — 전날
+고친 판정이 화면에만 반영되지 않은 것이다. 화면·API 응답이 로컬 계산과 어긋나면 **가장 먼저 이미지
+나이를 의심한다.**
+
+```bash
+docker inspect auto-stock-trading-api-1 --format '{{.Created}}'   # 이미지가 아니라 컨테이너 생성 시각
+docker ps --format '{{.Names}}\t{{.Status}}'                      # Up 시간이 곧 코드 나이의 하한
+```
+
+**오버라이드에만 있는 서비스는 `-f`에 넣지 않으면 갱신되지 않는다.** `docker compose ... up -d`는
+지정한 파일 조합에 있는 서비스만 조정하므로, 다른 오버라이드에서만 정의된 스케줄러는 그대로 남는다.
+같은 날 `calendar-scheduler`와 `investor-flow-scheduler`가 47시간 낡은 채 남아 있던 이유다. 갱신할
+때는 **그 컨테이너가 원래 떴던 파일 조합**을 그대로 쓰고 서비스 이름을 지정한다.
+
+```bash
+# 컨테이너가 어떤 파일 조합으로 떴는지 확인한다
+docker inspect <container> --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}'
+```
+
+조합을 임의로 바꿔 다시 올리면 보안 구성이 함께 바뀔 수 있다 — 예를 들어 달력 스케줄러에
+`compose.kis-live-calendar.yaml`을 덧붙이면 실전 자격증명 경로가 켜진다. 재기동 뒤에는 의도한 구성이
+유지됐는지 확인한다.
+
+```bash
+docker inspect <container> --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -i kis
+docker inspect <container> --format '{{range .Mounts}}{{println .Destination}}{{end}}' | grep -i secret
+```
+
 서비스가 준비되면 다음 주소를 사용한다.
 
 - 웹: `http://localhost:8080`

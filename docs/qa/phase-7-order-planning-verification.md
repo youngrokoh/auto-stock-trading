@@ -1087,6 +1087,33 @@ uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
 - 제출은 리스너를 요구하므로 **붙인 상태로 제출하고 그 뒤에 끊어야** 한다.
 - 남은 미체결 주문은 마감 후 `--sync`가 ADR-0017 규칙으로 종결한다.
 
+## 자동 스케줄 실가동 절차 (2026-08-26 배선 완료, 가동 대기)
+
+배선은 켰고 자동매매는 꺼둔 상태다. 실제로 주문이 나가려면 **두 가지가 더** 필요하다.
+
+```bash
+# 1. 리스너 오버라이드를 함께 올린다.
+#    제출은 리스너 부착을 요구하는데 order-submission-schedule 오버라이드에는 리스너가 없다.
+#    이 의존은 오버라이드 파일만 봐서는 드러나지 않는다.
+docker compose -f infra/compose.yaml \
+  -f infra/compose.order-submission-schedule.yaml \
+  -f infra/compose.fill-notifications.yaml up -d
+
+# 2. 사람이 그날 자동매매를 켠다 (09:05 이전). 이것이 ADR-0015 결정 3이다.
+uv run python -m auto_stock_trading.worker.execution.planning --automation armed
+uv run python -m auto_stock_trading.worker.execution.planning --automation running
+```
+
+2번을 하지 않으면 슬롯이 돌아도 `AUTOMATION_NOT_RUNNING`으로 차단되고 그 사실만 기록된다. 서버가
+재시작되면 정책 §6대로 `disabled`로 돌아가므로 **매 거래일 사람이 다시 켠다.**
+
+켜기 전에 확인할 것:
+
+- 미확인 주문이 남아 있지 않은지. 남은 상태로 리스너를 붙이면 `NOTIFICATION_GAP`으로 자동매매가
+  정지되고, 그 위에 새 주문이 쌓인다.
+- 신호에 후보가 있는지(`--from-signal`로 확인). 후보가 없으면 `no_plan`이며 이것은 차단이 아니므로
+  차단 이벤트를 만들지 않는다.
+
 ## 남은 범위
 
 - 부분 정정(일부만 가격 변경)과 자동 정정(목표 포지션 재계산 규칙 필요), 자동 스케줄 제출
