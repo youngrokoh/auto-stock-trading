@@ -7,7 +7,7 @@ import logging
 import signal
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, final
 
 import anyio
 
@@ -93,6 +93,37 @@ def _now() -> datetime:
 def backoff_seconds(attempt: int) -> float:
     """계약의 재연결 대기(1·2·4·8·16·30초, 상한 30초)."""
     return _BACKOFF_SECONDS[min(attempt, len(_BACKOFF_SECONDS) - 1)]
+
+
+# 정상으로 볼 세션 길이. 이보다 짧고 통보도 없이 끝났으면 연결 자체가 서지 않은 것으로 본다.
+HEALTHY_SESSION_SECONDS: Final = 60.0
+
+
+def session_was_healthy(notifications: int, duration_seconds: float) -> bool:
+    """이 세션이 성립했는지. 프레임을 받았거나 충분히 오래 붙어 있었으면 성립이다.
+
+    통보가 없는 조용한 장도 정상이므로 길이만으로도 판정한다.
+    """
+    return notifications > 0 or duration_seconds >= HEALTHY_SESSION_SECONDS
+
+
+@final
+class ReconnectStreak:
+    """연속 실패 횟수. 누적 세션 수가 아니다.
+
+    백오프는 정의상 연속 실패에 증가하고 성공에 초기화된다. 누적 세션 수로 세면 오래 잘 돌수록
+    재접속이 느려지고, 수열의 앞 값들이 의미를 잃는다 — 2026-08-27 실측에서 매시 정각 단절이
+    2→4→8→30초로 자라 하루 뒤에는 항상 상한이었다. 한 시간 정상 수신한 세션은 실패가 아니다.
+    """
+
+    def __init__(self) -> None:
+        self._failures = 0
+
+    def record(self, *, healthy: bool) -> None:
+        self._failures = 0 if healthy else self._failures + 1
+
+    def wait_seconds(self) -> float:
+        return backoff_seconds(self._failures)
 
 
 async def _heartbeat(listener: SessionListener, session_id: UUID) -> None:
@@ -209,18 +240,27 @@ async def run_sessions(
 ) -> str:
     """세션을 이어 붙인다. SIGINT·SIGTERM은 세션을 정상 종료로 닫고 루프를 끝낸다."""
     totals = SessionTotals()
+    streak = ReconnectStreak()
     async with anyio.create_task_group() as task_group:
         _ = task_group.start_soon(_watch_signals, task_group.cancel_scope)
         while max_sessions <= 0 or totals.sessions < max_sessions:
+            before = totals.notifications
+            started = _now()
             await run_session(
                 listener,
                 socket,
                 PAPER_NOTIFICATION_TRANSACTION_ID,
                 totals,
             )
+            streak.record(
+                healthy=session_was_healthy(
+                    totals.notifications - before,
+                    (_now() - started).total_seconds(),
+                )
+            )
             if max_sessions > 0 and totals.sessions >= max_sessions:
                 break
-            await anyio.sleep(backoff_seconds(totals.sessions - 1))
+            await anyio.sleep(streak.wait_seconds())
         task_group.cancel_scope.cancel()
     return (
         f"sessions={totals.sessions} notifications={totals.notifications} "

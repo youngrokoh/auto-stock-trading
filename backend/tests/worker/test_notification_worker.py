@@ -230,3 +230,50 @@ def test_backoff_grows_and_stops_at_the_contract_ceiling() -> None:
         30.0,
         30.0,
     ]
+
+
+def test_a_healthy_session_resets_the_reconnect_wait() -> None:
+    """백오프는 **연속 실패**에 증가한다. 누적 세션 수로 세면 오래 잘 돌수록 느려진다.
+
+    2026-08-27 실측: KIS 모의 웹소켓이 매시 정각에 연결을 끊는데, 우리 쪽 대기가 2→4→8→30초로
+    자라 하루가 지나면 항상 30초가 됐다. 한 시간 정상 수신한 세션은 실패 연속이 아니다.
+    """
+    streak = worker.ReconnectStreak()
+
+    streak.record(healthy=True)
+    assert streak.wait_seconds() == 1.0
+
+    streak.record(healthy=False)
+    assert streak.wait_seconds() == 2.0
+    streak.record(healthy=False)
+    assert streak.wait_seconds() == 4.0
+
+    # 다시 정상 세션이 하나 지나가면 처음으로 돌아간다.
+    streak.record(healthy=True)
+    assert streak.wait_seconds() == 1.0
+
+
+def test_repeated_immediate_failures_still_escalate_to_the_ceiling() -> None:
+    """즉시 실패가 반복되면 상한까지 올라간다. 자격증명·네트워크 장애를 두드리지 않는다."""
+    streak = worker.ReconnectStreak()
+
+    waits: list[float] = []
+    for _ in range(8):
+        streak.record(healthy=False)
+        waits.append(streak.wait_seconds())
+
+    assert waits == [2.0, 4.0, 8.0, 16.0, 30.0, 30.0, 30.0, 30.0]
+
+
+def test_a_session_that_received_a_notification_counts_as_healthy() -> None:
+    """프레임을 받았다면 연결은 성립했다. 그 뒤의 단절은 실패 연속이 아니다."""
+    assert worker.session_was_healthy(notifications=1, duration_seconds=0.0) is True
+
+
+def test_a_long_lived_session_counts_as_healthy_even_with_no_frames() -> None:
+    """통보 없는 조용한 장에서도 오래 붙어 있었으면 정상이다."""
+    assert worker.session_was_healthy(notifications=0, duration_seconds=120.0) is True
+
+
+def test_an_instant_failure_with_no_frames_is_not_healthy() -> None:
+    assert worker.session_was_healthy(notifications=0, duration_seconds=0.5) is False
