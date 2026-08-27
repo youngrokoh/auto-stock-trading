@@ -71,6 +71,9 @@ from auto_stock_trading.worker.market_calendar_schedule import (
     run_claimed_krx_market_calendar,
 )
 
+# taskiq CLI가 `<module>:broker`로 지목할 수 있는 공개 이름이다.
+__all__ = ["broker"]
+
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 # 6단계 백필과 같은 창을 쓴다. 발행된 수정주가 데이터셋의 시작일이다.
 _UNIVERSE_BACKFILL_START: Final = date(2025, 1, 2)

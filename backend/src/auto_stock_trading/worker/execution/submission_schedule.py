@@ -30,11 +30,14 @@ from auto_stock_trading.application.scheduled_jobs import (
     ScheduledJobRequest,
 )
 from auto_stock_trading.settings.runtime import Settings
-from auto_stock_trading.worker.broker import broker
+from auto_stock_trading.worker.broker import ORDER_SUBMISSION_QUEUE, create_broker
 from auto_stock_trading.worker.execution import planning, submission
 
 if TYPE_CHECKING:
     from auto_stock_trading.application.trading.submission import SubmissionResult
+
+# 주문 제출 전용 큐(브로커 모듈 참조). 기본 워커와 같은 큐를 보면 슬롯이 그 워커에 잡혀 사라진다.
+broker = create_broker(queue_name=ORDER_SUBMISSION_QUEUE)
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _TASK_NAME: Final = "scheduled_order_submission"

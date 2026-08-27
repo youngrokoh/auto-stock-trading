@@ -43,6 +43,9 @@ from auto_stock_trading.settings.runtime import Settings
 from auto_stock_trading.worker import market_data
 from auto_stock_trading.worker.broker import broker
 
+# taskiq CLI가 `<module>:broker`로 지목할 수 있는 공개 이름이다.
+__all__ = ["broker"]
+
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _TASK_NAME: Final = "scheduled_universe_investor_flows"
 _EMPTY_UNIVERSE: Final = "empty_universe"
