@@ -1150,23 +1150,46 @@ uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
 
 ## 자동 스케줄 실가동 절차 (2026-08-26 배선 완료, 2026-08-27 실가동)
 
-배선은 켰고 자동매매는 꺼둔 상태다. 실제로 주문이 나가려면 **두 가지가 더** 필요하다.
+서비스는 `restart: unless-stopped`라 한 번 올려두면 계속 뜬다. **매 거래일 사람이 해야 하는 것은
+아래 두 단계이며, 순서가 있다.**
 
 ```bash
-# 1. 리스너 오버라이드를 함께 올린다.
-#    제출은 리스너 부착을 요구하는데 order-submission-schedule 오버라이드에는 리스너가 없다.
-#    이 의존은 오버라이드 파일만 봐서는 드러나지 않는다.
-docker compose -f infra/compose.yaml \
-  -f infra/compose.order-submission-schedule.yaml \
-  -f infra/compose.fill-notifications.yaml up -d
+cd backend
 
-# 2. 사람이 그날 자동매매를 켠다 (09:05 이전). 이것이 ADR-0015 결정 3이다.
+# 1. 오늘 달력을 확인한다 (승인된 실전 읽기 전용 경로).
+#    기본 Compose는 KIS 당일 확인이 꺼져 있어(ADR-0006) KRX 연간 일정만 들어온다.
+#    확인하지 않으면 달력이 pending이고 계획이 fail-closed로 막힌다 — 슬롯은 돌지만 주문은 없다.
+AUTO_STOCK_KIS_ENVIRONMENT=live \
+AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-live-app-key \
+AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-live-app-secret \
+  uv run python -c "import anyio; from auto_stock_trading.worker.market_calendar import \
+  confirm_today_market_calendar; print(anyio.run(confirm_today_market_calendar))"
+
+# 2. 자동매매를 켠다 (09:05 이전). 이것이 ADR-0015 결정 3이다.
 uv run python -m auto_stock_trading.worker.execution.planning --automation armed
 uv run python -m auto_stock_trading.worker.execution.planning --automation running
 ```
 
+처음 한 번은 서비스를 올린다. 리스너 오버라이드를 빠뜨리면 제출이 전부 막힌다 — 이 의존은
+`order-submission-schedule` 오버라이드 파일만 봐서는 드러나지 않는다.
+
+```bash
+docker compose -f infra/compose.yaml \
+  -f infra/compose.order-submission-schedule.yaml \
+  -f infra/compose.fill-notifications.yaml \
+  -f infra/compose.notifications.yaml up -d
+```
+
 2번을 하지 않으면 슬롯이 돌아도 `AUTOMATION_NOT_RUNNING`으로 차단되고 그 사실만 기록된다. 서버가
-재시작되면 정책 §6대로 `disabled`로 돌아가므로 **매 거래일 사람이 다시 켠다.**
+재시작되거나 거래일이 바뀌면 정책 §6대로 `disabled`로 돌아가므로 **매 거래일 사람이 다시 켠다.**
+
+**1번을 빠뜨리면 조용하다.** 자동매매는 `running`이고 슬롯도 돌지만 계획이 달력에서 막혀 주문이 하나도
+나가지 않는다. 2026-08-28 아침에 이 단계가 절차서에서 빠져 있었고, 자동매매만 켠 상태로는 하루 종일
+주문이 없었을 것이다. 켠 뒤에는 아래 상태 확인으로 네 값을 함께 본다.
+
+```bash
+# 자동매매 running / 달력 confirmed / 리스너 attached / 미종결 0
+```
 
 켜기 전에 확인할 것:
 
