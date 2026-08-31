@@ -1,7 +1,52 @@
 services:
-  worker:
+  # 실전 읽기 전용 KIS 당일 달력 확인(ADR-0006). 기본 Compose에는 없고 이 오버라이드를 명시할 때만 뜬다.
+  #
+  # **전용 프로세스로 분리한다.** 예전에는 이 파일이 공용 `worker`에 실전 자격증명과
+  # `KIS_ENVIRONMENT=live`를 덮어썼는데, 그 사이 같은 worker가 모의 시장데이터·수급 수집까지
+  # 맡게 되면서 그 수집이 실전 환경·실전 자격증명으로 돌게 됐다(2026-08-31 확인). 모의와 실전
+  # 자격증명은 완전히 분리한다는 상시 제약을 어기므로 공용 worker는 건드리지 않는다.
+  #
+  # 확인 작업은 전용 큐(`taskiq-calendar-confirm`)를 쓴다. 기본 큐를 보면 이 실전 프로세스가
+  # 모의 작업을 집어간다.
+  calendar-confirm-scheduler:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "scheduler",
+        "auto_stock_trading.worker.market_calendar_schedule:confirm_scheduler",
+      ]
     restart: unless-stopped
     environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      AUTO_STOCK_KIS_ENVIRONMENT: live
+      AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED: "true"
+    # 예약만 발행한다. 자격증명을 갖지 않는다(ADR-0006).
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+  calendar-confirm-worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "worker",
+        "auto_stock_trading.worker.market_calendar_schedule:confirm_broker",
+      ]
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
       AUTO_STOCK_KIS_ENVIRONMENT: live
       AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED: "true"
       AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_live_app_key
@@ -9,12 +54,11 @@ services:
     secrets:
       - kis_live_app_key
       - kis_live_app_secret
-
-  calendar-scheduler:
-    restart: unless-stopped
-    environment:
-      AUTO_STOCK_KIS_ENVIRONMENT: live
-      AUTO_STOCK_KIS_CALENDAR_SCHEDULE_ENABLED: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
 
 secrets:
   kis_live_app_key:

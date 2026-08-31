@@ -23,6 +23,9 @@ from auto_stock_trading.settings.runtime import Settings
 DEFAULT_QUEUE: Final = "taskiq"
 # 주문 제출 워커 전용. 주문 경로가 다른 워커에 잡히면 슬롯이 사라진다.
 ORDER_SUBMISSION_QUEUE: Final = "taskiq-order-submission"
+# 실전 읽기 전용 달력 확인 워커 전용(ADR-0006). 그 워커만 실전 자격증명을 갖는다 — 기본 큐를 보면
+# 모의 시장데이터·수급 작업이 실전 환경 프로세스에 잡혀 자격증명 분리가 무너진다.
+CALENDAR_CONFIRM_QUEUE: Final = "taskiq-calendar-confirm"
 
 
 def create_broker(

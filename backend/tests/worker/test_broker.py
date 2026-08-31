@@ -17,6 +17,7 @@ from auto_stock_trading.worker import (
     market_data,
 )
 from auto_stock_trading.worker.broker import (
+    CALENDAR_CONFIRM_QUEUE,
     DEFAULT_QUEUE,
     ORDER_SUBMISSION_QUEUE,
     create_broker,
@@ -69,3 +70,20 @@ def test_jobs_served_by_the_same_worker_share_one_queue() -> None:
     assert market_data.broker is default_broker
     assert market_calendar_schedule.broker is default_broker
     assert investor_flow_schedule.broker is default_broker
+
+
+def test_the_live_calendar_confirmation_has_its_own_queue() -> None:
+    """실전 자격증명을 가진 워커가 모의 작업을 집어가면 안 된다(ADR-0006 구성 분리).
+
+    같은 큐를 보면 시장 데이터·수급 작업이 실전 환경 워커에 잡힌다 — 자격증명 분리가 무너진다.
+    """
+    assert market_calendar_schedule.confirm_broker.queue_name == CALENDAR_CONFIRM_QUEUE
+    assert market_calendar_schedule.confirm_broker.queue_name != default_broker.queue_name
+    assert market_calendar_schedule.confirm_broker is not default_broker
+
+
+def test_every_queue_name_is_distinct() -> None:
+    """큐 이름이 겹치면 그 순간 작업이 서로에게 도둑맞는다."""
+    names = [DEFAULT_QUEUE, ORDER_SUBMISSION_QUEUE, CALENDAR_CONFIRM_QUEUE]
+
+    assert len(set(names)) == len(names)

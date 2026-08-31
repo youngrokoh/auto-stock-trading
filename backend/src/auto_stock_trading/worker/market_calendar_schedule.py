@@ -51,10 +51,14 @@ from auto_stock_trading.domain.market_data.calendar import (
 )
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
 from auto_stock_trading.worker import market_calendar
-from auto_stock_trading.worker.broker import broker
+from auto_stock_trading.worker.broker import CALENDAR_CONFIRM_QUEUE, broker, create_broker
 
-# taskiq CLI가 `<module>:broker`로 지목할 수 있는 공개 이름이다.
-__all__ = ["broker"]
+# 실전 확인은 전용 큐를 쓴다(ADR-0006). 실전 자격증명을 가진 워커가 기본 큐를 보면 모의 작업을
+# 집어가므로 자격증명 분리가 무너진다. KRX 수집은 자격증명이 필요 없어 기본 큐에 남는다.
+confirm_broker = create_broker(queue_name=CALENDAR_CONFIRM_QUEUE)
+
+# taskiq CLI가 `<module>:<name>`으로 지목할 수 있는 공개 이름이다.
+__all__ = ["broker", "confirm_broker"]
 
 _SEOUL: Final = ZoneInfo("Asia/Seoul")
 _DECEMBER: Final = 12
@@ -238,7 +242,7 @@ run_scheduled_krx_market_calendar_task = broker.task(
     task_name=_KRX_TASK_NAME,
     schedule=krx_calendar_schedules(enabled=_settings.krx_calendar_schedule_enabled),
 )(run_scheduled_krx_market_calendar)
-run_scheduled_kis_market_calendar_confirmation_task = broker.task(
+run_scheduled_kis_market_calendar_confirmation_task = confirm_broker.task(
     task_name=_KIS_TASK_NAME,
     schedule=kis_calendar_schedules(
         enabled=_settings.kis_calendar_schedule_enabled
@@ -246,3 +250,8 @@ run_scheduled_kis_market_calendar_confirmation_task = broker.task(
     ),
 )(run_scheduled_kis_market_calendar_confirmation)
 scheduler = TaskiqScheduler(broker, sources=[LabelScheduleSource(broker)])
+# 확인 작업은 자기 브로커로 발행한다. 스케줄러는 자격증명을 갖지 않는다(ADR-0006).
+confirm_scheduler = TaskiqScheduler(
+    confirm_broker,
+    sources=[LabelScheduleSource(confirm_broker)],
+)
