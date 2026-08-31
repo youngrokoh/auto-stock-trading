@@ -52,7 +52,14 @@ unless paper_worker.fetch("secrets").sort == %w[kis_app_key kis_app_secret]
   abort "KIS Compose override must mount both KIS credentials as Docker secrets"
 end
 
-live_worker = live_calendar_compose.fetch("services").fetch("worker")
+if live_calendar_compose.fetch("services").key?("worker")
+  abort "KIS live calendar override must not touch the shared worker: it also collects paper market data and investor flows, so live credentials there break the paper/live separation"
+end
+
+live_worker = live_calendar_compose.fetch("services").fetch("calendar-confirm-worker")
+unless live_worker.fetch("command").last.end_with?(":confirm_broker")
+  abort "KIS live calendar worker must consume its own queue, or it steals paper tasks"
+end
 live_worker_environment = live_worker.fetch("environment")
 unless live_worker_environment.fetch("AUTO_STOCK_KIS_ENVIRONMENT") == "live"
   abort "KIS live calendar worker must force the live environment"
@@ -67,7 +74,10 @@ unless live_worker.fetch("restart") == "unless-stopped"
   abort "KIS live calendar worker must restart unless explicitly stopped"
 end
 
-live_scheduler = live_calendar_compose.fetch("services").fetch("calendar-scheduler")
+live_scheduler = live_calendar_compose.fetch("services").fetch("calendar-confirm-scheduler")
+unless live_scheduler.fetch("command").last.end_with?(":confirm_scheduler")
+  abort "KIS live calendar scheduler must publish to the dedicated confirmation queue"
+end
 live_scheduler_environment = live_scheduler.fetch("environment")
 unless live_scheduler_environment.fetch("AUTO_STOCK_KIS_ENVIRONMENT") == "live"
   abort "KIS live calendar scheduler must register tasks for the live environment"
