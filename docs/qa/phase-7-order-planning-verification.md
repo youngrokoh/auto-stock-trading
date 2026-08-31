@@ -1201,18 +1201,21 @@ uv run python -m auto_stock_trading.worker.execution.submission --emergency-stop
 ```bash
 cd backend
 
-# 1. 오늘 달력을 확인한다 (승인된 실전 읽기 전용 경로).
-#    기본 Compose는 KIS 당일 확인이 꺼져 있어(ADR-0006) KRX 연간 일정만 들어온다.
-#    확인하지 않으면 달력이 pending이고 계획이 fail-closed로 막힌다 — 슬롯은 돌지만 주문은 없다.
+# 자동매매를 켠다 (09:05 이전). 이것이 ADR-0015 결정 3이며 매 거래일 사람이 한다.
+uv run python -m auto_stock_trading.worker.execution.planning --automation armed
+uv run python -m auto_stock_trading.worker.execution.planning --automation running
+```
+
+달력 당일 확인은 **2026-08-31부터 자동이다**(`compose.kis-live-calendar.yaml`의 전용 프로세스).
+2026-09-01에 KRX 수집 05:10 → KIS 확인 08:10 → `confirmed` 08:20이 사람 손 없이 이어지는 것을
+확인했다. 자동 경로가 멈춘 경우에만 아래를 수동으로 돌린다.
+
+```bash
 AUTO_STOCK_KIS_ENVIRONMENT=live \
 AUTO_STOCK_KIS_APP_KEY_FILE=../.secrets/kis-live-app-key \
 AUTO_STOCK_KIS_APP_SECRET_FILE=../.secrets/kis-live-app-secret \
   uv run python -c "import anyio; from auto_stock_trading.worker.market_calendar import \
   confirm_today_market_calendar; print(anyio.run(confirm_today_market_calendar))"
-
-# 2. 자동매매를 켠다 (09:05 이전). 이것이 ADR-0015 결정 3이다.
-uv run python -m auto_stock_trading.worker.execution.planning --automation armed
-uv run python -m auto_stock_trading.worker.execution.planning --automation running
 ```
 
 처음 한 번은 서비스를 올린다. 리스너 오버라이드를 빠뜨리면 제출이 전부 막힌다 — 이 의존은
