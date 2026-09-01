@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final, final
 from uuid import UUID
 
 import anyio
+import httpx2
 import pytest
 
 from auto_stock_trading.adapters.brokers.kis_realtime import RealtimeFrameError
@@ -277,3 +278,55 @@ def test_a_long_lived_session_counts_as_healthy_even_with_no_frames() -> None:
 
 def test_an_instant_failure_with_no_frames_is_not_healthy() -> None:
     assert worker.session_was_healthy(notifications=0, duration_seconds=0.5) is False
+
+
+def test_a_transport_failure_reconnects_instead_of_killing_the_process() -> None:
+    """연결 실패는 복구 가능한 오류다. 프로세스가 죽으면 안 된다(2026-09-01 실측).
+
+    리스너가 죽으면 컨테이너가 재시작하고, 재시작은 정책 §6대로 자동매매를 DISABLED로 되돌린다.
+    그래서 DNS 한 번 흔들린 것이 그날 무인 매매를 멈춘다 — 실제로 하루에 50번 재시작했다.
+    """
+
+    async def run() -> None:
+        listener = FakeListener()
+        socket = FakeSocket(error=httpx2.ConnectError("No address associated with hostname"))
+
+        await worker.run_session(listener, socket, _TRANSACTION_ID, worker.SessionTotals())
+
+        assert listener.failures  # 사실로 남는다
+        assert listener.detached  # 세션은 정상적으로 닫힌다
+
+    anyio.run(run)
+
+
+def test_a_dns_failure_is_also_recoverable() -> None:
+    """`OSError` 계열(주소 해석 실패)도 같은 경로로 다룬다."""
+
+    async def run() -> None:
+        listener = FakeListener()
+        socket = FakeSocket(error=OSError(-5, "No address associated with hostname"))
+
+        await worker.run_session(listener, socket, _TRANSACTION_ID, worker.SessionTotals())
+
+        assert listener.failures
+
+    anyio.run(run)
+
+
+def test_a_programming_error_still_escapes() -> None:
+    """복구 대상이 아닌 오류까지 삼키면 진짜 결함이 재연결 뒤에 숨는다.
+
+    태스크 그룹을 지나며 예외 그룹으로 감싸지지만 프로세스를 끝내는 것은 같다.
+    """
+
+    async def run() -> None:
+        listener = FakeListener()
+        socket = FakeSocket(error=ValueError("bug"))
+
+        with pytest.raises(BaseExceptionGroup) as raised:
+            await worker.run_session(listener, socket, _TRANSACTION_ID, worker.SessionTotals())
+
+        assert raised.group_contains(ValueError)
+        assert not listener.failures
+
+    anyio.run(run)

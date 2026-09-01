@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Protocol, final
 
 import anyio
+import httpx2
 
 from auto_stock_trading.adapters.brokers.kis_coordination import kis_coordination_scope
 from auto_stock_trading.adapters.brokers.kis_coordination_valkey import (
@@ -50,6 +51,9 @@ logger = logging.getLogger(__name__)
 _PAPER_ONLY: Final = "the fill notification listener is allowed in the paper environment only"
 _CLOSED: Final = "CONNECTION_CLOSED"
 _FRAME_ERROR: Final = "FRAME_ERROR"
+_TRANSPORT_ERROR: Final = "TRANSPORT_ERROR"
+# 재연결로 다룰 오류만 좁게 잡는다. 나머지는 그대로 새어 나가야 진짜 결함이 재연결 뒤에 숨지 않는다.
+_RECOVERABLE_TRANSPORT: Final = (httpx2.HTTPError, OSError)
 _STOPPED: Final = "STOPPED"
 _BACKOFF_SECONDS: Final = (1.0, 2.0, 4.0, 8.0, 16.0, 30.0)
 
@@ -175,6 +179,14 @@ async def run_session(
                 reason = _FRAME_ERROR
                 await listener.record_failure(error.detail, _now())
                 logger.warning("KIS notification session failed: %s", error.detail)
+            except _RECOVERABLE_TRANSPORT as error:
+                # 연결 실패는 재연결로 다룬다. 프로세스가 죽으면 컨테이너가 재시작하고, 재시작은
+                # 정책 §6대로 자동매매를 DISABLED로 되돌린다 — DNS 한 번 흔들린 것이 그날 무인
+                # 매매를 멈춘다(2026-09-01 실측: 하루 50회 재시작).
+                reason = _TRANSPORT_ERROR
+                detail = f"{type(error).__name__}: {error}"
+                await listener.record_failure(detail, _now())
+                logger.warning("KIS notification transport failed: %s", detail)
             finally:
                 task_group.cancel_scope.cancel()
     except* KeyboardInterrupt, SystemExit, anyio.get_cancelled_exc_class():
