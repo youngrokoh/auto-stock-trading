@@ -175,6 +175,7 @@ Taskiq worker ── Valkey
 - [ADR-0018: 사람이 확인한 재조정 문제 해소 경계](decisions/0018-human-resolved-reconciliation-records.md) (승인)
 - [ADR-0019: 확인을 받을 수 없는 노출 축소 요청의 알림 경계](decisions/0019-unobservable-confirmation-notification.md) (승인)
 - [ADR-0020: 자리가 없는 것과 거절된 것을 구분한다](decisions/0020-no-capacity-is-not-a-rejection.md) (승인)
+- [ADR-0021: ETF는 추종 지수로 분류한다](decisions/0021-etf-index-classification-for-risk-limits.md) (초안)
 
 #### Governance
 
