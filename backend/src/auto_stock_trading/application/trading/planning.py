@@ -107,6 +107,15 @@ class TradingStore(Protocol):
         occurred_at: datetime,
     ) -> None: ...
 
+    async def record_no_capacity(
+        self,
+        environment: str,
+        symbol: str,
+        rule_code: str,
+        trading_date: date,
+        occurred_at: datetime,
+    ) -> bool: ...
+
     async def api_failures_since(self, environment: str, since: datetime) -> int: ...
 
     async def save_account_snapshot(
@@ -355,6 +364,16 @@ class OrderPlanner:
         )
         if evaluation.pause_rule is not None:
             automation = await self.pause(request.environment, evaluation.pause_rule, now)
+        # 자리가 없어 계획하지 않은 후보를 사실로 남긴다(ADR-0020 결정 2). 거절로 세지 않는 대신
+        # 이 기록이 그 자리를 대신하므로, 남기지 않으면 전략 문제가 흔적 없이 지나간다.
+        for shortage in evaluation.no_capacity:
+            _ = await self.store.record_no_capacity(
+                request.environment,
+                shortage.symbol,
+                shortage.rule.value,
+                trading_date,
+                now,
+            )
         plan = OrderPlanRecord(
             plan_id=uuid4(),
             environment=request.environment,

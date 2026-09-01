@@ -109,10 +109,24 @@ class PlannedOrder:
 
 
 @dataclass(frozen=True, slots=True)
+class NoCapacity:
+    """넣을 자리가 0이라 계획하지 않은 후보(ADR-0020 결정 1·2).
+
+    거절이 아니므로 연속 거절로 세지 않는다. 그러나 사실은 남긴다 — 전략이 매일 통과할 수 없는 것을
+    요구하는 상태가 흔적 없이 지나가면 안 된다.
+    """
+
+    symbol: str
+    rule: RiskRule
+    limit_value: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class RiskEvaluation:
     orders: tuple[PlannedOrder, ...]
     block_code: str | None
     pause_rule: RiskRule | None
+    no_capacity: tuple[NoCapacity, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,7 +373,7 @@ def _plan_buy(
     state: _PlanState,
     candidate: SignalCandidate,
     quote: MarketQuote,
-) -> tuple[PlannedOrder, ...]:
+) -> tuple[tuple[PlannedOrder, ...], NoCapacity | None]:
     limits = request.limits
     account = request.account
     limit_price = _limit_price(state, quote)
@@ -372,9 +386,21 @@ def _plan_buy(
     remaining_value = target_value - limit_price * held_quantity
     per_order_quantity = int(account.nav * limits.order_amount / limit_price)
     orders: list[PlannedOrder] = []
+    no_capacity: NoCapacity | None = None
     while remaining_value > 0:
         caps = _buy_caps(request, state, quote)
         binding = min(caps, key=lambda cap: cap.available)
+        # 자리 없음의 기준은 "가장 작은 주문 한 주도 들어가지 못한다"이다(ADR-0020 결정 1).
+        # `available <= 0`으로 적으면 실제 상황을 놓친다 — 2026-09-01 실측에서 미분류 잔여가
+        # 37,787원이고 한 주가 177,885원이라 한 주도 못 사는데 잔여는 0이 아니었다.
+        if int(binding.available / limit_price) <= 0 and per_order_quantity > 0:
+            if not orders:
+                no_capacity = NoCapacity(
+                    symbol=candidate.symbol,
+                    rule=binding.rule,
+                    limit_value=binding.limit_value,
+                )
+            break
         allowed = min(remaining_value, binding.available)
         quantity = min(int(allowed / limit_price), per_order_quantity) if allowed > 0 else 0
         if quantity <= 0:
@@ -423,7 +449,7 @@ def _plan_buy(
         )
         _apply_buy(state, quote, order_value)
         remaining_value -= order_value
-    return tuple(orders)
+    return tuple(orders), no_capacity
 
 
 def _sell_decisions(
@@ -525,20 +551,20 @@ def _candidate_orders(
     state: _PlanState,
     candidate: SignalCandidate,
     quote: MarketQuote | None,
-) -> tuple[PlannedOrder, ...]:
+) -> tuple[tuple[PlannedOrder, ...], NoCapacity | None]:
     if quote is None:
-        return (_rejected(state, candidate, None, BlockCode.DATA_STALE.value),)
+        return (_rejected(state, candidate, None, BlockCode.DATA_STALE.value),), None
     age = request.now - quote.received_at
     if age > timedelta(seconds=request.limits.quote_max_age_seconds):
-        return (_rejected(state, candidate, quote, BlockCode.DATA_STALE.value),)
+        return (_rejected(state, candidate, quote, BlockCode.DATA_STALE.value),), None
     if quote.trading_status != _ACTIVE_TRADING_STATUS:
-        return (_rejected(state, candidate, quote, BlockCode.SYMBOL_SUSPENDED.value),)
+        return (_rejected(state, candidate, quote, BlockCode.SYMBOL_SUSPENDED.value),), None
     limit_price = _limit_price(state, quote)
     if not within_price_band(candidate.side, limit_price, quote.price):
-        return (_rejected(state, candidate, quote, RiskRule.ORDER_PRICE_BAND.value),)
+        return (_rejected(state, candidate, quote, RiskRule.ORDER_PRICE_BAND.value),), None
     if candidate.side is OrderSide.BUY:
         return _plan_buy(request, state, candidate, quote)
-    return _plan_sell(request, state, candidate, quote)
+    return _plan_sell(request, state, candidate, quote), None
 
 
 def evaluate_plan(request: PlanRequest) -> RiskEvaluation:
@@ -548,6 +574,17 @@ def evaluate_plan(request: PlanRequest) -> RiskEvaluation:
     quotes = {quote.symbol: quote for quote in request.quotes}
     state = _seed_state(request)
     orders: list[PlannedOrder] = []
+    shortages: list[NoCapacity] = []
     for candidate in request.candidates:
-        orders.extend(_candidate_orders(request, state, candidate, quotes.get(candidate.symbol)))
-    return RiskEvaluation(orders=tuple(orders), block_code=None, pause_rule=None)
+        planned, shortage = _candidate_orders(
+            request, state, candidate, quotes.get(candidate.symbol)
+        )
+        orders.extend(planned)
+        if shortage is not None:
+            shortages.append(shortage)
+    return RiskEvaluation(
+        orders=tuple(orders),
+        block_code=None,
+        pause_rule=None,
+        no_capacity=tuple(shortages),
+    )

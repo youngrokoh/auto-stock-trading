@@ -287,10 +287,11 @@ def test_unclassified_total_limit_blocks_the_second_symbol() -> None:
 
     evaluation = evaluate_plan(request)
 
-    assert [order.symbol for order in evaluation.orders] == [_SYMBOL, _SYMBOL, _OTHER]
-    rejected = evaluation.orders[2]
-    assert rejected.reject_code == RiskRule.UNCLASSIFIED_EXPOSURE
-    assert rejected.quantity == 0
+    # 첫 종목이 미분류 한도를 채우면 둘째는 넣을 자리가 없다 — 거절이 아니다(ADR-0020).
+    assert [order.symbol for order in evaluation.orders] == [_SYMBOL, _SYMBOL]
+    (entry,) = evaluation.no_capacity
+    assert entry.symbol == _OTHER
+    assert entry.rule is RiskRule.UNCLASSIFIED_EXPOSURE
 
 
 def test_minimum_cash_limit_caps_additional_quantity() -> None:

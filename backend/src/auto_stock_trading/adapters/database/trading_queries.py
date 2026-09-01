@@ -8,12 +8,18 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy import Select, func, select
 
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
-from auto_stock_trading.adapters.database.trading_rows import OrderPlanRow, OrderRow
-from auto_stock_trading.domain.orders.models import OrderState
+from auto_stock_trading.adapters.database.trading_rows import (
+    AutomationEventRow,
+    OrderPlanRow,
+    OrderRow,
+)
+from auto_stock_trading.domain.orders.models import AutomationState, OrderState
+
+_STATE_CHANGE: Final = "state_change"
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date
+    from datetime import date, datetime
 
 _OPEN_STATES: Final = (OrderState.SUBMITTED.value, OrderState.PARTIALLY_FILLED.value)
 _BUY_COUNTED_STATES: Final = (
@@ -130,13 +136,36 @@ def pending_exposure_query(environment: str, trading_date: date) -> Select[tuple
     )
 
 
-def recent_states_query(environment: str) -> Select[tuple[str]]:
-    return (
+def recent_states_query(environment: str, since: datetime | None = None) -> Select[tuple[str]]:
+    """연속 거절 판정에 쓰는 최근 주문 상태.
+
+    `since`는 **사람이 마지막으로 자동매매를 재개한 시각**이다(ADR-0020 결정 6). 그 이전 주문을 계속
+    세면 정지 규칙에서 빠져나올 길이 없다 — 막혀 있는 동안에는 새 주문이 만들어지지 않으므로 선두의
+    거절 연속이 영원히 유지된다. 재개는 사람이 "지금은 괜찮다"고 확인한 시점이므로 거기서 다시 센다.
+    """
+    statement = (
         select(OrderRow.state)
         .join(OrderPlanRow, OrderRow.plan_id == OrderPlanRow.id)
         .where(OrderPlanRow.environment == environment)
-        .order_by(OrderRow.created_at.desc(), OrderRow.sequence.desc())
-        .limit(_RECENT_ORDER_LIMIT)
+    )
+    if since is not None:
+        statement = statement.where(OrderRow.created_at >= since)
+    return statement.order_by(OrderRow.created_at.desc(), OrderRow.sequence.desc()).limit(
+        _RECENT_ORDER_LIMIT
+    )
+
+
+def last_resume_query(environment: str) -> Select[tuple[datetime]]:
+    """사람이 마지막으로 자동매매를 `running`으로 올린 시각."""
+    return (
+        select(AutomationEventRow.occurred_at)
+        .where(
+            AutomationEventRow.environment == environment,
+            AutomationEventRow.event_type == _STATE_CHANGE,
+            AutomationEventRow.state == AutomationState.RUNNING.value,
+        )
+        .order_by(AutomationEventRow.occurred_at.desc())
+        .limit(1)
     )
 
 

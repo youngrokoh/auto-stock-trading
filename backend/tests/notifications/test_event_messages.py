@@ -86,7 +86,14 @@ def test_a_listener_state_event_is_not_notifiable() -> None:
 
 @pytest.mark.parametrize(
     "event_type",
-    ["state_change", "reconcile_problem", "api_failure", "attestation", "reconcile_resolved"],
+    [
+        "state_change",
+        "reconcile_problem",
+        "api_failure",
+        "attestation",
+        "reconcile_resolved",
+        "no_capacity",
+    ],
 )
 def test_the_selected_automation_event_types_are_notifiable(event_type: str) -> None:
     candidate = NotificationCandidate(
@@ -456,3 +463,34 @@ def test_every_kind_has_a_korean_heading() -> None:
             )
         )
         assert event_type not in message.body
+
+
+def test_no_capacity_is_notified_as_a_warning_that_names_the_symbol() -> None:
+    """전략이 통과할 수 없는 것을 요구한다는 뜻이므로 사람이 행동해야 한다(ADR-0020 결정 4).
+
+    어떤 종목이 어떤 한도에 막혔는지가 없으면 받아도 할 수 있는 게 없다.
+    """
+    message = build_message(
+        NotificationCandidate(
+            source=EventSource.AUTOMATION_EVENT,
+            source_id=_ID,
+            occurred_at=_AT,
+            previous_state=None,
+            state=None,
+            reason_code="NO_CAPACITY",
+            symbol="133690",
+            symbol_name="TIGER 미국나스닥100",
+            side=None,
+            quantity=None,
+            limit_price=None,
+            broker_order_id=None,
+            event_type="no_capacity",
+            rule_code="RISK_UNCLASSIFIED_EXPOSURE",
+        )
+    )
+
+    assert message.rejected_reason is None
+    assert message.severity is NotificationSeverity.WARNING
+    assert "133690" in message.body
+    assert "RISK_UNCLASSIFIED_EXPOSURE" in message.body
+    assert "no_capacity" not in message.body

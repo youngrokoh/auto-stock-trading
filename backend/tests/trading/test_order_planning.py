@@ -226,6 +226,7 @@ class FakeAccounts:
 
 @dataclass
 class FakeStore:
+    no_capacity: list[tuple[str, str]] = field(default_factory=list)
     automation: AutomationRecord | None = None
     stored_counters: StoredCounters = field(
         default_factory=lambda: StoredCounters(
@@ -260,6 +261,21 @@ class FakeStore:
         )
         self.automation = record
         return record
+
+    async def record_no_capacity(
+        self,
+        environment: str,
+        symbol: str,
+        rule_code: str,
+        trading_date: date,
+        occurred_at: datetime,
+    ) -> bool:
+        _ = (environment, trading_date, occurred_at)
+        key = (symbol, rule_code)
+        if key in self.no_capacity:
+            return False
+        self.no_capacity.append(key)
+        return True
 
     async def record_api_failure(
         self,
@@ -565,9 +581,8 @@ def test_pending_orders_from_earlier_plans_consume_the_exposure_cap() -> None:
     plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
 
     assert plan.status == "created"
-    (order,) = plan.orders
-    assert order.quantity == 0
-    assert order.reject_code == RiskRule.SYMBOL_EXPOSURE.value
+    # 한도가 다 찼으면 넣을 자리가 없는 것이며 거절 주문을 만들지 않는다(ADR-0020).
+    assert plan.orders == ()
 
 
 def test_the_plan_reports_orders_that_were_actually_stored() -> None:
@@ -635,3 +650,18 @@ def test_an_instrument_without_a_sector_fact_stays_unclassified() -> None:
     decisions = {decision.rule for order in plan.orders for decision in order.decisions}
     assert RiskRule.UNCLASSIFIED_EXPOSURE in decisions
     assert RiskRule.SECTOR_EXPOSURE not in decisions
+
+
+def test_a_candidate_without_room_is_recorded_rather_than_rejected() -> None:
+    """거절로 세지 않는 대신 사실을 남긴다(ADR-0020 결정 2).
+
+    남기지 않으면 전략이 매일 통과할 수 없는 것을 요구하는 상태가 흔적 없이 지나간다.
+    """
+    pending = (PendingExposure(symbol=_SYMBOL, amount=_NAV / 10),)
+    store = FakeStore(pending=pending)
+    harness = _harness(_Collaborators(store=store))
+
+    plan = anyio.run(harness.planner.plan, _PLAN_INPUT, _NOW)
+
+    assert plan.orders == ()
+    assert store.no_capacity == [(_SYMBOL, RiskRule.SYMBOL_EXPOSURE.value)]

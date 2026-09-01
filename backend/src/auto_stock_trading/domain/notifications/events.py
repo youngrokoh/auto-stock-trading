@@ -56,13 +56,16 @@ _NOTIFIABLE_AUTOMATION_TYPES: Final = frozenset(
         "schedule_blocked",
         # 해소를 보내지 않으면 푸시만 보는 사람은 문제가 계속 열려 있다고 읽는다(ADR-0018).
         "reconcile_resolved",
+        # 전략이 통과할 수 없는 것을 요구한다는 뜻이다(ADR-0020). 거래일당 종목별 1회만 기록되므로
+        # 이 알림도 그 빈도를 따른다.
+        "no_capacity",
     }
 )
 # 예약 제출 차단은 경고다(ADR-0015 결정 6). `listener_state`는 사람이 있을 때 정상 흐름이라
 # 제외하지만, 그 때문에 자동 제출이 멈춘 사실은 알려야 한다 — 주문이 없는 것과 구분되지 않으면
 # 감시가 없다.
 _WARNING_AUTOMATION_TYPES: Final = frozenset(
-    {"reconcile_problem", "api_failure", "schedule_blocked"}
+    {"reconcile_problem", "api_failure", "schedule_blocked", "no_capacity"}
 )
 _WARNING_AUTOMATION_STATES: Final = frozenset(
     {AutomationState.PAUSED.value, AutomationState.EMERGENCY_STOP.value}
@@ -89,6 +92,7 @@ class NotificationKind(StrEnum):
     RISK_BLOCK = "risk_block"
     SCHEDULE_BLOCKED = "schedule_blocked"
     RECONCILE_RESOLVED = "reconcile_resolved"
+    NO_CAPACITY = "no_capacity"
 
 
 class NotificationSeverity(StrEnum):
@@ -143,6 +147,7 @@ _KIND_HEADINGS: Final = {
     NotificationKind.API_FAILURE: "API 실패",
     NotificationKind.ATTESTATION: "사람 확인 종결",
     NotificationKind.SCHEDULE_BLOCKED: "예약 제출 차단",
+    NotificationKind.NO_CAPACITY: "자리 없음",
 }
 
 
@@ -152,6 +157,7 @@ _AUTOMATION_KINDS: Final = {
     "attestation": NotificationKind.ATTESTATION,
     "schedule_blocked": NotificationKind.SCHEDULE_BLOCKED,
     "reconcile_resolved": NotificationKind.RECONCILE_RESOLVED,
+    "no_capacity": NotificationKind.NO_CAPACITY,
 }
 
 
@@ -213,6 +219,10 @@ def _body(candidate: NotificationCandidate, kind: NotificationKind) -> str:
     elif kind is NotificationKind.AUTOMATION_STATE:
         lines.append(f"[자동매매] {_transition(candidate)}")
         lines.append(f"사유 {candidate.reason_code or '-'}")
+    elif kind is NotificationKind.NO_CAPACITY:
+        # 어떤 종목이 어떤 한도에 막혔는지가 없으면 받아도 할 수 있는 게 없다(ADR-0020 결정 4).
+        lines.append(f"[{_KIND_HEADINGS[kind]}] {candidate.rule_code or '-'}")
+        lines.append(_instrument(candidate))
     else:
         lines.append(f"[{_KIND_HEADINGS.get(kind, kind.value)}] {candidate.reason_code or '-'}")
     if candidate.broker_order_id is not None:

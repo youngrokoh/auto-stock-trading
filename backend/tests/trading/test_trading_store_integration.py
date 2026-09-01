@@ -797,3 +797,50 @@ def test_expired_orders_leave_the_unsettled_list_with_their_own_reason() -> None
         assert entry.state is OrderState.EXPIRED
 
     anyio.run(_run_scenario, scenario)
+
+
+def test_consecutive_rejects_are_counted_from_the_last_resume() -> None:
+    """정지 규칙에는 빠져나올 길이 있어야 한다(ADR-0020 결정 6).
+
+    막혀 있는 동안에는 새 주문이 만들어지지 않으므로, 재개 이전 거절을 계속 세면 선두의 거절 연속이
+    영원히 유지되고 사람이 재개해도 다음 계획에서 즉시 다시 막힌다(2026-09-01 실측).
+    """
+
+    async def scenario(
+        store: PostgresTradingStore,
+        reader: PostgresTradingReader,
+        connection: AsyncConnection,
+    ) -> None:
+        _ = reader
+        _ = await _ensure_instrument(connection, _SYMBOL)
+        plan = _plan(
+            orders=(_order(state=OrderState.REJECTED, reject_code="RISK_SYMBOL_EXPOSURE"),)
+        )
+        await store.save_plan(plan)
+
+        before = await store.counters(_ENVIRONMENT, _TRADING_DATE)
+        assert before.consecutive_rejects == 1
+
+        _ = await store.transition_automation(
+            AutomationTransition(
+                environment=_ENVIRONMENT,
+                requested=AutomationState.ARMED,
+                reason_code="USER_COMMAND",
+                occurred_at=_NOW + timedelta(minutes=1),
+                trading_date=_TRADING_DATE,
+            )
+        )
+        _ = await store.transition_automation(
+            AutomationTransition(
+                environment=_ENVIRONMENT,
+                requested=AutomationState.RUNNING,
+                reason_code="USER_COMMAND",
+                occurred_at=_NOW + timedelta(minutes=2),
+                trading_date=_TRADING_DATE,
+            )
+        )
+
+        after = await store.counters(_ENVIRONMENT, _TRADING_DATE)
+        assert after.consecutive_rejects == 0
+
+    anyio.run(_run_scenario, scenario)

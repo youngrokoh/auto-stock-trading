@@ -48,6 +48,21 @@ if TYPE_CHECKING:
 # 재시도 상한(ADR-0014 결정 8). 상한이 없으면 도달 불가능한 알림이 매 폴마다 한도를 쓴다.
 # 상한에 닿은 행은 `failed`로 남고 다음 폴의 대상이 아니지만, 사라지지 않고 실패 건수로 보인다.
 _RECONCILE_PROBLEM: Final = "reconcile_problem"
+_NO_CAPACITY: Final = "no_capacity"
+
+
+def _no_capacity_parts(event_type: str, detail: str | None) -> tuple[str | None, str | None]:
+    """자리 없음 이벤트의 상세를 종목과 규칙으로 되돌린다(ADR-0020).
+
+    저장은 `"<종목> <규칙>"` 한 줄이지만 알림 본문은 둘을 다른 자리에 쓴다. 자유 문구가 아니라
+    우리가 만든 두 값이므로 되돌려 쓸 수 있다.
+    """
+    if event_type != _NO_CAPACITY or not detail:
+        return None, None
+    symbol, _, rule = detail.partition(" ")
+    return symbol or None, rule or None
+
+
 MAX_DELIVERY_ATTEMPTS = 5
 
 _BLOCKED = "blocked"
@@ -192,7 +207,7 @@ class PostgresNotificationOutboxStore:
                 state=row.state,
                 # 상세는 사유보다 뒤에 온다. 사유가 없을 때만 상세를 쓴다.
                 reason_code=row.reason_code or row.detail,
-                symbol=None,
+                symbol=_no_capacity_parts(row.event_type, row.detail)[0],
                 symbol_name=None,
                 side=None,
                 quantity=None,
@@ -202,7 +217,7 @@ class PostgresNotificationOutboxStore:
                 # 본문에 넣지 않는다.
                 broker_order_id=row.detail if row.event_type == _RECONCILE_PROBLEM else None,
                 event_type=row.event_type,
-                rule_code=None,
+                rule_code=_no_capacity_parts(row.event_type, row.detail)[1],
             )
             for row in rows
         ]

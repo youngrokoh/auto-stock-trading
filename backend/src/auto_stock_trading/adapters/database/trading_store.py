@@ -28,6 +28,7 @@ from auto_stock_trading.adapters.database.trading_order_writes import (
 from auto_stock_trading.adapters.database.trading_queries import (
     buy_amount_query,
     consecutive_rejects,
+    last_resume_query,
     open_orders_query,
     order_attempts_query,
     pending_exposure_query,
@@ -79,6 +80,9 @@ _STATE_CHANGE: Final = "state_change"
 _API_FAILURE: Final = "api_failure"
 _SCHEDULE_BLOCKED: Final = "schedule_blocked"
 _RECONCILE_PROBLEM: Final = "reconcile_problem"
+_NO_CAPACITY: Final = "no_capacity"
+_NO_CAPACITY_REASON: Final = "NO_CAPACITY"
+_SEOUL_TZ: Final = "Asia/Seoul"
 _FILL_SYNC: Final = "FILL_SYNC"
 _FIRST_ATTEMPT: Final = 1
 _OPEN_STATES: Final = (OrderState.SUBMITTED.value, OrderState.PARTIALLY_FILLED.value)
@@ -209,6 +213,46 @@ class PostgresTradingStore:
                 )
             )
 
+    async def record_no_capacity(
+        self,
+        environment: str,
+        symbol: str,
+        rule_code: str,
+        trading_date: date,
+        occurred_at: datetime,
+    ) -> bool:
+        """자리 없음을 거래일당 종목별 1회만 남긴다(ADR-0020 결정 4).
+
+        매 슬롯 남기면 하루 25건이 되고, 그러면 읽지 않게 된다. 남겼는지를 돌려줘 호출자가 알림
+        발송 여부를 판단하지 않아도 되게 한다.
+        """
+        detail = f"{symbol} {rule_code}"[:500]
+        async with self._sessions.begin() as session:
+            existing = await session.scalar(
+                select(AutomationEventRow.id).where(
+                    AutomationEventRow.environment == environment,
+                    AutomationEventRow.event_type == _NO_CAPACITY,
+                    AutomationEventRow.detail == detail,
+                    func.date(func.timezone(_SEOUL_TZ, AutomationEventRow.occurred_at))
+                    == trading_date,
+                )
+            )
+            if existing is not None:
+                return False
+            session.add(
+                AutomationEventRow(
+                    id=uuid4(),
+                    environment=environment,
+                    event_type=_NO_CAPACITY,
+                    previous_state=None,
+                    state=None,
+                    reason_code=_NO_CAPACITY_REASON,
+                    detail=detail,
+                    occurred_at=occurred_at,
+                )
+            )
+        return True
+
     async def record_api_failure(
         self,
         environment: str,
@@ -324,7 +368,10 @@ class PostgresTradingStore:
             open_orders = await session.scalar(open_orders_query(environment))
             attempts = await session.scalar(order_attempts_query(environment, trading_date))
             buy_amount = await session.scalar(buy_amount_query(environment, trading_date))
-            recent_states = (await session.scalars(recent_states_query(environment))).all()
+            resumed_at = await session.scalar(last_resume_query(environment))
+            recent_states = (
+                await session.scalars(recent_states_query(environment, resumed_at))
+            ).all()
         return StoredCounters(
             open_orders=open_orders or 0,
             daily_order_attempts=attempts or 0,
