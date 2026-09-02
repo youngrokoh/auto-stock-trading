@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from auto_stock_trading.adapters.database.market_data_etf_classification import (
+    save_etf_index_classification,
+)
 from auto_stock_trading.adapters.database.market_data_rows import (
     EtfNavRow,
     EtfProfileRow,
@@ -130,6 +133,9 @@ class PostgresEtfStore:
                 set_={key: value for key, value in values.items() if key != "symbol"},
             )
             _ = await session.execute(statement)
+            # 위험검사의 분류 입력은 이 스냅샷이 아니라 버전 사실이다(ADR-0021 결정 3). 같은
+            # 트랜잭션에 두어 스냅샷만 갱신되고 분류가 뒤처지는 상태를 만들지 않는다.
+            _ = await save_etf_index_classification(session, snapshot, raw_id)
 
     async def profiles(self) -> tuple[VersionedEtfProfile, ...]:
         async with self._sessions() as session:

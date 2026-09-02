@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
 
 from auto_stock_trading.adapters.database.market_data_rows import InstrumentRow
 from auto_stock_trading.adapters.database.notification_rows import NotificationOutboxRow
+from auto_stock_trading.adapters.database.reference_etf_rows import EtfIndexClassificationRow
 from auto_stock_trading.adapters.database.reference_stock_rows import StockProfileRow
 from auto_stock_trading.adapters.database.trading_queries import (
     buy_amount_query,
@@ -30,6 +31,10 @@ from auto_stock_trading.adapters.database.trading_rows import (
     OrderPlanRow,
     OrderRow,
     RiskDecisionRow,
+)
+from auto_stock_trading.domain.market_data.etf_classification import (
+    EtfIndexClassification,
+    classification_sector,
 )
 from auto_stock_trading.domain.notifications.records import (
     NotificationEntryRecord,
@@ -306,7 +311,7 @@ class PostgresTradingReader:
             )
             baselines = await _nav_baselines(session, environment, basis_date)
             counters = await _counters(session, environment, basis_date)
-            sectors = await _sectors(session)
+            sectors = await _sectors(session, evaluated_at)
             failures = await session.scalar(
                 select(func.count())
                 .select_from(AutomationEventRow)
@@ -377,16 +382,40 @@ class PostgresTradingReader:
             await self._engine.dispose()
 
 
-async def _sectors(session: AsyncSession) -> tuple[tuple[str, str], ...]:
-    """업종 사실의 현재 버전만 읽는다(종목 유니버스 계약)."""
-    rows = (
+async def _sectors(session: AsyncSession, now: datetime) -> tuple[tuple[str, str], ...]:
+    """업종 사실의 현재 버전만 읽는다(종목 유니버스 계약 + ADR-0021).
+
+    ETF는 플래너와 같은 규칙(추적배수 1, 30일 신선도)을 통과한 것만 분류한다. 화면과 위험검사가
+    다른 답을 내면 사용률 표시를 믿을 수 없다.
+    """
+    stocks = (
         await session.execute(
             select(StockProfileRow.symbol, StockProfileRow.sector_code)
             .where(StockProfileRow.superseded_at.is_(None))
             .order_by(StockProfileRow.symbol)
         )
     ).tuples()
-    return tuple((symbol, sector) for symbol, sector in rows)
+    etfs = await session.scalars(
+        select(EtfIndexClassificationRow)
+        .where(EtfIndexClassificationRow.superseded_at.is_(None))
+        .order_by(EtfIndexClassificationRow.symbol)
+    )
+    classified: list[tuple[str, str]] = [(symbol, sector) for symbol, sector in stocks]
+    for row in etfs.all():
+        sector = classification_sector(
+            EtfIndexClassification(
+                symbol=row.symbol,
+                index_name=row.index_name,
+                tracking_multiple=row.tracking_multiple,
+                source=row.source,
+                as_of=row.as_of,
+                received_at=row.received_at,
+            ),
+            now=now,
+        )
+        if sector is not None:
+            classified.append((row.symbol, sector))
+    return tuple(classified)
 
 
 def _entry(row: OrderRow, symbol: str, trading_date: date) -> OrderListEntry:

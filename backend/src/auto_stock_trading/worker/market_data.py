@@ -4,6 +4,7 @@ from typing import Final, final
 from zoneinfo import ZoneInfo
 
 import anyio
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from auto_stock_trading.adapters.brokers.kis_coordination import kis_coordination_scope
 from auto_stock_trading.adapters.brokers.kis_coordination_valkey import (
@@ -25,6 +26,9 @@ from auto_stock_trading.adapters.brokers.kis_master_files import (
 from auto_stock_trading.adapters.brokers.kis_minute_bars import KisMinuteBarAdapter
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
+)
+from auto_stock_trading.adapters.database.market_data_etf_classification import (
+    backfill_etf_index_classification,
 )
 from auto_stock_trading.adapters.database.market_data_etf_store import PostgresEtfStore
 from auto_stock_trading.adapters.database.market_data_investor_flow_store import (
@@ -94,6 +98,7 @@ class Arguments(argparse.Namespace):
     collect_universe_investor_flows: bool = False
     collect_etf_master: bool = False
     collect_etf_nav: bool = False
+    backfill_etf_classification: bool = False
     collect_stock_master: bool = False
     collect_share_classes: bool = False
     collect_preferred_quotes: bool = False
@@ -316,6 +321,18 @@ async def collect_etf_master() -> tuple[int, int]:
         await source.close()
         await store.close()
     return result.observed, result.saved
+
+
+async def backfill_etf_classification() -> tuple[int, int]:
+    """사실 도입 전에 수집된 NAV 스냅샷을 분류 사실로 옮긴다(ADR-0021). 한 번 돌리면 된다."""
+    settings = Settings()
+    engine = create_async_engine(settings.database_url.get_secret_value())
+    try:
+        return await backfill_etf_index_classification(
+            async_sessionmaker(engine, expire_on_commit=False)
+        )
+    finally:
+        await engine.dispose()
 
 
 async def collect_etf_nav() -> tuple[int, int]:
@@ -610,6 +627,7 @@ def main() -> None:
     _ = parser.add_argument("--collect-universe-investor-flows", action="store_true")
     _ = parser.add_argument("--collect-etf-master", action="store_true")
     _ = parser.add_argument("--collect-etf-nav", action="store_true")
+    _ = parser.add_argument("--backfill-etf-classification", action="store_true")
     _ = parser.add_argument("--collect-stock-master", action="store_true")
     _ = parser.add_argument("--collect-share-classes", action="store_true")
     _ = parser.add_argument("--collect-preferred-quotes", action="store_true")
@@ -685,16 +703,28 @@ def _run_etf_bars(arguments: Arguments) -> bool:
     return False
 
 
+def _run_etf(arguments: Arguments) -> bool:
+    """ETF 명령만 처리하고 처리 여부를 돌려준다."""
+    if arguments.collect_etf_master:
+        _ = anyio.run(collect_etf_master)
+    elif arguments.collect_etf_nav:
+        _ = anyio.run(collect_etf_nav)
+    elif arguments.backfill_etf_classification:
+        observed, created = anyio.run(backfill_etf_classification)
+        print(f"etf_classification observed={observed} new_versions={created}")  # noqa: T201
+    else:
+        return False
+    return True
+
+
 def _run(arguments: Arguments) -> None:
     if _run_etf_bars(arguments):
         return
     if _run_universe(arguments):
         return
-    if arguments.collect_etf_master:
-        _ = anyio.run(collect_etf_master)
-    elif arguments.collect_etf_nav:
-        _ = anyio.run(collect_etf_nav)
-    elif arguments.collect_investor_flows:
+    if _run_etf(arguments):
+        return
+    if arguments.collect_investor_flows:
         _ = anyio.run(collect_seed_investor_flows)
     elif arguments.collect_minute_bars:
         _ = anyio.run(collect_seed_minute_bars)

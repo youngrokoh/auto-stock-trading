@@ -19,12 +19,16 @@ from auto_stock_trading.adapters.brokers.kis_market_data import KisMarketDataAda
 from auto_stock_trading.adapters.database.market_calendar_repository import (
     PostgresMarketCalendarRepository,
 )
+from auto_stock_trading.adapters.database.market_data_etf_classification import (
+    PostgresEtfClassificationSource,
+)
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
 from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.planning import OrderPlanner
+from auto_stock_trading.application.trading.sector_sources import ChainedSectorSource
 from auto_stock_trading.settings.runtime import KisEnvironment
 from auto_stock_trading.worker.kis_credentials import load_kis_account, load_kis_credentials
 
@@ -83,11 +87,13 @@ class PlannerBundle:
     quotes: KisMarketDataAdapter
     accounts: KisAccountAdapter | MissingAccountSource
     sectors: PostgresStockStore
+    etf_sectors: PostgresEtfClassificationSource
 
     async def close(self) -> None:
         await self.quotes.close()
         await self.accounts.close()
         await self.calendar.close()
+        await self.etf_sectors.close()
         await self.instruments.close()
         await self.sectors.close()
         await self.store.close()
@@ -99,6 +105,10 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
     instruments = PostgresMarketDataRepository.from_url(database_url)
     store = PostgresTradingStore.from_url(database_url)
     sectors = PostgresStockStore.from_url(database_url)
+    # 주식은 KOSPI200 업종 코드, ETF는 추종 지수다(ADR-0021). 키가 겹치지 않으면 한도 계산에는
+    # 문제가 없다 — 업종 한도는 같은 키끼리의 합에만 걸린다.
+    etf_sectors = PostgresEtfClassificationSource.from_url(database_url)
+    chained_sectors = ChainedSectorSource(sectors, etf_sectors)
     quotes = KisMarketDataAdapter(http_client(settings), instrument_details_available=False)
     accounts: KisAccountAdapter | MissingAccountSource
     try:
@@ -114,7 +124,7 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
             quotes=quotes,
             accounts=accounts,
             store=store,
-            sectors=sectors,
+            sectors=chained_sectors,
         ),
         store=store,
         calendar=calendar,
@@ -122,4 +132,5 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
         quotes=quotes,
         accounts=accounts,
         sectors=sectors,
+        etf_sectors=etf_sectors,
     )
