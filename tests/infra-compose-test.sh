@@ -33,6 +33,20 @@ end
 unless scheduler.fetch("secrets", []).empty?
   abort "The scheduler process must not receive KIS credentials"
 end
+# 상주 서비스는 호스트가 재부팅해도 스스로 돌아와야 한다. 정책이 없으면 한 번 죽은 뒤 아무도
+# 되살리지 않고, 그 사이 무인 운영은 조용히 멈춘다(2026-09-02 실측: 재부팅 후 기반 스택이 전부
+# 내려간 채로 남았고, 정책이 있던 서비스들은 DB 없이 되살아나 크래시 루프에 빠졌다).
+# `migrate`는 한 번 실행하고 끝나야 하므로 정책을 주면 반복 실행된다 — 유일한 예외다.
+one_shot_services = ["migrate"]
+compose.fetch("services").each do |name, service|
+  restart = service["restart"]
+  if one_shot_services.include?(name)
+    abort "#{name} runs once and must exit: a restart policy would loop it" unless restart.nil?
+  elsif restart != "unless-stopped"
+    abort "#{name} must set restart: unless-stopped, or a host reboot leaves it down for good"
+  end
+end
+
 scheduler_count = compose.fetch("services").values.count do |service|
   service.fetch("command", []).first(2) == ["taskiq", "scheduler"]
 end
