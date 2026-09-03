@@ -4,7 +4,7 @@ set -eu
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-ruby - "$project_root/infra/compose.yaml" "$project_root/infra/compose.kis-paper.yaml" "$project_root/infra/compose.kis-live-calendar.yaml" "$project_root/infra/Caddyfile" "$project_root/.dockerignore" <<'RUBY'
+ruby - "$project_root/infra/compose.yaml" "$project_root/infra/compose.kis-paper.yaml" "$project_root/infra/compose.kis-live-calendar.yaml" "$project_root/infra/Caddyfile" "$project_root/.dockerignore" "$project_root/infra/compose.etf-nav-schedule.yaml" <<'RUBY'
 require "yaml"
 
 compose = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
@@ -45,6 +45,26 @@ compose.fetch("services").each do |name, service|
   elsif restart != "unless-stopped"
     abort "#{name} must set restart: unless-stopped, or a host reboot leaves it down for good"
   end
+end
+
+# ETF NAV 예약(ADR-0021 결정 4). 스케줄러에 자격증명이 가면 안 되고, worker의 command를 통째로
+# 덮어쓰므로 등록 모듈을 빠뜨리면 그 태스크가 조용히 버려진다(2026-08-31 실측).
+etf_nav_compose = YAML.safe_load(File.read(ARGV.fetch(5)), aliases: true)
+etf_nav_scheduler = etf_nav_compose.fetch("services").fetch("etf-nav-scheduler")
+
+if etf_nav_scheduler.key?("secrets")
+  abort "ETF NAV scheduler must not receive KIS credentials: only the worker performs the sweep"
+end
+
+etf_nav_worker = etf_nav_compose.fetch("services").fetch("worker")
+required_modules = [
+  "auto_stock_trading.worker.market_calendar_schedule",
+  "auto_stock_trading.worker.investor_flow_schedule",
+  "auto_stock_trading.worker.etf_nav_schedule",
+]
+missing = required_modules.reject { |mod| etf_nav_worker.fetch("command").include?(mod) }
+unless missing.empty?
+  abort "ETF NAV override replaces the worker command, so it must register #{missing.join(", ")}"
 end
 
 scheduler_count = compose.fetch("services").values.count do |service|

@@ -1,0 +1,70 @@
+# ETF NAV 주간 예약을 켜는 오버라이드(ADR-0006 패턴, ADR-0021 결정 4).
+#
+# 기본 Compose는 이 예약이 꺼져 있다. 이 파일을 겹쳐야 자동 수집이 시작된다.
+#
+#   docker compose -f infra/compose.yaml \
+#     -f infra/compose.etf-nav-schedule.yaml \
+#     --profile etf-nav-scheduler up -d
+#
+# **왜 필요한가:** ETF의 업종 키는 30일보다 오래된 관측을 미분류로 읽는다(ADR-0021 결정 4).
+# 수집이 멈추면 fail-closed로 안전하게 막히지만, 그 결과 ETF 배분 전략이 다시 아무것도 사지
+# 못한다. 재수집 주기는 그 결정의 일부다.
+#
+# 규칙 세 가지를 다른 예약과 똑같이 지킨다:
+#   1. 자격증명은 **worker에만** 준다. 스케줄러는 시각만 알고 비밀정보를 받지 않는다.
+#   2. 모의(paper) 자격증명만 쓴다. 실전 자격증명은 승인된 달력 확인 경로 전용이다.
+#   3. 이 작업은 읽기 전용 조회다. 주문·정정·취소 경로와 무관하다.
+#
+# `worker`의 command는 이 파일이 통째로 덮어쓴다. 다른 예약 오버라이드와 함께 겹칠 때는 마지막에
+# 오는 파일의 command만 남으므로, 등록해야 할 모듈을 여기에 모두 적는다(2026-08-31 실측: 빠뜨린
+# 모듈의 태스크는 조용히 버려진다).
+services:
+  worker:
+    restart: unless-stopped
+    environment:
+      AUTO_STOCK_ETF_NAV_SCHEDULE_ENABLED: "true"
+      AUTO_STOCK_INVESTOR_FLOW_SCHEDULE_ENABLED: "true"
+      AUTO_STOCK_KIS_APP_KEY_FILE: /run/secrets/kis_paper_app_key
+      AUTO_STOCK_KIS_APP_SECRET_FILE: /run/secrets/kis_paper_app_secret
+    secrets:
+      - kis_paper_app_key
+      - kis_paper_app_secret
+    command:
+      [
+        "taskiq",
+        "worker",
+        "auto_stock_trading.worker.market_data:broker",
+        "auto_stock_trading.worker.market_calendar_schedule",
+        "auto_stock_trading.worker.investor_flow_schedule",
+        "auto_stock_trading.worker.etf_nav_schedule",
+      ]
+
+  etf-nav-scheduler:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command:
+      [
+        "taskiq",
+        "scheduler",
+        "auto_stock_trading.worker.etf_nav_schedule:scheduler",
+      ]
+    environment:
+      AUTO_STOCK_DATABASE_URL: postgresql+asyncpg://auto_stock:auto_stock@postgres:5432/auto_stock_trading
+      AUTO_STOCK_ENVIRONMENT: development
+      AUTO_STOCK_VALKEY_URL: redis://valkey:6379/0
+      # 스케줄러는 자격증명을 받지 않는다. 시각만 알고 실제 조회는 worker가 한다.
+      AUTO_STOCK_ETF_NAV_SCHEDULE_ENABLED: "true"
+    profiles: ["etf-nav-scheduler"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+secrets:
+  kis_paper_app_key:
+    file: ${KIS_PAPER_APP_KEY_FILE:-../.secrets/kis-paper-app-key}
+  kis_paper_app_secret:
+    file: ${KIS_PAPER_APP_SECRET_FILE:-../.secrets/kis-paper-app-secret}
