@@ -86,17 +86,44 @@ class PlannerBundle:
     instruments: PostgresMarketDataRepository
     quotes: KisMarketDataAdapter
     accounts: KisAccountAdapter | MissingAccountSource
-    sectors: PostgresStockStore
-    etf_sectors: PostgresEtfClassificationSource
+    sectors: SectorSources
 
     async def close(self) -> None:
         await self.quotes.close()
         await self.accounts.close()
         await self.calendar.close()
-        await self.etf_sectors.close()
         await self.instruments.close()
         await self.sectors.close()
         await self.store.close()
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class SectorSources:
+    """플래너가 쓰는 분류 원천 묶음. 조립은 여기 한 곳이다.
+
+    주식은 KOSPI200 업종 코드, ETF는 추종 지수다(ADR-0021). 키가 겹치지 않으면 한도 계산에는 문제가
+    없다 — 업종 한도는 같은 키끼리의 합에만 걸린다. 2026-09-03에 CLI 경로와 예약 경로가 따로
+    조립하다가 예약 경로만 ETF 분류를 빠뜨린 적이 있어, 두 경로가 이 함수를 함께 쓴다.
+    """
+
+    stocks: PostgresStockStore
+    etfs: PostgresEtfClassificationSource
+
+    @property
+    def chained(self) -> ChainedSectorSource:
+        return ChainedSectorSource(self.stocks, self.etfs)
+
+    async def close(self) -> None:
+        await self.etfs.close()
+        await self.stocks.close()
+
+
+def sector_sources(database_url: str) -> SectorSources:
+    return SectorSources(
+        stocks=PostgresStockStore.from_url(database_url),
+        etfs=PostgresEtfClassificationSource.from_url(database_url),
+    )
 
 
 def planner_bundle(settings: Settings) -> PlannerBundle:
@@ -104,11 +131,7 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     instruments = PostgresMarketDataRepository.from_url(database_url)
     store = PostgresTradingStore.from_url(database_url)
-    sectors = PostgresStockStore.from_url(database_url)
-    # 주식은 KOSPI200 업종 코드, ETF는 추종 지수다(ADR-0021). 키가 겹치지 않으면 한도 계산에는
-    # 문제가 없다 — 업종 한도는 같은 키끼리의 합에만 걸린다.
-    etf_sectors = PostgresEtfClassificationSource.from_url(database_url)
-    chained_sectors = ChainedSectorSource(sectors, etf_sectors)
+    sectors = sector_sources(database_url)
     quotes = KisMarketDataAdapter(http_client(settings), instrument_details_available=False)
     accounts: KisAccountAdapter | MissingAccountSource
     try:
@@ -124,7 +147,7 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
             quotes=quotes,
             accounts=accounts,
             store=store,
-            sectors=chained_sectors,
+            sectors=sectors.chained,
         ),
         store=store,
         calendar=calendar,
@@ -132,5 +155,4 @@ def planner_bundle(settings: Settings) -> PlannerBundle:
         quotes=quotes,
         accounts=accounts,
         sectors=sectors,
-        etf_sectors=etf_sectors,
     )

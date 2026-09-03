@@ -27,7 +27,6 @@ from auto_stock_trading.adapters.database.market_calendar_repository import (
 from auto_stock_trading.adapters.database.market_data_repository import (
     PostgresMarketDataRepository,
 )
-from auto_stock_trading.adapters.database.market_data_stock_store import PostgresStockStore
 from auto_stock_trading.adapters.database.trading_store import PostgresTradingStore
 from auto_stock_trading.application.trading.planning import (
     AutomationTransition,
@@ -40,6 +39,7 @@ from auto_stock_trading.domain.risk.engine import SignalCandidate
 from auto_stock_trading.domain.risk.limits import seoul_trading_date
 from auto_stock_trading.domain.strategies.live_signal import signal_candidates
 from auto_stock_trading.settings.runtime import KisEnvironment, Settings
+from auto_stock_trading.worker.execution.collaborators import sector_sources
 from auto_stock_trading.worker.kis_credentials import (
     load_kis_account,
     load_kis_credentials,
@@ -244,7 +244,7 @@ async def _plan_candidates(  # noqa: PLR0913 — 계획 입력을 그대로 노�
     calendar = PostgresMarketCalendarRepository.from_url(database_url)
     market_data = PostgresMarketDataRepository.from_url(database_url)
     store = PostgresTradingStore.from_url(database_url)
-    sectors = PostgresStockStore.from_url(database_url)
+    sectors = sector_sources(database_url)
     quotes = KisMarketDataAdapter(_http_client(settings), instrument_details_available=False)
     accounts: KisAccountAdapter | MissingAccountSource
     try:
@@ -259,7 +259,7 @@ async def _plan_candidates(  # noqa: PLR0913 — 계획 입력을 그대로 노�
         quotes=quotes,
         accounts=accounts,
         store=store,
-        sectors=sectors,
+        sectors=sectors.chained,
     )
     now = datetime.now(UTC)
     request = PlanInput(
