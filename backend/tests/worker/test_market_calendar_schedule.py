@@ -23,7 +23,40 @@ def test_krx_schedule_uses_seoul_time_and_stable_schedule_ids() -> None:
             "cron_offset": "Asia/Seoul",
             "schedule_id": "krx-calendar-0600-0620-kst",
         },
+        {
+            "cron": "*/10 7-14 * * *",
+            "cron_offset": "Asia/Seoul",
+            "schedule_id": "krx-calendar-0700-1450-kst",
+        },
     ]
+
+
+def test_krx_keeps_retrying_after_the_early_window() -> None:
+    """호스트가 새벽에 자고 있으면 이른 창은 통째로 비어 있다(2026-09-04 실측).
+
+    KIS 확인은 KRX 성공을 전제하므로, 가장 좁은 창이 달력 사슬 전체의 단일 실패점이 된다. 확인
+    쪽과 같은 시간대까지 재시도해야 기계가 깨어난 뒤 스스로 복구된다.
+    """
+    krx_hours = _scheduled_hours(market_calendar_schedule.krx_calendar_schedules(enabled=True))
+    kis_hours = _scheduled_hours(market_calendar_schedule.kis_calendar_schedules(enabled=True))
+
+    # 수집은 확인보다 먼저 시작하고, 확인이 도는 시간대를 덮는다.
+    assert min(krx_hours) <= min(kis_hours)
+    assert kis_hours - krx_hours == {15}
+
+
+def _scheduled_hours(schedules: list[market_calendar_schedule.CronSchedule]) -> set[int]:
+    hours: set[int] = set()
+    for entry in schedules:
+        field = entry["cron"].split()[1]
+        if field.startswith("*/"):
+            hours.update(range(24))
+        elif "-" in field:
+            start, end = (int(part) for part in field.split("-"))
+            hours.update(range(start, end + 1))
+        else:
+            hours.update(int(part) for part in field.split(","))
+    return hours
 
 
 def test_kis_schedule_uses_the_approved_confirmation_window() -> None:
