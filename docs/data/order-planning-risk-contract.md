@@ -222,6 +222,12 @@ DISABLED -> ARMED -> RUNNING -> PAUSED
 - 비상정지는 신규 주문을 금지하고 미체결 취소를 시도하되 보유 포지션을 자동 청산하지 않는다.
 - 상태 변경은 `trading.automation_event`에 사유 코드와 함께 append-only로 남긴다. 외부 API 실패도
   같은 테이블에 기록해 `RISK_API_FAILURES` 판정 입력으로 사용한다.
+- **계획 경로의 모든 외부 호출이 대상이다.** 플래너 안의 계좌 조회·시세 조회뿐 아니라, 신호 후보를
+  만들 때 보유를 확인하는 계좌 조회(ADR-0016 결정 4)도 실패를 `api_failure`로 남긴다
+  (`signal_holdings:<오류형>`). 이 호출은 `OrderPlanner` 밖이라 오래도록 기록되지 않았고, 그 결과
+  예약 경로의 전송 실패가 `scheduled_job_run.error_code`에만 남아 `RISK_API_FAILURES` 규칙이 이
+  호출에는 작동하지 않았다(2026-09-04 실측: `KisTransportError` 4건에 `api_failure` 0건).
+  기록한 뒤에는 **삼키지 않고 그대로 던진다** — 삼키면 그 슬롯이 성공한 것처럼 보인다.
 
 ## 저장 테이블
 

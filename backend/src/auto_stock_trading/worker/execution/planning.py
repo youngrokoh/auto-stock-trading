@@ -2,7 +2,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final, final
+from typing import TYPE_CHECKING, Final, Protocol, final
 
 import anyio
 
@@ -147,6 +147,51 @@ async def collect_account_snapshot() -> str:
     )
 
 
+class BalanceSource(Protocol):
+    """계좌 조회만 요구한다. 어댑터와 fail-closed 대체 소스가 모두 이 모양이다."""
+
+    async def fetch_balance(self) -> AccountSnapshotObservation: ...
+
+
+class ApiFailureRecorder(Protocol):
+    """실패를 사실로 남기는 최소 계약. 플래너의 저장소 프로토콜과 같은 서명이다."""
+
+    async def record_api_failure(
+        self,
+        environment: str,
+        detail: str,
+        occurred_at: datetime,
+    ) -> None: ...
+
+
+async def fetch_signal_holdings(
+    accounts: BalanceSource,
+    store: ApiFailureRecorder,
+    environment: str,
+    now: datetime,
+) -> tuple[str, ...]:
+    """보유를 조회한다. 실패는 사실로 남긴 뒤 그대로 던진다.
+
+    이 조회는 `OrderPlanner` 밖이라 플래너의 실패 기록 경로를 지나지 않는다. 기록하지 않으면 예약
+    경로의 전송 실패가 `scheduled_job_run.error_code`에만 남고, 정책 §3의 "외부 API 5분 내 3회
+    실패" 규칙이 이 호출에는 작동하지 않는다(2026-09-04 실측: `KisTransportError` 4건에
+    `api_failure` 0건). 기록한 뒤 삼키지 않는 이유는, 삼키면 그 슬롯이 성공한 것처럼 보이기
+    때문이다.
+    """
+    try:
+        observation = await accounts.fetch_balance()
+    except Exception as error:
+        await store.record_api_failure(
+            environment,
+            f"signal_holdings:{type(error).__name__}",
+            now,
+        )
+        raise
+    return tuple(
+        position.symbol for position in observation.snapshot.positions if position.quantity > 0
+    )
+
+
 async def _signal_candidates(
     settings: Settings,
 ) -> tuple[tuple[SignalCandidate, ...], StoredSignal | None]:
@@ -156,19 +201,19 @@ async def _signal_candidates(
     그래서 계좌를 새로 조회한다.
     """
     database_url = settings.database_url.get_secret_value()
+    environment = settings.kis_environment.value
     signals = PostgresLiveSignalStore.from_url(database_url)
+    store = PostgresTradingStore.from_url(database_url)
     accounts = KisAccountAdapter(_http_client(settings), load_kis_account(settings), paper=True)
     try:
-        latest = await signals.latest_targets(settings.kis_environment.value, STRATEGY_NAME)
+        latest = await signals.latest_targets(environment, STRATEGY_NAME)
         if latest is None:
             return (), None
-        observation = await accounts.fetch_balance()
+        holdings = await fetch_signal_holdings(accounts, store, environment, datetime.now(UTC))
     finally:
         await accounts.close()
+        await store.close()
         await signals.close()
-    holdings = tuple(
-        position.symbol for position in observation.snapshot.positions if position.quantity > 0
-    )
     return signal_candidates(latest.targets, holdings), latest
 
 
